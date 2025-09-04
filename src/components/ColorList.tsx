@@ -144,14 +144,19 @@ export class ColorList extends Component<ColorListProps> {
                     if (button === 0) {
                       this.indexA = this.indexA === i ? undefined : i;
                       this.indexB = this.indexB === i ? undefined : this.indexB;
+
+                      if (this.indexA !== undefined)
+                        this.props.onChange?.(this.data[i].value.clone(), true);
                     }
 
                     if (button === 2) {
                       this.indexA = this.indexA === i ? undefined : this.indexA;
                       this.indexB = this.indexB === i ? undefined : i;
+
+                      if (this.indexB !== undefined)
+                        this.props.onChange?.(this.data[i].value.clone(), true);
                     }
                   });
-                  this.props.onChange?.(this.data[i].value.clone(), button === 2);
                 }}
                 style={{
                   backgroundColor: color.toHex(true)
