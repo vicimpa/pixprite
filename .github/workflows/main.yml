@@ -12,15 +12,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
 
       - name: Install
         run: |
-          npm i 
+          bun install 
 
       - name: Build
         run: |
-          npm run build
+          bun run build
           
       - name: Deploy
         uses: crazy-max/ghaction-github-pages@v4
