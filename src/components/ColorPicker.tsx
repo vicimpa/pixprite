@@ -132,85 +132,92 @@ export class ColorPicker extends Component<ColorPickerProps> {
     return (
       <div className="flex flex-col gap-0.5">
         <CSSVariables calc={() => this.getVariables()}>
-          <PointView
-            ref={this.blockRef}
-            info={({ current: { x, y } }) => {
-              if (this.props.isHSL) {
-                return getColorInfo(x * 360, this.s, 1 - y, undefined, true);
-              }
+          <div className="border-1 border-gray-500">
 
-              return getColorInfo(this.h, x, 1 - y);
-            }}
-            onChange={({ x, y }, alt) => {
-              batch(() => {
+            <PointView
+              ref={this.blockRef}
+              info={({ current: { x, y } }) => {
                 if (this.props.isHSL) {
-                  this.h = x * 360;
-                } else {
-                  this.s = x;
+                  return getColorInfo(x * 360, this.s, 1 - y, undefined, true);
                 }
-                this.vl = 1 - y;
+
+                return getColorInfo(this.h, x, 1 - y);
+              }}
+              onChange={({ x, y }, alt) => {
+                batch(() => {
+                  if (this.props.isHSL) {
+                    this.h = x * 360;
+                  } else {
+                    this.s = x;
+                  }
+                  this.vl = 1 - y;
+                  this.props.onChange?.(this.color.clone(), alt);
+                });
+              }}
+            >
+              {this.props.isHSL ? (
+                <HLBlock className="h-20" />
+              ) : (
+                <SVBlock className="h-20" />
+              )}
+            </PointView>
+          </div>
+          <div className="border-2 border-gray-500 relative">
+            <PointView
+              ref={this.svRef}
+              freezeY
+              info={({ current: { x } }) => {
+                if (this.props.isHSL) {
+                  return getColorInfo(this.h, x, this.vl, undefined, true);
+                }
+
+                return getColorInfo(x * 360, this.s, this.vl);
+              }}
+              onChange={({ x }, alt) => {
+                if (this.props.isHSL) {
+                  this.s = x;
+                } else {
+                  this.h = x * 360;
+                }
                 this.props.onChange?.(this.color.clone(), alt);
-              });
-            }}
-          >
-            {this.props.isHSL ? (
-              <HLBlock className="h-20 border-1 border-gray-500" />
-            ) : (
-              <SVBlock className="h-20 border-1 border-gray-500" />
-            )}
-          </PointView>
-          <PointView
-            ref={this.svRef}
-            freezeY
-            info={({ current: { x } }) => {
-              if (this.props.isHSL) {
-                return getColorInfo(this.h, x, this.vl, undefined, true);
-              }
+              }}
+            >
+              {this.props.isHSL ? (
+                <Gradient
+                  $from="hsl(var(--h), 0%, var(--l))"
+                  $to="hsl(var(--h), 100%, var(--l))"
+                  $param="in hsl"
+                  className="h-3" />
+              ) : (
 
-              return getColorInfo(x * 360, this.s, this.vl);
-            }}
-            onChange={({ x }, alt) => {
-              if (this.props.isHSL) {
-                this.s = x;
-              } else {
-                this.h = x * 360;
-              }
-              this.props.onChange?.(this.color.clone(), alt);
-            }}
-          >
-            {this.props.isHSL ? (
-              <Gradient
-                $from="hsl(var(--h), 0%, var(--l))"
-                $to="hsl(var(--h), 100%, var(--l))"
-                $param="in hsl"
-                className="h-3 border-1 border-gray-500" />
-            ) : (
-
-              <Gradient
-                $from="hsl(0, 100%, 50%)"
-                $to="hsl(360, 100%, 50%)"
-                $param="in hsl longer hue"
-                className="h-3 border-1 border-gray-500" />
-            )}
-          </PointView>
-          <PointView
-            ref={this.alphaRef}
-            freezeY
-            info={({ current: { x } }) => {
-              return getColorInfo(this.h, this.s, this.vl, x, this.props.isHSL);
-            }}
-            onChange={({ x: a }, alt) => {
-              this.a = a;
-              this.props.onChange?.(this.color.clone(), alt);
-            }}
-          >
-            <GridView $size={13}>
-              <Gradient
-                $from="hsla(var(--h), var(--s), var(--l), 0)"
-                $to="hsla(var(--h), var(--s), var(--l), 1)"
-                className="h-3 border-1 border-gray-500" />
-            </GridView>
-          </PointView>
+                <Gradient
+                  $from="hsl(0, 100%, 50%)"
+                  $to="hsl(360, 100%, 50%)"
+                  $param="in hsl longer hue"
+                  className="h-3" />
+              )}
+            </PointView>
+          </div>
+          <div className="border-1 border-gray-500">
+            <PointView
+              ref={this.alphaRef}
+              freezeY
+              info={({ current: { x } }) => {
+                return getColorInfo(this.h, this.s, this.vl, x, this.props.isHSL);
+              }}
+              onChange={({ x: a }, alt) => {
+                this.a = a;
+                this.props.onChange?.(this.color.clone(), alt);
+              }}
+            >
+              <GridView $size={13}>
+                <Gradient
+                  $from="hsla(var(--h), var(--s), var(--l), 0)"
+                  $to="hsla(var(--h), var(--s), var(--l), 1)"
+                  className="h-3" />
+              </GridView>
+            </PointView>
+          </div>
         </CSSVariables>
       </div>
     );

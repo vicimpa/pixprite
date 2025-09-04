@@ -74,6 +74,7 @@ export class PointView extends Component<PointViewProps> {
   @prop size = vec2();
   @prop translate = vec2(.5);
 
+
   style = computed(() => {
     const { x, y } = this.translate
       .clone()
