@@ -38,7 +38,9 @@ const EditButton: FC<{ section: ColorSection; }> = ({ section }) => {
   useSignals();
 
   return (
-    <InfoView.Item info="Редактировать цвет">
+    <InfoView.Item
+      info={computed(() => `${section.edit ? 'Выключить' : 'Включить'} редактирование`)}
+    >
       <Btn data-active={section.edit} onClick={() => section.edit = !section.edit}>
         <i className={section.edit ? 'i-unlock' : `i-lock`} />
       </Btn>

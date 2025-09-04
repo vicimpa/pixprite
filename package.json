@@ -15,7 +15,7 @@
     "@vicimpa/glm": "^0.1.6",
     "@vicimpa/observers": "^0.0.9",
     "@vicimpa/react-decorators": "^0.1.8",
-    "@vicimpa/rsp": "^0.0.10",
+    "@vicimpa/rsp": "^0.0.11",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "styled-components": "^6.1.19",
@@ -26,7 +26,7 @@
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react-swc": "^4.0.1",
-    "sass-embedded": "^1.91.0",
+    "sass-embedded": "^1.92.0",
     "typescript": "~5.8.3",
     "vite": "^7.1.4",
     "vite-tsconfig-paths": "^5.1.4"
