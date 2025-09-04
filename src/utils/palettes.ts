@@ -3,9 +3,7 @@ import { parsePalette } from "./color";
 
 const palettes = import.meta.glob<false, string, { default: string; }>(
   '../assets/palettes/**/*.gpl',
-  {
-    query: 'inline&raw',
-  }
+  { query: 'inline&raw' }
 );
 
 export const paletteCollection = await Promise.all(

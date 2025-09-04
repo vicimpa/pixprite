@@ -17,6 +17,7 @@ export const CSSVariables = ({ calc, children }: CSSVariablesProps) => {
 
     return object as CSSProperties;
   });
+
   return (
     <rsp.div style={variables} className="contents">
       {children}

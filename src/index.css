@@ -1,9 +1,5 @@
 @import url("tailwindcss");
 
-:root {
-  --zoom: 2;
-}
-
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
@@ -26,20 +22,14 @@
 
 html,
 body {
-  width: calc(100vw / var(--zoom));
-  height: calc(100vh / var(--zoom));
+  width: 100vw;
+  height: 100vh;
 }
 
 body {
+  display: flex;
+  flex-direction: column;
   font-family: monospace;
-  -moz-transform: scale(var(--zoom));
-  -moz-transform-origin: 0 0;
-  -o-transform: scale(var(--zoom));
-  -o-transform-origin: 0 0;
-  -webkit-transform: scale(var(--zoom));
-  -webkit-transform-origin: 0 0;
-  transform: scale(var(--zoom));
-  transform-origin: 0 0;
 }
 
 * {
@@ -47,9 +37,9 @@ body {
 }
 
 .text {
-  font-size: 10px;
+  font-size: 16px;
 }
 
 .text-small {
-  font-size: 8px;
+  font-size: 12px;
 }

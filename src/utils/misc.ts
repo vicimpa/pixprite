@@ -13,7 +13,7 @@ export function dispose(...funcs: Dispose[]) {
 }
 
 export const byteHex = (n: number) => {
-  return n.toString(16).padStart(2, '0');
+  return (n | 0).toString(16).padStart(2, '0').toUpperCase();
 };
 
 export function nextTick(fn: () => any) {

@@ -1,85 +1,25 @@
 import { Component } from "react";
-import { CSSVariables } from "./CSSVariables";
+import { CSSVariables } from "../CSSVariables";
 import { prop, reactive } from "@vicimpa/decorators";
-import { Color } from "../core/Color";
-import styled from "styled-components";
-import { array, dispose } from "../utils/misc";
-import { batch, computed, effect, signal } from "@preact/signals-react";
-import { InfoView } from "./InfoView";
+import { Color } from "../../core/Color";
+import { array } from "../../utils/misc";
+import { batch, computed, signal } from "@preact/signals-react";
+import { InfoView } from "../InfoView";
 import { ColorInfo } from "./ColorInfo";
-import { GridView } from "./GridView";
+import { GridView } from "../ui/GridView";
 import { connect } from "@vicimpa/react-decorators";
+import { paletteCollection } from "../../utils/palettes";
+import { ColorItem, ListContainer } from "./ColorBlocks";
+import detectUnselect from "./plugins/detectUnselect";
 
-import defaultPalette from "../assets/palettes/Default.gpl?raw";
-import { parsePalette } from "../utils/color";
-
-const LIST_GAP = 0;
-const DEFAULT_PALETTE = parsePalette(defaultPalette);
-
-const ColorItem = styled.div`
-  width: var(--size);
-  height: var(--size);
-  cursor: pointer;
-  position: relative;
-  border-width: 1px;
-  border-color: #000;
-  
-
-  &::before,
-  &::after {
-    content: '';
-    position: absolute;
-    width: 30%;  
-    height: 30%;
-    opacity: 0; 
-    background: #fff;
-    mix-blend-mode: difference;
-  }
-
-  &[data-active-a="true"], &[data-active-b="true"] {
-    border-color: #fff;
-  }
- 
-  &[data-active-a="true"]::before {
-    top: 0;
-    left: 0;
-    opacity: 1;
-    clip-path: polygon(0 0, 100% 0, 0 100%);
-  }
-
-  &[data-active-b="true"]::after {
-    right: 0;
-    bottom: 0;
-    opacity: 1;
-    border-radius: 100% 0% 0% 0%;
-    clip-path: polygon(100% 100%, 0 100%, 100% 0);
-  }
-`;
-
-const ListContainer = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  align-content: start;
-  overflow-y: auto;
-  gap: ${LIST_GAP}px;
-`;
+const DEFAULT_PALETTE = await paletteCollection[0].fetch();
 
 export type ColorListProps = {
   editable?: boolean;
   onChange?: (color: Color, alt: boolean) => any;
 };
 
-@connect((self) => (
-  dispose(
-    effect(() => {
-      if (self.indexA !== undefined && self.indexA >= self.size)
-        self.indexA = undefined;
-
-      if (self.indexB !== undefined && self.indexB >= self.size)
-        self.indexB = undefined;
-    }),
-  )
-))
+@connect(detectUnselect)
 @reactive()
 export class ColorList extends Component<ColorListProps> {
   @prop data = array(1024, (i) => signal(DEFAULT_PALETTE[i]?.clone() ?? new Color()));
@@ -131,7 +71,7 @@ export class ColorList extends Component<ColorListProps> {
         const color = this.data[i].value;
 
         return (
-          <InfoView.Item key={i} info={<ColorInfo color={color} i={i} />}>
+          <InfoView.Item key={i} info={<ColorInfo color={color} prefix={`Index ${i}`} />}>
             <GridView $size={this.colorSize / 2} >
               <ColorItem
                 data-active-a={this.indexA === i}

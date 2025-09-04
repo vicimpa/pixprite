@@ -10,19 +10,19 @@
   },
   "dependencies": {
     "@preact/signals-react": "^3.3.0",
-    "@vicimpa/decorators": "^0.0.8",
+    "@vicimpa/decorators": "^0.0.11",
     "@vicimpa/events": "^0.0.13",
     "@vicimpa/glm": "^0.1.6",
     "@vicimpa/observers": "^0.0.9",
     "@vicimpa/react-decorators": "^0.1.8",
-    "@vicimpa/rsp": "^0.0.11",
+    "@vicimpa/rsp": "^0.1.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "styled-components": "^6.1.19",
-    "tailwindcss": "^4.1.12"
+    "tailwindcss": "^4.1.13"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.12",
+    "@tailwindcss/postcss": "^4.1.13",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react-swc": "^4.0.1",

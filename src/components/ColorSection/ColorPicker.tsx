@@ -1,58 +1,14 @@
 import { Component } from "react";
-import { PointView } from "./PointView";
+import { PointSlider } from "../PointSlider/PointSlider";
 import { prop, reactive } from "@vicimpa/decorators";
-import styled from "styled-components";
-import { CSSVariables } from "./CSSVariables";
-import { GridView } from "./GridView";
+import { CSSVariables } from "../CSSVariables";
+import { GridView } from "../ui/GridView";
 import { batch, untracked } from "@preact/signals-react";
-import { signalRef } from "../utils/signal";
-import { Color } from "../core/Color";
+import { signalRef } from "../../utils/signal";
+import { Color } from "../../core/Color";
 import { vec2 } from "@vicimpa/glm";
-import { ColorInfo } from "./ColorInfo";
-
-const HLBlock = styled.div`
-  background: 
-    linear-gradient(
-      to right in hsl longer hue,
-      hsl(0, var(--s), 50%) 0%,
-      hsl(360, var(--s), 50%) 100%
-    ),
-    linear-gradient(to top,#000,#fff);
-  background-blend-mode: overlay;
-`;
-
-const SVBlock = styled.div`
-  background: hsl(var(--h), 100%, 50%);
-  background:
-    linear-gradient(
-      to right, 
-      hsl(var(--h), 100%, 100%), 
-      hsl(var(--h), 100%, 50%)
-    ),
-    linear-gradient(to top, #000, transparent);
-  background-blend-mode: overlay;
-`;
-
-const Gradient = styled.div<{ $from: string, $to: string, $param?: string; }>`
-  position: relative;
-  background: linear-gradient(
-    to right ${e => e.$param ?? ''},
-    ${e => e.$from},
-    ${e => e.$to}
-  );
-`;
-
-export const getColorInfo = (h: number, s: number, vl: number, a?: number, isHSL = false) => {
-  const color = new Color();
-
-  if (isHSL) {
-    color.fromHsl(h, s, vl, a ?? 1);
-  } else {
-    color.fromHsv(h, s, vl, a);
-  }
-
-  return <ColorInfo color={color} {...{ h, s, vl, a, isHSL }} />;
-};
+import { getColorInfo } from "./plugins/getColorInfo";
+import { Gradient, HLBlock, SVBlock } from "./ColorBlocks";
 
 export type ColorPickerProps = {
   isHSL?: boolean;
@@ -80,9 +36,9 @@ export class ColorPicker extends Component<ColorPickerProps> {
     return new Color().fromHsv(this.h, this.s, this.vl, this.a);
   }
 
-  blockRef = signalRef<PointView>();
-  svRef = signalRef<PointView>();
-  alphaRef = signalRef<PointView>();
+  blockRef = signalRef<PointSlider>();
+  svRef = signalRef<PointSlider>();
+  alphaRef = signalRef<PointSlider>();
 
   getVariables() {
     const hsv = this.color.toHsv();
@@ -129,15 +85,16 @@ export class ColorPicker extends Component<ColorPickerProps> {
   }
 
   render() {
+    const { isHSL } = this.props;
+
     return (
       <div className="flex flex-col gap-0.5">
         <CSSVariables calc={() => this.getVariables()}>
           <div className="border-1 border-gray-500">
-
-            <PointView
+            <PointSlider
               ref={this.blockRef}
               info={({ current: { x, y } }) => {
-                if (this.props.isHSL) {
+                if (isHSL) {
                   return getColorInfo(x * 360, this.s, 1 - y, undefined, true);
                 }
 
@@ -145,7 +102,7 @@ export class ColorPicker extends Component<ColorPickerProps> {
               }}
               onChange={({ x, y }, alt) => {
                 batch(() => {
-                  if (this.props.isHSL) {
+                  if (isHSL) {
                     this.h = x * 360;
                   } else {
                     this.s = x;
@@ -155,26 +112,21 @@ export class ColorPicker extends Component<ColorPickerProps> {
                 });
               }}
             >
-              {this.props.isHSL ? (
-                <HLBlock className="h-20" />
-              ) : (
-                <SVBlock className="h-20" />
-              )}
-            </PointView>
+              {isHSL ? <HLBlock /> : <SVBlock />}
+            </PointSlider>
           </div>
           <div className="border-2 border-gray-500 relative">
-            <PointView
+            <PointSlider
               ref={this.svRef}
               freezeY
               info={({ current: { x } }) => {
-                if (this.props.isHSL) {
+                if (isHSL)
                   return getColorInfo(this.h, x, this.vl, undefined, true);
-                }
 
                 return getColorInfo(x * 360, this.s, this.vl);
               }}
               onChange={({ x }, alt) => {
-                if (this.props.isHSL) {
+                if (isHSL) {
                   this.s = x;
                 } else {
                   this.h = x * 360;
@@ -182,28 +134,25 @@ export class ColorPicker extends Component<ColorPickerProps> {
                 this.props.onChange?.(this.color.clone(), alt);
               }}
             >
-              {this.props.isHSL ? (
+              {isHSL ? (
                 <Gradient
                   $from="hsl(var(--h), 0%, var(--l))"
                   $to="hsl(var(--h), 100%, var(--l))"
-                  $param="in hsl"
-                  className="h-3" />
+                  $param="in hsl" />
               ) : (
-
                 <Gradient
                   $from="hsl(0, 100%, 50%)"
                   $to="hsl(360, 100%, 50%)"
-                  $param="in hsl longer hue"
-                  className="h-3" />
+                  $param="in hsl longer hue" />
               )}
-            </PointView>
+            </PointSlider>
           </div>
           <div className="border-1 border-gray-500">
-            <PointView
+            <PointSlider
               ref={this.alphaRef}
               freezeY
               info={({ current: { x } }) => {
-                return getColorInfo(this.h, this.s, this.vl, x, this.props.isHSL);
+                return getColorInfo(this.h, this.s, this.vl, x, isHSL);
               }}
               onChange={({ x: a }, alt) => {
                 this.a = a;
@@ -213,10 +162,9 @@ export class ColorPicker extends Component<ColorPickerProps> {
               <GridView $size={13}>
                 <Gradient
                   $from="hsla(var(--h), var(--s), var(--l), 0)"
-                  $to="hsla(var(--h), var(--s), var(--l), 1)"
-                  className="h-3" />
+                  $to="hsla(var(--h), var(--s), var(--l), 1)" />
               </GridView>
-            </PointView>
+            </PointSlider>
           </div>
         </CSSVariables>
       </div>

@@ -49,7 +49,7 @@ export class InfoView extends Component<{ defaultInfo?: ReactNode; }> {
 
   render() {
     return (
-      <div className=" text-small text-gray-400">
+      <div className="text-gray-400">
         {this.view}
       </div>
     );

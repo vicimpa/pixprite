@@ -1,7 +1,7 @@
 import { Component } from "react";
 import { computed } from "@preact/signals-react";
 import rsp from "@vicimpa/rsp";
-import { GridView } from "./GridView";
+import { GridView } from "../ui/GridView";
 import styled from "styled-components";
 
 export type ColorViewProps = {
