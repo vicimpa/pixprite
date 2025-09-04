@@ -146,7 +146,7 @@ export class ColorList extends Component<ColorListProps> {
                       this.indexB = this.indexB === i ? undefined : this.indexB;
 
                       if (this.indexA !== undefined)
-                        this.props.onChange?.(this.data[i].value.clone(), true);
+                        this.props.onChange?.(this.data[i].value.clone(), false);
                     }
 
                     if (button === 2) {
