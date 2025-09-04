@@ -1,11 +1,38 @@
 {
-  "files": [],
-  "references": [
-    {
-      "path": "./config/tsconfig.app.json"
-    },
-    {
-      "path": "./config/tsconfig.node.json"
+  "compilerOptions": {
+    "tsBuildInfoFile": null,
+    "target": "esnext",
+    "useDefineForClassFields": true,
+    "lib": [
+      "esnext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "experimentalDecorators": true,
+    "types": [
+      "vite/client"
+    ],
+    "paths": {
+      "$*": [
+        "./src/*"
+      ]
     }
+  },
+  "include": [
+    "src"
   ]
 }

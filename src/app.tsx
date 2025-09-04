@@ -1,4 +1,4 @@
-import { SpriteEditor } from "./components/SpriteEditor";
+import { SpriteEditor } from "$modules/SpriteEditor";
 
 export const App = () => {
 

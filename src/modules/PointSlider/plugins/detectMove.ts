@@ -1,8 +1,8 @@
 import { elementEvents, windowEvents } from "@vicimpa/events";
-import { dispose } from "../../../utils/misc";
+import { dispose } from "$utils/misc";
 import type { PointSlider } from "../PointSlider";
 import { batch, effect } from "@preact/signals-react";
-import { getMouseVec } from "../../../utils/mouse";
+import { getMouseVec } from "$utils/mouse";
 
 export default (self: PointSlider) => (
   effect(() => {

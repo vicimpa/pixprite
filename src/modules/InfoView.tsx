@@ -2,7 +2,7 @@ import { Component, useEffect, useRef, type PropsWithChildren, type ReactNode } 
 import { computed } from "@preact/signals-react";
 import { prop, reactive } from "@vicimpa/decorators";
 import { connect } from "@vicimpa/react-decorators";
-import { dispose } from "../utils/misc";
+import { dispose } from "$utils/misc";
 import { windowEvents } from "@vicimpa/events";
 
 const INFO_STORE = new WeakMap<HTMLElement, ReactNode>();

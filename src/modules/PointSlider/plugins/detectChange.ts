@@ -1,4 +1,4 @@
-import { dispose } from "../../../utils/misc";
+import { dispose } from "$utils/misc";
 import type { PointSlider } from "../PointSlider";
 import { effect, untracked } from "@preact/signals-react";
 

@@ -1,7 +1,7 @@
 import type { FC } from "react";
-import type { Color } from "../../core/Color";
-import { GridView } from "../ui/GridView";
-import { Flex } from "../ui/Flex";
+import { Color } from "$core/Color";
+import { GridView } from "$ui/GridView";
+import { Flex } from "$ui/Flex";
 
 export type ColorInfoProps = {
   color: Color;
@@ -29,4 +29,16 @@ export const ColorInfo: FC<ColorInfoProps> = ({ color, prefix, suffix }) => {
       {suffix}
     </Flex>
   );
+};
+
+export const getColorInfo = (h: number, s: number, vl: number, a?: number, isHSL = false) => {
+  const color = new Color();
+
+  if (isHSL) {
+    color.fromHsl(h, s, vl, a ?? 1);
+  } else {
+    color.fromHsv(h, s, vl, a);
+  }
+
+  return <ColorInfo color={color} prefix={`HS${isHSL ? 'L' : 'V'} ${h | 0}° ${s * 100 | 0}% ${vl * 100 | 0}%`} />;
 };

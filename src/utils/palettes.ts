@@ -1,4 +1,4 @@
-import { Color } from "../core/Color";
+import { Color } from "$core/Color";
 import { parsePalette } from "./color";
 
 const palettes = import.meta.glob<false, string, { default: string; }>(

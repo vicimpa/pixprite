@@ -1,4 +1,4 @@
-import { byteHex } from "../utils/misc";
+import { byteHex } from "$utils/misc";
 
 export interface RGBA {
   r: number;

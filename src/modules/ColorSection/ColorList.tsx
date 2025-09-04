@@ -1,14 +1,14 @@
 import { Component } from "react";
 import { CSSVariables } from "../CSSVariables";
 import { prop, reactive } from "@vicimpa/decorators";
-import { Color } from "../../core/Color";
-import { array } from "../../utils/misc";
+import { Color } from "$core/Color";
+import { array } from "$utils/misc";
 import { batch, computed, signal } from "@preact/signals-react";
 import { InfoView } from "../InfoView";
 import { ColorInfo } from "./ColorInfo";
-import { GridView } from "../ui/GridView";
+import { GridView } from "$ui/GridView";
 import { connect } from "@vicimpa/react-decorators";
-import { paletteCollection } from "../../utils/palettes";
+import { paletteCollection } from "$utils/palettes";
 import { ColorItem, ListContainer } from "./ColorBlocks";
 import detectUnselect from "./plugins/detectUnselect";
 

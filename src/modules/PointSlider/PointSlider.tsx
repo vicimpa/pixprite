@@ -2,7 +2,7 @@ import { prop, reactive } from "@vicimpa/decorators";
 import { Vec2, vec2 } from "@vicimpa/glm";
 import { connect } from "@vicimpa/react-decorators";
 import { Component, type PropsWithChildren, type ReactNode } from "react";
-import { signalRef } from "../../utils/signal";
+import { signalRef } from "$utils/signal";
 import { computed } from "@preact/signals-react";
 
 import { InfoView } from "../InfoView";

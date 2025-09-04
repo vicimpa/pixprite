@@ -2,13 +2,13 @@ import { Component } from "react";
 import { PointSlider } from "../PointSlider/PointSlider";
 import { prop, reactive } from "@vicimpa/decorators";
 import { CSSVariables } from "../CSSVariables";
-import { GridView } from "../ui/GridView";
+import { GridView } from "$ui/GridView";
 import { batch, untracked } from "@preact/signals-react";
-import { signalRef } from "../../utils/signal";
-import { Color } from "../../core/Color";
+import { signalRef } from "$utils/signal";
+import { Color } from "$core/Color";
 import { vec2 } from "@vicimpa/glm";
-import { getColorInfo } from "./plugins/getColorInfo";
 import { Gradient, HLBlock, SVBlock } from "./ColorBlocks";
+import { getColorInfo } from "./ColorInfo";
 
 export type ColorPickerProps = {
   isHSL?: boolean;

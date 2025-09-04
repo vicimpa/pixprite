@@ -2,7 +2,7 @@ import { Component } from "react";
 import { ColorSection } from "./ColorSection/ColorSection";
 import { TimelineView } from "./TimelineView";
 import { InfoView } from "./InfoView";
-import { Flex } from "./ui/Flex";
+import { Flex } from "$ui/Flex";
 import { CanvasSection } from "./CanvasSection";
 
 export class SpriteEditor extends Component {

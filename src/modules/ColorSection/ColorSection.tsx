@@ -3,20 +3,20 @@ import { ColorList } from "./ColorList";
 import { ColorPicker } from "./ColorPicker";
 import { ColorView } from "./ColorView";
 import { prop, reactive } from "@vicimpa/decorators";
-import { Color } from "../../core/Color";
+import { Color } from "$core/Color";
 import { batch, computed } from "@preact/signals-react";
-import { signalRef } from "../../utils/signal";
-import { connect } from "@vicimpa/react-decorators";
-import { InfoView } from "../InfoView";
-import { Flex } from "../ui/Flex";
+import { signalRef } from "$utils/signal";
+import { connect, provide } from "@vicimpa/react-decorators";
+import { Flex } from "$ui/Flex";
 import detectChange from "./plugins/detectChange";
-import { EditButton } from "./EditButton";
-import { Btn } from "./ColorBlocks";
-import { LoadButton } from "./LoadButton";
-import { SettingsButton } from "./SettingsButton";
+import { EditButton } from "./view/EditButton";
+import { LoadButton } from "./view/LoadButton";
+import { SettingsButton } from "./view/SettingsButton";
+import { SortButton } from "./view/SortButton";
 
 @connect(detectChange)
 @reactive()
+@provide()
 export class ColorSection extends Component {
   pickerRef = signalRef<ColorPicker>();
   listRef = signalRef<ColorList>();
@@ -32,14 +32,13 @@ export class ColorSection extends Component {
       <>
         <Flex size={32} gap={4}>
           <i />
-          <EditButton section={this} />
+          <EditButton />
           <i />
-          <InfoView.Item info="Выбрать сортировку">
-            <Btn className="i-sort" />
-          </InfoView.Item>
-          <LoadButton section={this} />
-          <SettingsButton section={this} />
+          <SortButton />
+          <LoadButton />
+          <SettingsButton />
         </Flex>
+
         <Flex size column gap={4}>
           {
             computed(() => (

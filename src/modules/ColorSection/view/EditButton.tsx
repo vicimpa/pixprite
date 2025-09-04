@@ -1,12 +1,14 @@
-import type { FC } from "react";
-import type { ColorSection } from "./ColorSection";
+import { ColorSection } from "../ColorSection";
 import { useSignals } from "@preact/signals-react/runtime";
-import { InfoView } from "../InfoView";
+import { InfoView } from "$modules/InfoView";
 import { computed } from "@preact/signals-react";
-import { Btn } from "./ColorBlocks";
+import { Btn } from "../ColorBlocks";
+import { useInject } from "@vicimpa/react-decorators";
 
-export const EditButton: FC<{ section: ColorSection; }> = ({ section }) => {
+export const EditButton = () => {
   useSignals();
+
+  const section = useInject(ColorSection);
 
   return (
     <InfoView.Item info={computed(() => `${section.edit ? 'Выключить' : 'Включить'} редактирование`)}>

@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
-import { byId } from "./utils/dom";
-import { App } from "./app";
+import { byId } from "$utils/dom";
+import { App } from "$app";
 
 addEventListener('contextmenu', e => {
   e.preventDefault();

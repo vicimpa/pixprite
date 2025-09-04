@@ -1,15 +1,17 @@
-import type { FC } from "react";
-import type { ColorSection } from "./ColorSection";
+import { ColorSection } from "../ColorSection";
 import { useSignals } from "@preact/signals-react/runtime";
-import { InfoView } from "../InfoView";
-import { Dropdown } from "../ui/Dropdown";
-import { Btn, ListItem } from "./ColorBlocks";
-import { Flex } from "../ui/Flex";
+import { InfoView } from "$modules/InfoView";
+import { Dropdown } from "$ui/Dropdown";
+import { Btn, ListItem } from "../ColorBlocks";
+import { Flex } from "$ui/Flex";
 import rsp from "@vicimpa/rsp";
 import { real } from "@vicimpa/decorators";
+import { useInject } from "@vicimpa/react-decorators";
 
-export const SettingsButton: FC<{ section: ColorSection; }> = ({ section }) => {
+export const SettingsButton = () => {
   useSignals();
+
+  const section = useInject(ColorSection);
 
   const { value: list } = section.listRef;
 

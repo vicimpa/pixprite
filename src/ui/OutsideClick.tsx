@@ -1,6 +1,6 @@
 import { windowEvents } from "@vicimpa/events";
 import { useEffect, useRef, type FC, type PropsWithChildren } from "react";
-import { dispose } from "../../utils/misc";
+import { dispose } from "$utils/misc";
 
 export type OutsideClick = {
   onOutsideClick?: () => any;

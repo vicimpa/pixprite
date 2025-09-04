@@ -1,5 +1,5 @@
 import { Component } from "react";
-import { Flex } from "./ui/Flex";
+import { Flex } from "$ui/Flex";
 
 export class CanvasSection extends Component {
 
