@@ -1,0 +1,34 @@
+{
+  "name": "project",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@preact/signals-react": "^3.3.0",
+    "@vicimpa/decorators": "^0.0.8",
+    "@vicimpa/events": "^0.0.13",
+    "@vicimpa/glm": "^0.1.6",
+    "@vicimpa/observers": "^0.0.9",
+    "@vicimpa/react-decorators": "^0.1.8",
+    "@vicimpa/rsp": "^0.0.10",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "styled-components": "^6.1.19",
+    "tailwindcss": "^4.1.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.12",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react-swc": "^4.0.1",
+    "sass-embedded": "^1.91.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.1.4",
+    "vite-tsconfig-paths": "^5.1.4"
+  }
+}
