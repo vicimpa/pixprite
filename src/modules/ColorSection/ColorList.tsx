@@ -8,9 +8,9 @@ import { InfoView } from "../InfoView";
 import { ColorInfo } from "./ColorInfo";
 import { GridView } from "$ui/GridView";
 import { connect } from "@vicimpa/react-decorators";
-import { paletteCollection } from "$utils/palettes";
 import { ColorItem, ListContainer } from "./ColorBlocks";
 import detectUnselect from "./plugins/detectUnselect";
+import { paletteCollection } from "./palettes";
 
 const DEFAULT_PALETTE = await paletteCollection[0].fetch();
 

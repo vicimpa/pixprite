@@ -2,8 +2,8 @@ import { ColorSection } from "../ColorSection";
 import { Dropdown } from "$ui/Dropdown";
 import { InfoView } from "$modules/InfoView";
 import { Btn } from "../ColorBlocks";
-import { paletteCollection } from "$utils/palettes";
 import { useInject } from "@vicimpa/react-decorators";
+import { paletteCollection } from "../palettes";
 
 export const LoadButton = () => {
   const section = useInject(ColorSection);

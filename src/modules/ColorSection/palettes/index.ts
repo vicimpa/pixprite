@@ -1,15 +1,11 @@
 import { Color } from "$core/Color";
-import { parsePalette } from "./color";
+import { parsePalette } from "$utils/color";
 
-const palettes = import.meta.glob<false, string, { default: string; }>(
-  '../assets/palettes/**/*.gpl',
-  { query: 'inline&raw' }
-);
+const palettes = import.meta.glob<false, string, { default: string; }>('./**/*.gpl', { query: 'inline&raw' });
 
 export const paletteCollection = await Promise.all(
   Object.entries(palettes)
     .map(async ([name, load]) => {
-      name = name.replace('assets/palettes', '-');
       const names = name.split('/');
       const group = names.at(-2);
       name = names.at(-1) ?? 'Unknow name';
