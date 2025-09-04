@@ -1,5 +1,5 @@
 import { Component } from "react";
-import { ColorSection } from "./ColorSection/ColorSection";
+import { ColorSection } from "./ColorSection";
 import { TimelineView } from "./TimelineView";
 import { InfoView } from "./InfoView";
 import { Flex } from "$ui/Flex";
