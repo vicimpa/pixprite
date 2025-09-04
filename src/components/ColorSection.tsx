@@ -183,11 +183,15 @@ export class ColorSection extends Component {
               ref={this.listRef}
               editable={this.edit}
               onChange={(color, alt) => {
-                if (!alt) {
-                  this.colorA = color;
-                } else {
-                  this.colorB = color;
-                }
+                batch(() => {
+                  if (!alt) {
+                    this.colorA = color;
+                    this.picker = 0;
+                  } else {
+                    this.colorB = color;
+                    this.picker = 1;
+                  }
+                });
               }} />
           ))}
           {computed(() => (
