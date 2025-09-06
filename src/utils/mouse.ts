@@ -30,3 +30,9 @@ export function getMouseVec(
   const out = point.clone();
   return update ? update(out) : out;
 }
+
+export enum MouseButton {
+  LEFT = 0,
+  MIDDLE = 1,
+  RIGHT = 2,
+}

@@ -8,3 +8,7 @@ export function byId(id: string, strict = false) {
 
   return elem;
 }
+
+export function createElement<T extends keyof HTMLElementTagNameMap>(tag: T) {
+  return document.createElement(tag);
+}

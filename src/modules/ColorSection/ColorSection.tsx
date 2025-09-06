@@ -2,17 +2,18 @@ import { Component } from "react";
 import { ColorList } from "./ColorList";
 import { ColorPicker } from "./ColorPicker";
 import { ColorView } from "./ColorView";
-import { prop, reactive } from "@vicimpa/decorators";
+import { prop, reactive, real } from "@vicimpa/decorators";
 import { Color } from "$core/Color";
 import { batch, computed } from "@preact/signals-react";
 import { signalRef } from "$utils/signal";
-import { connect, provide } from "@vicimpa/react-decorators";
+import { connect, inject, provide } from "@vicimpa/react-decorators";
 import { Flex } from "$ui/Flex";
 import detectChange from "./plugins/detectChange";
 import { EditButton } from "./view/EditButton";
 import { LoadButton } from "./view/LoadButton";
 import { SettingsButton } from "./view/SettingsButton";
 import { SortButton } from "./view/SortButton";
+import { Panel } from "$ui/Panel";
 
 @connect(detectChange)
 @reactive()
@@ -58,6 +59,7 @@ export class ColorSection extends Component {
                 }} />
             ))
           }
+
           {
             computed(() => (
               <ColorPicker
@@ -78,10 +80,17 @@ export class ColorSection extends Component {
                 }} />
             ))
           }
-          <Flex gap={4}>
-            <ColorView calc={() => this.colorA.toHex(true)} />
-            <ColorView calc={() => this.colorB.toHex(true)} />
-          </Flex>
+
+          <Panel>
+            {
+              computed(() => (
+                <Flex gap={4}>
+                  <ColorView calc={() => this.colorA.toHex(true)} />
+                  <ColorView calc={() => this.colorB.toHex(true)} />
+                </Flex>
+              ))
+            }
+          </Panel>
         </Flex>
       </>
     );

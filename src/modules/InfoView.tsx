@@ -4,6 +4,7 @@ import { prop, reactive } from "@vicimpa/decorators";
 import { connect } from "@vicimpa/react-decorators";
 import { dispose } from "$utils/misc";
 import { windowEvents } from "@vicimpa/events";
+import { Flex } from "$ui/Flex";
 
 const INFO_STORE = new WeakMap<HTMLElement, ReactNode>();
 
@@ -49,9 +50,9 @@ export class InfoView extends Component<{ defaultInfo?: ReactNode; }> {
 
   render() {
     return (
-      <div className="text-gray-400">
-        {this.view}
-      </div>
+      <Flex size gap={8} items="center">
+        <span />{this.view}
+      </Flex>
     );
   }
 

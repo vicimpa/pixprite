@@ -7,10 +7,12 @@ import { batch, computed, signal } from "@preact/signals-react";
 import { InfoView } from "../InfoView";
 import { ColorInfo } from "./ColorInfo";
 import { GridView } from "$ui/GridView";
-import { connect } from "@vicimpa/react-decorators";
+import { connect, inject } from "@vicimpa/react-decorators";
 import { ColorItem, ListContainer } from "./ColorBlocks";
 import detectUnselect from "./plugins/detectUnselect";
 import { paletteCollection } from "./palettes";
+import { Panel } from "$ui/Panel";
+import { MouseButton } from "$utils/mouse";
 
 const DEFAULT_PALETTE = await paletteCollection[0].fetch();
 
@@ -77,11 +79,11 @@ export class ColorList extends Component<ColorListProps> {
                 data-active-a={this.indexA === i}
                 data-active-b={this.indexB === i}
                 onMouseDown={({ button }) => {
-                  if (button === 1)
+                  if (button === MouseButton.MIDDLE)
                     return;
 
                   batch(() => {
-                    if (button === 0) {
+                    if (button === MouseButton.LEFT) {
                       this.indexA = this.indexA === i ? undefined : i;
                       this.indexB = this.indexB === i ? undefined : this.indexB;
 
@@ -89,7 +91,7 @@ export class ColorList extends Component<ColorListProps> {
                         this.props.onChange?.(this.data[i].value.clone(), false);
                     }
 
-                    if (button === 2) {
+                    if (button === MouseButton.RIGHT) {
                       this.indexA = this.indexA === i ? undefined : this.indexA;
                       this.indexB = this.indexB === i ? undefined : i;
 
@@ -117,11 +119,11 @@ export class ColorList extends Component<ColorListProps> {
   render() {
     return (
       <CSSVariables calc={() => this.getVariables()}>
-        <div className="grow-1 relative">
-          <ListContainer className="p-1 bg-gray-900 absolute inset-0">
+        <Panel className="grow-1 relative">
+          <ListContainer>
             {this.colorView}
           </ListContainer>
-        </div>
+        </Panel>
       </CSSVariables>
     );
   }

@@ -17,7 +17,14 @@ export const byteHex = (n: number) => {
 };
 
 export function nextTick(fn: () => any) {
-  Promise.resolve().then(fn);
+  var actual = true;
+  Promise.resolve().then(() => actual && fn());
+  return () => { actual = false; };
+}
+
+export function nextFrame(fn: () => any) {
+  const raf = requestAnimationFrame(fn);
+  return () => cancelAnimationFrame(raf);
 }
 
 export function array<T>(size: number, func: (i: number) => T) {

@@ -13,14 +13,16 @@ export const ColorInfo: FC<ColorInfoProps> = ({ color, prefix, suffix }) => {
   const { r, g, b } = color.toRgb();
   const hex = color.toHex();
   const style = {
+    width: 32,
+    height: 16,
     backgroundColor: color.toCssRgb()
   };
 
   return (
-    <Flex inline>
+    <Flex gap={8} items="center">
       <i className="i-eyedropper" />
-      <GridView className="border-1 border-gray-300 w-8 h-4">
-        <div className="w-full h-full" style={style} />
+      <GridView className="border-1 border-gray-300">
+        <div style={style} />
       </GridView>
       {prefix}{' '}
       (RGB {r} {g} {b}){' '}

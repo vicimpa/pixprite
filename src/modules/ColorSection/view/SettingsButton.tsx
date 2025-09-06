@@ -8,6 +8,17 @@ import rsp from "@vicimpa/rsp";
 import { real } from "@vicimpa/decorators";
 import { useInject } from "@vicimpa/react-decorators";
 
+const SIZES = [
+  [16, 'Маленький'],
+  [24, 'Средний'],
+  [32, 'Большой']
+] as const;
+
+const TYPES = [
+  [false, 'Оттенок'],
+  [true, 'Спектр']
+] as const;
+
 export const SettingsButton = () => {
   useSignals();
 
@@ -41,13 +52,29 @@ export const SettingsButton = () => {
             </ListItem>
             <hr />
             <p>Размер иконок:</p>
-            <ListItem><rsp.radio value={16} group={real(list, 'colorSize')} />Маленький</ListItem>
-            <ListItem><rsp.radio value={24} group={real(list, 'colorSize')} />Средний</ListItem>
-            <ListItem><rsp.radio value={32} group={real(list, 'colorSize')} />Большой</ListItem>
+            {
+              SIZES.map(([size, name], i) => (
+                <ListItem key={i}>
+                  <rsp.radio
+                    value={size}
+                    group={real(list, 'colorSize')} />
+
+                  {name}
+                </ListItem>
+              ))
+            }
 
             <p>Тип палитры:</p>
-            <ListItem><rsp.radio value={false} group={real(section, 'inHSL')} /> Оттенок</ListItem>
-            <ListItem><rsp.radio value={true} group={real(section, 'inHSL')} /> Спектр</ListItem>
+            {
+              TYPES.map(([type, name], i) => (
+                <ListItem key={i}>
+                  <rsp.radio
+                    value={type}
+                    group={real(section, 'inHSL')} />
+                  {name}
+                </ListItem>
+              ))
+            }
           </Flex>
         </Dropdown.Content>
       </Dropdown>

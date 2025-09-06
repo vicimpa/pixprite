@@ -16,6 +16,8 @@
     "@vicimpa/observers": "^0.0.9",
     "@vicimpa/react-decorators": "^0.1.8",
     "@vicimpa/rsp": "^0.1.4",
+    "@vicimpa/week-store": "^0.0.10",
+    "fast-deep-equal": "^3.1.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "styled-components": "^6.1.19",

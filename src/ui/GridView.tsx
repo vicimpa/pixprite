@@ -1,9 +1,6 @@
 import styled from "styled-components";
 
-export const GridView = styled.div.attrs<{ $size?: number; }>(({ className, ...p }) => ({
-  ...p,
-  className: 'relative ' + className
-}))`
+export const GridView = styled.div<{ $size?: number; }>`
   --csize: ${p => p.$size ?? 16}px;
   --dsize1: calc(var(--csize) / 2);
   --dsize2: calc(var(--csize) / -2);
