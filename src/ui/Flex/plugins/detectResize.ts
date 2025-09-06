@@ -19,14 +19,14 @@ export default (self: Flex) => (
       self.direction = style.flexDirection;
     });
 
-    const { value: resizer } = self.ref;
+    const { value: resizer } = self.resizer;
     if (!resizer) return;
 
     let start: Vec2 | null = null, size = vec2();
 
     return dispose(
       elementEvents(resizer, 'mousedown', (e) => {
-        const rect = resizer.getBoundingClientRect();
+        const rect = item.getBoundingClientRect();
         start = vec2().copy(e);
         size.set(rect.width, rect.height);
         e.preventDefault();
