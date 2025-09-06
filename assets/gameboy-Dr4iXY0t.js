@@ -1,0 +1,7 @@
+const t=`GIMP Palette
+#
+155 188  15	Untitled
+139 172  15	Untitled
+ 48  98  48	Untitled
+ 15  56  15	Untitled
+`;export{t as default};

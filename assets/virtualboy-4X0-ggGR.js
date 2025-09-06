@@ -1,0 +1,10 @@
+const t=`GIMP Palette
+#
+# Thanks to Planet Virtual Boy for the contribution
+# http://www.planetvb.com/
+#
+  0   0   0	Untitled
+ 85   0   0	Untitled
+170   0   0	Untitled
+255   0   0	Untitled
+`;export{t as default};

@@ -1,0 +1,7 @@
+const n=`GIMP Palette
+#
+  0   0   0	Black
+  0 170   0	Green
+170   0   0	Red
+170  85   0	Brown
+`;export{n as default};

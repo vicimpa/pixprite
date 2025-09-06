@@ -1,0 +1,10 @@
+const t=`GIMP Palette
+#
+# By ENDESGA Studios
+# https://twitter.com/ENDESGA
+#
+251 247 243	Untitled
+229 176 131	Untitled
+ 66 110  93	Untitled
+ 32  40  61	Untitled
+`;export{t as default};
