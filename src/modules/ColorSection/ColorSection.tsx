@@ -32,7 +32,6 @@ export class ColorSection extends Component {
     return (
       <>
         <Flex size={32} gap={4}>
-          <i />
           <EditButton />
           <i />
           <SortButton />
@@ -84,9 +83,9 @@ export class ColorSection extends Component {
           <Panel>
             {
               computed(() => (
-                <Flex gap={4}>
-                  <ColorView calc={() => this.colorA.toHex(true)} />
-                  <ColorView calc={() => this.colorB.toHex(true)} />
+                <Flex gap={4} wrap>
+                  <ColorView index={this.listRef.current?.indexA} color={this.colorA} />
+                  <ColorView index={this.listRef.current?.indexB} color={this.colorB} />
                 </Flex>
               ))
             }

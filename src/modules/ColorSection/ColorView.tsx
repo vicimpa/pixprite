@@ -1,14 +1,17 @@
 import { Component } from "react";
-import { computed } from "@preact/signals-react";
-import rsp from "@vicimpa/rsp";
 import { GridView } from "$ui/GridView";
 import styled from "styled-components";
+import type { Color } from "$core/Color";
 
 export type ColorViewProps = {
-  calc?: () => string;
+  index?: number;
+  color: Color;
 };
 
-const Text = styled.p`
+
+const Text = styled.div`
+  position: absolute;
+  inset: 0;
   text-shadow: 
     -1px -1px 0px #000,
     1px 1px 0px #000,
@@ -19,21 +22,21 @@ const Text = styled.p`
     0px -1px 0px #000, 
     0px 1px 0px #000;
 
-  transform: translateY(1px);
+  font-size: 16px;
+  text-align: center;
 `;
 
+
 export class ColorView extends Component<ColorViewProps> {
-  color = computed(() => this.props.calc?.() ?? '#000');
-  style = computed(() => ({ backgroundColor: this.color.value }));
 
   render() {
+    const { color, index = -1 } = this.props;
+    const backgroundColor = color.toHex(true);
     return (
-      <GridView className="cursor-pointer grow-1 border-1 border-gray-400">
-        <rsp.div style={this.style} className="w-full h-full flex justify-center items-center aitems-center text-small">
-          <Text>
-            {this.color}
-          </Text>
-        </rsp.div>
+      <GridView className="cursor-pointer min-w-40 h-6 relative grow-1">
+        <Text style={{ backgroundColor }}>
+          {index >= 0 ? `IDX: ${index}` : backgroundColor}
+        </Text>
       </GridView>
     );
   }

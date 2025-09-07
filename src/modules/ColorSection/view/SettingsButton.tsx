@@ -7,17 +7,9 @@ import { Flex } from "$ui/Flex";
 import rsp from "@vicimpa/rsp";
 import { real } from "@vicimpa/decorators";
 import { useInject } from "@vicimpa/react-decorators";
+import { SIZES } from "../ColorList";
+import { TYPES } from "../ColorPicker";
 
-const SIZES = [
-  [16, 'Маленький'],
-  [24, 'Средний'],
-  [32, 'Большой']
-] as const;
-
-const TYPES = [
-  [false, 'Оттенок'],
-  [true, 'Спектр']
-] as const;
 
 export const SettingsButton = () => {
   useSignals();

@@ -12,6 +12,11 @@ import { getColorInfo } from "./ColorInfo";
 import { Panel } from "$ui/Panel";
 import { Flex } from "$ui/Flex";
 
+export const TYPES = [
+  [false, 'Оттенок'],
+  [true, 'Спектр']
+] as const;
+
 export type ColorPickerProps = {
   isHSL?: boolean;
   onChange?: (color: Color, alt: boolean) => any;

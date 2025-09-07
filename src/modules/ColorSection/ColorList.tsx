@@ -19,6 +19,12 @@ import detectInput from "./plugins/detectInput";
 
 const DEFAULT_PALETTE = await paletteCollection[0].fetch();
 
+export const SIZES = [
+  [24, 'Маленький'],
+  [32, 'Средний'],
+  [48, 'Большой']
+] as const;
+
 export type ColorListProps = {
   editable?: boolean;
   onChange?: (color: Color, alt: boolean) => any;
@@ -36,7 +42,8 @@ export class ColorList extends Component<ColorListProps> {
 
   @prop data = array(1024, (i) => signal(DEFAULT_PALETTE[i]?.clone() ?? new Color()));
   @prop size = DEFAULT_PALETTE.length;
-  @prop colorSize = 16;
+  @prop colorSize = +SIZES[0][0];
+  @prop padding = 4;
 
   @prop indexA?: number;
   @prop indexB?: number;
@@ -48,16 +55,23 @@ export class ColorList extends Component<ColorListProps> {
     return Math.min(this.data.length, this.size);
   }
   @prop get rowSize() {
-    const { colorSize } = this, { width } = this.viewSize;
-    return (width - 10) / colorSize | 0;
+    const { colorSize, padding } = this, { width } = this.viewSize;
+    return (width - 10 - padding) / (colorSize + padding) | 0;
   }
   @prop get maxScroll() {
-    const { colorSize, rowSize, length } = this, { height } = this.viewSize;
-    return Math.max(0, Math.ceil(length / rowSize) * colorSize - height);
+    const { colorSize, rowSize, length, padding } = this, { height } = this.viewSize;
+    return Math.max(0, Math.ceil(length / rowSize) * (colorSize + padding) + padding - height);
   };
 
   @prop draggingScroll = false;
   @prop dragOffset = 0;
+
+  getPosition(i: number) {
+    const { rowSize, colorSize, scroll, padding } = this;
+    const x = ((i % rowSize | 0) * (colorSize + padding)) + padding;
+    const y = ((i / rowSize | 0) * (colorSize + padding)) - scroll + padding;
+    return vec2(x, y);
+  }
 
   loadColors(colors: Color[]) {
     batch(() => {
@@ -109,12 +123,15 @@ export class ColorList extends Component<ColorListProps> {
         <Panel ref={this.ref} className="grow-1 relative">
           <Canvas
             className="absolute inset-0 m-auto"
+
             onWheel={e => {
               this.scroll += e.deltaY;
             }}
+
             onMouseMove={({ nativeEvent: e }) => {
               this.mouse = vec2(e.offsetX, e.offsetY);
             }}
+
             onMouseDown={({ nativeEvent: e, button }) => {
               const { width, height } = this.viewSize;
               const { maxScroll } = this;
@@ -157,9 +174,19 @@ export class ColorList extends Component<ColorListProps> {
                 }
               });
             }}
+
             draw={(can, ctx) => {
-              const { width, height } = this.viewSize;
-              const { colorSize, scroll, maxScroll, rowSize, length } = this;
+              const {
+                grid,
+                colorSize,
+                scroll,
+                maxScroll,
+                length,
+                viewSize: {
+                  width,
+                  height,
+                },
+              } = this;
 
               this.scroll = clamp(scroll, 0, maxScroll);
 
@@ -170,71 +197,60 @@ export class ColorList extends Component<ColorListProps> {
 
               ctx.clearRect(0, 0, width, height);
 
-              const paths: Path2D[] = [];
-              const effects: (() => void)[] = [];
-              const bsize = colorSize / 8 | 0;
-              const dbsize = bsize / 2;
-              const scolorSize = colorSize / 4;
+              const paths: { path: Path2D, index: number; }[] = [];
+              const tColorSize = colorSize / 2.5;
 
               for (let i = 0; i < length; i++) {
-                const x = ((i % rowSize | 0) * colorSize);
-                const y = ((i / rowSize | 0) * colorSize) - scroll;
+                const { x, y } = this.getPosition(i);
+
+                if (y < -colorSize || y >= height)
+                  continue;
+
                 const path = new Path2D();
-                const border = new Path2D();
-
                 path.rect(x, y, colorSize, colorSize);
-                paths.push(path);
-                border.rect(x + dbsize, y + dbsize, colorSize - bsize, colorSize - bsize);
+                paths.push({ path, index: i });
 
-                effects.push(
-                  effect(() => {
-                    const a = computed(() => this.indexA === i);
-                    const b = computed(() => this.indexB === i);
-                    const c = computed(() => this.data[i].value.toHex(true));
+                const selectA = this.indexA === i;
+                const selectB = this.indexB === i;
+                const selectAny = selectA || selectB;
+                const { value: color } = this.data[i];
+                const { l } = color.toHsl();
+                const accent = l >= .5 ? '#000' : '#fff';
 
-                    return effect(() => {
-                      const selectA = a.value;
-                      const selectB = b.value;
-                      const selectAny = selectA || selectB;
 
-                      this.grid.toFill(ctx);
-                      ctx.fill(path);
-                      ctx.fillStyle = c.value;
-                      ctx.fill(path);
-                      ctx.lineWidth = selectAny ? bsize : 1;
-                      ctx.strokeStyle = selectAny ? '#fff' : '#000';
-                      ctx.stroke(selectAny ? border : path);
-                      ctx.strokeStyle = '#000';
-                      ctx.stroke(path);
+                grid.toFill(ctx);
+                ctx.fill(path);
+                ctx.fillStyle = color.toHex(true);
+                ctx.fill(path);
+                if (selectAny) {
+                  ctx.strokeStyle = '#fff';
+                  ctx.fillStyle = accent;
+                  ctx.lineWidth = colorSize / 8;
+                  ctx.globalCompositeOperation = 'difference';
+                  ctx.stroke(path);
+                  ctx.globalCompositeOperation = 'source-over';
 
-                      if (selectA) {
-                        ctx.fillStyle = '#fff';
-                        ctx.fillRect(x, y, colorSize / 4, colorSize / 4);
-                      }
+                  ctx.beginPath();
 
-                      if (selectB) {
-                        ctx.fillStyle = '#fff';
-                        ctx.fillRect(
-                          x + colorSize - scolorSize,
-                          y + colorSize - scolorSize,
-                          scolorSize,
-                          scolorSize
-                        );
-                      }
-                    });
-                  })
-                );
+                  if (selectA) {
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(x + tColorSize, y);
+                    ctx.lineTo(x, y + tColorSize);
+                    ctx.lineTo(x, y);
+                  }
+
+
+                  if (selectB) {
+                    ctx.moveTo(x + colorSize, y + colorSize);
+                    ctx.lineTo(x + colorSize - tColorSize, y + colorSize);
+                    ctx.lineTo(x + colorSize, y + colorSize - tColorSize);
+                    ctx.lineTo(x + colorSize, y + colorSize);
+                  }
+
+                  ctx.fill();
+                  ctx.closePath();
+                }
               }
-
-              effects.push(
-                effect(() => {
-                  const { x, y } = this.mouse;
-                  const index = this.mouseIndex = paths.findIndex(path => {
-                    return ctx.isPointInPath(path, x, y);
-                  });
-                  can.style.cursor = index === -1 ? 'default' : 'pointer';
-                })
-              );
 
               ctx.fillStyle = '#000';
               ctx.fillRect(width - 10, 0, 10, height);
@@ -251,7 +267,17 @@ export class ColorList extends Component<ColorListProps> {
                 ctx.strokeRect(width - 10, handleY, 10, handleHeight);
               }
 
-              return dispose(...effects);
+              return dispose(
+                effect(() => {
+                  const { x, y } = this.mouse;
+                  const find = paths.find(({ path }) => (
+                    ctx.isPointInPath(path, x, y)
+                  ));
+
+                  this.mouseIndex = find?.index ?? -1;
+                  can.style.cursor = find ? 'pointer' : 'default';
+                })
+              );
             }}
           />
         </Panel>

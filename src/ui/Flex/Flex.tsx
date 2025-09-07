@@ -15,6 +15,7 @@ type FlexItemProps = {
   $gap?: number;
   $content?: string;
   $items?: string;
+  $wrap?: boolean | string;
 };
 
 const FlexItem = styled.div<FlexItemProps>`
@@ -26,6 +27,7 @@ const FlexItem = styled.div<FlexItemProps>`
   gap: ${p => p.$gap ?? 4}px;
   ${p => p.$content ? `justify-content: ${p.$content}` : ''};
   ${p => p.$items ? `align-items: ${p.$items}` : ''};
+  flex-wrap: ${p => p.$wrap ? (p.$wrap === true ? 'wrap' : p.$wrap) : ''};
   max-width: 100%;
   max-height: 100%;
 `;
@@ -39,6 +41,7 @@ export type FlexProps = {
   content?: string;
   items?: string;
   start?: boolean;
+  wrap?: boolean | 'string';
 } & PropsWithChildren;
 
 @reactive()
@@ -56,7 +59,7 @@ export class Flex extends Component<FlexProps> {
   }
 
   render(): ReactNode {
-    const { column, reverse, gap, size, children, content, items, start } = this.props;
+    const { column, reverse, gap, size, children, content, items, start, wrap } = this.props;
 
     return (
       <FlexItem
@@ -67,6 +70,7 @@ export class Flex extends Component<FlexProps> {
         $size={size}
         $content={content}
         $items={items}
+        $wrap={wrap}
       >
         {children}
         {computed(() => (
