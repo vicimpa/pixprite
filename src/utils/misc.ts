@@ -30,3 +30,20 @@ export function nextFrame(fn: () => any) {
 export function array<T>(size: number, func: (i: number) => T) {
   return Array.from({ length: size }, (_, i) => func(i));
 }
+
+export function looper(fn: (delta: number, time: number) => any) {
+  var raf = requestAnimationFrame(_loop), time = performance.now();
+
+  function _loop(now: number) {
+    raf = requestAnimationFrame(_loop);
+    fn(now - time, time = now);
+  }
+
+  return () => {
+    cancelAnimationFrame(raf);
+  };
+}
+
+export function clamp(v: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, v));
+}

@@ -1,13 +1,12 @@
 import { Component } from "react";
 import { Flex } from "$ui/Flex";
 import { signalRef } from "$utils/signal";
-import { prop, reactive, real } from "@vicimpa/decorators";
+import { prop, reactive } from "@vicimpa/decorators";
 import { Mat2d, vec2 } from "@vicimpa/glm";
 import { connect, inject } from "@vicimpa/react-decorators";
 import { computed } from "@preact/signals-react";
 import detectResize from "./plugins/detectResize";
 import detectMatrix from "./plugins/detectMatrix";
-import detectRender from "./plugins/detectRender";
 import equal from "fast-deep-equal";
 import detectInput from "./plugins/detectInput";
 import { InfoView } from "$modules/InfoView";
@@ -15,6 +14,7 @@ import { Grid } from "$core/Grid";
 import styled from "styled-components";
 import { SpriteEditor } from "$modules/SpriteEditor/SpriteEditor";
 import { Panel } from "$ui/Panel";
+import { Canvas } from "$ui/Canvas";
 
 const DEFAULT_VIEW = {
   width: 64,
@@ -24,7 +24,7 @@ const DEFAULT_VIEW = {
 
 type View = typeof DEFAULT_VIEW;
 
-const Canvas = styled.canvas`
+const StyledCanvas = styled(Canvas)`
   image-rendering: pixelated;
   pointer-events: none;
 `;
@@ -32,7 +32,7 @@ const Canvas = styled.canvas`
 export type CanvasSectionProps = Partial<View>;
 
 @reactive()
-@connect(detectResize, detectMatrix, detectRender, detectInput)
+@connect(detectResize, detectMatrix, detectInput)
 export class CanvasSection extends Component<CanvasSectionProps> {
   @inject(() => SpriteEditor) editor!: SpriteEditor;
 
@@ -56,10 +56,6 @@ export class CanvasSection extends Component<CanvasSectionProps> {
 
   @prop view: View = Object.assign({}, DEFAULT_VIEW);
   @prop object = [];
-
-
-  can = signalRef<HTMLCanvasElement>();
-  ctx = computed(() => this.can.value?.getContext('2d'));
 
   componentDidMount(): void {
     this.view = Object.assign({}, this.view, this.props);
@@ -93,7 +89,35 @@ export class CanvasSection extends Component<CanvasSectionProps> {
           <Panel className="relative" $width={'100%'} $height={'100%'}>
             <InfoView.Item info={this.info}>
               <div ref={this.ref} className="absolute inset-0">
-                <Canvas ref={this.can} />
+                <Canvas
+                  className="pointer-events-none"
+                  draw={(can, ctx) => {
+                    const { value: color } = this.editor.color;
+                    const { size, matrix, view, mouse } = this;
+                    const { width, height } = this.size;
+
+                    if (!vec2(can.width, can.height).equals(size)) {
+                      can.width = width;
+                      can.height = height;
+                    }
+
+                    const { width: vw, height: vh } = view;
+                    ctx.imageSmoothingEnabled = false;
+                    ctx.resetTransform();
+                    ctx.clearRect(0, 0, width, height);
+                    ctx.setTransform(matrix);
+                    this.grid.toFill(ctx);
+                    ctx.globalAlpha = 1;
+                    ctx.fillRect(0, 0, vw, vh);
+
+                    if (mouse.x < 0 || mouse.y < 0 || mouse.x >= vw || mouse.y >= vh)
+                      return;
+
+                    if (!color) return;
+                    ctx.globalAlpha = color.colorA.a;
+                    ctx.fillStyle = color.colorA.toHex();
+                    ctx.fillRect(mouse.x, mouse.y, 1, 1);
+                  }} />
               </div>
             </InfoView.Item>
           </Panel>
