@@ -28,6 +28,7 @@ export default (self: CanvasSection) => (
           const zoomIntensity = 0.1;
           const direction = e.deltaY > 0 ? -1 : 1;
           const pos = self.pos.clone();
+          self.real = vec2().set(e.offsetX, e.offsetY);
           const current = self.umouse.clone();
           self.scale *= Math.exp(direction * zoomIntensity);
           self.pos = pos.add(current.sub(self.umouse));
