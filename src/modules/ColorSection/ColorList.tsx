@@ -109,12 +109,17 @@ export class ColorList extends Component<ColorListProps> {
     this.colorSize = size;
   }
 
+  showIndex(index: number) {
+    const tags = ['none'];
+    return tags[index + 1] ?? index;
+  }
+
   colorInfo = computed(() => (
-    this.mouseIndex === -1 ? null : (
-      <ColorInfo
-        color={this.data[this.mouseIndex].value}
-        prefix={`Index ${this.mouseIndex}`} />
-    )
+    // this.mouseIndex === -1 ? null : (
+    <ColorInfo
+      color={this.data[this.mouseIndex]?.value ?? new Color()}
+      prefix={`Index ${this.showIndex(this.mouseIndex)}`} />
+    // )
   ));
 
   render() {
@@ -182,6 +187,7 @@ export class ColorList extends Component<ColorListProps> {
                 scroll,
                 maxScroll,
                 length,
+                padding,
                 viewSize: {
                   width,
                   height,
@@ -206,8 +212,11 @@ export class ColorList extends Component<ColorListProps> {
                 if (y < -colorSize || y >= height)
                   continue;
 
+                const fill = new Path2D();
+                fill.rect(x, y, colorSize, colorSize);
+
                 const path = new Path2D();
-                path.rect(x, y, colorSize, colorSize);
+                path.rect(x - padding, y - padding, colorSize + padding * 2, colorSize + padding * 2);
                 paths.push({ path, index: i });
 
                 const selectA = this.indexA === i;
@@ -219,15 +228,15 @@ export class ColorList extends Component<ColorListProps> {
 
 
                 grid.toFill(ctx);
-                ctx.fill(path);
+                ctx.fill(fill);
                 ctx.fillStyle = color.toHex(true);
-                ctx.fill(path);
+                ctx.fill(fill);
                 if (selectAny) {
                   ctx.strokeStyle = '#fff';
                   ctx.fillStyle = accent;
                   ctx.lineWidth = colorSize / 8;
                   ctx.globalCompositeOperation = 'difference';
-                  ctx.stroke(path);
+                  ctx.stroke(fill);
                   ctx.globalCompositeOperation = 'source-over';
 
                   ctx.beginPath();
