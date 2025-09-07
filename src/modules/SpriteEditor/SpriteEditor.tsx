@@ -44,7 +44,19 @@ export class SpriteEditor extends Component {
           </Flex>
         </Flex>
         <Flex size={24}>
-          <InfoView defaultInfo="Pixprite v0.0.0" />
+          <InfoView defaultInfo={
+            <p>
+              Pixprite v0.0.0
+              {' '}
+              <a
+                href="https://github.com/vicimpa/pixprite"
+                target="_blank"
+                className="text-blue-500"
+              >
+                GitHub
+              </a>
+            </p>
+          } />
         </Flex>
       </Flex>
     );
