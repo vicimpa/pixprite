@@ -10,14 +10,8 @@ export default (self: Flex) => (
     if (!self.resizable) return;
     const { value: item } = self.ref;
     if (!item) return;
-    const parent = item.parentElement;
+    const { parent } = self;
     if (!parent) return;
-    const style = getComputedStyle(parent);
-
-    batch(() => {
-      self.size = parseFloat(style.gap);
-      self.direction = style.flexDirection;
-    });
 
     const { value: resizer } = self.resizer;
     if (!resizer) return;
@@ -39,18 +33,18 @@ export default (self: Flex) => (
         newSize.copy(start);
         newSize.sub(e);
 
-        if (self.props.start) {
+        if (self.reversed) {
           newSize.add(size);
         } else {
           newSize.scale(-1);
           newSize.add(size);
         }
 
-        if (self.direction === 'column') {
+        if (parent.column) {
           item.style.flexBasis = `${newSize.y}px`;
         }
 
-        if (self.direction === 'row') {
+        if (!parent.column) {
           item.style.flexBasis = `${newSize.x}px`;
         }
       }),

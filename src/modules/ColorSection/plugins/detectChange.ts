@@ -6,6 +6,7 @@ export default (self: ColorSection) => (
     const { colorA, colorB, picker } = self;
     const { value: ref } = self.pickerRef;
     if (!ref) return;
+    ref.inHSL;
     untracked(() => {
       ref.fromColor(picker ? colorB : colorA);
     });

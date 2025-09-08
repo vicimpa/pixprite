@@ -27,7 +27,7 @@ export class SpriteEditor extends Component {
   render() {
     return (
       <Flex size column>
-        <Flex size gap={8}>
+        <Flex size gap={8} >
           <Flex column size={200} resize>
             <ColorSection ref={this.color} />
           </Flex>

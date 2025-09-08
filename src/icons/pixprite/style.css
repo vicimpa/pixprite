@@ -1,9 +1,9 @@
 @font-face {
   font-family: 'pixprite-icons';
   src:
-    url('fonts/pixprite-icons.ttf?k9tcdv') format('truetype'),
-    url('fonts/pixprite-icons.woff?k9tcdv') format('woff'),
-    url('fonts/pixprite-icons.svg?k9tcdv#pixprite-icons') format('svg');
+    url('fonts/pixprite-icons.ttf?4rcqtb') format('truetype'),
+    url('fonts/pixprite-icons.woff?4rcqtb') format('woff'),
+    url('fonts/pixprite-icons.svg?4rcqtb#pixprite-icons') format('svg');
   font-weight: normal;
   font-style: normal;
   font-display: block;
@@ -35,6 +35,15 @@
 }
 .i-file:before {
   content: "\e924";
+}
+.i-zoom:before {
+  content: "\e986";
+}
+.i-zoom-in:before {
+  content: "\e987";
+}
+.i-zoom-out:before {
+  content: "\e988";
 }
 .i-lock:before {
   content: "\e98f";

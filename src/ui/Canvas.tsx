@@ -1,7 +1,7 @@
 import { dispose, looper } from "$utils/misc";
-import { useComputed, useSignalEffect } from "@preact/signals-react";
+import { effect, useComputed } from "@preact/signals-react";
 import { useSignalRef } from "@preact/signals-react/utils";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 
 type NativeCanvasProps = React.JSX.IntrinsicElements['canvas'];
@@ -18,18 +18,20 @@ export const Canvas = ({ draw, loop, ...props }: CanvasProps) => {
     _ctx.current = ref.current?.getContext('2d') ?? null
   ));
 
-  useSignalEffect(() => {
-    const { value: canvas } = ref;
-    const { value: context } = ctx;
+  useEffect(() => (
+    effect(() => {
+      const { value: canvas } = ref;
+      const { value: context } = ctx;
 
-    if (!canvas || !context)
-      return;
+      if (!canvas || !context)
+        return;
 
-    return dispose(
-      draw?.(canvas, context),
-      loop ? looper(loop.bind(null, canvas, context)) : undefined
-    );
-  });
+      return dispose(
+        draw?.(canvas, context),
+        loop ? looper(loop.bind(null, canvas, context)) : undefined
+      );
+    })
+  ));
 
   return <canvas ref={ref} {...props} />;
 };;;

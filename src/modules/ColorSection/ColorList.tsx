@@ -16,6 +16,7 @@ import detectResize from "./plugins/detectResize";
 import { Grid } from "$core/Grid";
 import { MouseButton } from "$utils/mouse";
 import detectInput from "./plugins/detectInput";
+import styled from "styled-components";
 
 const DEFAULT_PALETTE = await paletteCollection[0].fetch();
 
@@ -30,12 +31,20 @@ export type ColorListProps = {
   onChange?: (color: Color, alt: boolean) => any;
 };
 
+const StyledCanvas = styled(Canvas)`
+  image-rendering: pixelated;
+  position: absolute;
+  margin: auto;
+  cursor: pointer;
+`;
+
 @connect(detectUnselect, detectResize, detectInput)
 @reactive()
 export class ColorList extends Component<ColorListProps> {
   ref = signalRef<HTMLDivElement>();
 
   grid = new Grid(8);
+
 
   @prop mouse = vec2(-Infinity);
   @prop mouseIndex = -1;
@@ -115,86 +124,80 @@ export class ColorList extends Component<ColorListProps> {
   }
 
   colorInfo = computed(() => (
-    // this.mouseIndex === -1 ? null : (
-    <ColorInfo
-      color={this.data[this.mouseIndex]?.value ?? new Color()}
-      prefix={`Index ${this.showIndex(this.mouseIndex)}`} />
-    // )
+    this.mouseIndex === -1 ? null : (
+      <ColorInfo
+        color={this.data[this.mouseIndex]!.value}
+        prefix={`Index ${this.mouseIndex}`} />
+    )
   ));
 
   render() {
     return (
-      <InfoView.Item info={this.colorInfo}>
-        <Panel ref={this.ref} className="grow-1 relative">
-          <Canvas
-            className="absolute inset-0 m-auto"
+      <Panel
+        ref={this.ref}
+        className="grow-1 relative"
 
-            onWheel={e => {
-              this.scroll += e.deltaY;
-            }}
+        onWheel={e => {
+          this.scroll += e.deltaY;
+        }}
 
-            onMouseMove={({ nativeEvent: e }) => {
-              this.mouse = vec2(e.offsetX, e.offsetY);
-            }}
+        onMouseMove={({ nativeEvent: e }) => {
+          this.mouse = vec2(e.offsetX, e.offsetY);
+        }}
 
-            onMouseDown={({ nativeEvent: e, button }) => {
-              const { width, height } = this.viewSize;
-              const { maxScroll } = this;
+        onMouseDown={({ nativeEvent: e, button }) => {
+          const { width, height } = this.viewSize;
+          const { maxScroll } = this;
 
-              if (button === MouseButton.LEFT && maxScroll > 0) {
-                const handleHeight = Math.max(20, height * (height / (height + maxScroll)));
-                const handleY = (this.scroll / maxScroll) * (height - handleHeight);
-                const xInBar = e.offsetX >= width - 10;
-                const yInHandle = e.offsetY >= handleY && e.offsetY <= handleY + handleHeight;
+          if (button === MouseButton.LEFT && maxScroll > 0) {
+            const handleHeight = Math.max(20, height * (height / (height + maxScroll)));
+            const handleY = (this.scroll / maxScroll) * (height - handleHeight);
+            const xInBar = e.offsetX >= width - 10;
+            const yInHandle = e.offsetY >= handleY && e.offsetY <= handleY + handleHeight;
 
-                if (xInBar && yInHandle) {
-                  this.draggingScroll = true;
-                  this.dragOffset = e.offsetY - handleY;
-                  return;
-                }
-              }
+            if (xInBar && yInHandle) {
+              this.draggingScroll = true;
+              this.dragOffset = e.offsetY - handleY;
+              return;
+            }
+          }
 
-              const i = this.mouseIndex;
-              if (i === -1)
-                return;
+          const i = this.mouseIndex;
+          if (i === -1)
+            return;
 
-              if (button === MouseButton.MIDDLE)
-                return;
+          if (button === MouseButton.MIDDLE)
+            return;
 
-              batch(() => {
-                if (button === MouseButton.LEFT) {
-                  this.indexA = this.indexA === i ? undefined : i;
-                  this.indexB = this.indexB === i ? undefined : this.indexB;
+          batch(() => {
+            if (button === MouseButton.LEFT) {
+              this.indexA = this.indexA === i ? undefined : i;
+              this.indexB = this.indexB === i ? undefined : this.indexB;
 
-                  if (this.indexA !== undefined)
-                    this.props.onChange?.(this.data[i].value.clone(), false);
-                }
+              if (this.indexA !== undefined)
+                this.props.onChange?.(this.data[i].value.clone(), false);
+            }
 
-                if (button === MouseButton.RIGHT) {
-                  this.indexA = this.indexA === i ? undefined : this.indexA;
-                  this.indexB = this.indexB === i ? undefined : i;
+            if (button === MouseButton.RIGHT) {
+              this.indexA = this.indexA === i ? undefined : this.indexA;
+              this.indexB = this.indexB === i ? undefined : i;
 
-                  if (this.indexB !== undefined)
-                    this.props.onChange?.(this.data[i].value.clone(), true);
-                }
-              });
-            }}
-
+              if (this.indexB !== undefined)
+                this.props.onChange?.(this.data[i].value.clone(), true);
+            }
+          });
+        }}
+      >
+        <InfoView.Item info={this.colorInfo}>
+          <StyledCanvas
             draw={(can, ctx) => {
               const {
-                grid,
-                colorSize,
-                scroll,
-                maxScroll,
-                length,
-                padding,
-                viewSize: {
-                  width,
-                  height,
-                },
+                grid, colorSize, scroll, maxScroll,
+                length, padding, viewSize: { width, height },
               } = this;
 
               this.scroll = clamp(scroll, 0, maxScroll);
+              grid.size = colorSize / 2;
 
               if (!vec2(can.width, can.height).equals(this.viewSize)) {
                 can.width = width;
@@ -226,8 +229,7 @@ export class ColorList extends Component<ColorListProps> {
                 const { l } = color.toHsl();
                 const accent = l >= .5 ? '#000' : '#fff';
 
-
-                grid.toFill(ctx);
+                grid.setFill(ctx);
                 ctx.fill(fill);
                 ctx.fillStyle = color.toHex(true);
                 ctx.fill(fill);
@@ -284,13 +286,13 @@ export class ColorList extends Component<ColorListProps> {
                   ));
 
                   this.mouseIndex = find?.index ?? -1;
-                  can.style.cursor = find ? 'pointer' : 'default';
+                  can.style.pointerEvents = find ? 'all' : 'none';
                 })
               );
             }}
           />
-        </Panel>
-      </InfoView.Item>
+        </InfoView.Item>
+      </Panel>
     );
   }
 }

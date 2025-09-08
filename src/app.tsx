@@ -1,5 +1,9 @@
 import { SpriteEditor } from "$modules/SpriteEditor";
 
-export const App = () => (
-  <SpriteEditor />
-);
+export const App = () => {
+  return (
+    <>
+      <SpriteEditor />
+    </>
+  );
+};

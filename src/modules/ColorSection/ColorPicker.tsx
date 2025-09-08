@@ -29,6 +29,8 @@ export class ColorPicker extends Component<ColorPickerProps> {
   @prop vl = 0;
   @prop a = 1;
 
+  @prop inHSL = this.props.isHSL ?? false;
+
   @prop get drag() {
     const block = this.blockRef.current;
     const sv = this.svRef.current;
@@ -41,6 +43,10 @@ export class ColorPicker extends Component<ColorPickerProps> {
       return new Color().fromHsl(this.h, this.s, this.vl, this.a);
 
     return new Color().fromHsv(this.h, this.s, this.vl, this.a);
+  }
+
+  componentDidUpdate(): void {
+    this.inHSL = this.props.isHSL ?? false;
   }
 
   blockRef = signalRef<PointSlider>();

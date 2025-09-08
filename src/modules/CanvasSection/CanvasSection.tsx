@@ -73,6 +73,8 @@ export class CanvasSection extends Component<CanvasSectionProps> {
 
     return (
       <Flex gap={8}>
+        <i className="i-zoom" />
+        <p>{(this.scale * 100) | 0}%</p>
         <i className="i-cross" />
         <p>{x} {y}</p>
         <i className="i-rect" />
@@ -89,11 +91,9 @@ export class CanvasSection extends Component<CanvasSectionProps> {
           <Panel className="relative" $width={'100%'} $height={'100%'}>
             <InfoView.Item info={this.info}>
               <div ref={this.ref} className="absolute inset-0">
-                <Canvas
-                  className="pointer-events-none"
+                <StyledCanvas
                   draw={(can, ctx) => {
-                    const { value: color } = this.editor.color;
-                    const { size, matrix, view, mouse } = this;
+                    const { size, matrix, view } = this;
                     const { width, height } = this.size;
 
                     if (!vec2(can.width, can.height).equals(size)) {
@@ -106,17 +106,7 @@ export class CanvasSection extends Component<CanvasSectionProps> {
                     ctx.resetTransform();
                     ctx.clearRect(0, 0, width, height);
                     ctx.setTransform(matrix);
-                    this.grid.toFill(ctx);
-                    ctx.globalAlpha = 1;
-                    ctx.fillRect(0, 0, vw, vh);
-
-                    if (mouse.x < 0 || mouse.y < 0 || mouse.x >= vw || mouse.y >= vh)
-                      return;
-
-                    if (!color) return;
-                    ctx.globalAlpha = color.colorA.a;
-                    ctx.fillStyle = color.colorA.toHex();
-                    ctx.fillRect(mouse.x, mouse.y, 1, 1);
+                    this.grid.fillRect(ctx, 0, 0, vw, vh);
                   }} />
               </div>
             </InfoView.Item>

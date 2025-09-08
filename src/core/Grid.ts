@@ -1,36 +1,53 @@
+import { prop, reactive } from "@vicimpa/decorators";
+
+@reactive()
 export class Grid {
-  #canvas = document.createElement('canvas');
-  #context = this.#canvas.getContext('2d')!;
-  #pattern = new WeakMap<CanvasRenderingContext2D, CanvasPattern | null>();
 
-  constructor(size = 16, dark = '#5a5a5a', light = '#a4a4a4') {
-    if (!this.#context)
-      throw new Error('Can not support 2d context');
+  @prop size = 16;
+  @prop dark = '#5a5a5a';
+  @prop light = '#a4a4a4';
 
+  @prop get canvas() {
+    const can = document.createElement('canvas');
+    const ctx = can.getContext('2d')!;
+    const { size, dark, light } = this;
+    can.width = size * 2;
+    can.height = size * 2;
+    ctx.fillStyle = dark;
+    ctx.fillRect(0, 0, size * 2, size * 2);
+    ctx.fillStyle = light;
+    ctx.fillRect(size, 0, size, size);
+    ctx.fillRect(0, size, size, size);
+    return can;
+  }
+
+  constructor(size?: number, dark?: string, light?: string) {
     this.resize(size, dark, light);
   }
 
-  resize(size = 16, dark = '#5a5a5a', light = '#a4a4a4') {
-    this.#pattern = new WeakMap();
-    this.#canvas.width = size * 2;
-    this.#canvas.height = size * 2;
-    this.#context.fillStyle = dark;
-    this.#context.fillRect(0, 0, size * 2, size * 2);
-    this.#context.fillStyle = light;
-    this.#context.fillRect(size, 0, size, size);
-    this.#context.fillRect(0, size, size, size);
+  resize(size?: number, dark?: string, light?: string) {
+    if (size !== undefined)
+      this.size = size;
+    if (dark !== undefined)
+      this.dark = dark;
+    if (light !== undefined)
+      this.light = light;
+
     return this;
   }
 
-  toFill(ctx: CanvasRenderingContext2D) {
-    var pattern: CanvasPattern | null = this.#pattern.get(ctx) ?? (
-      this.#pattern.set(ctx, pattern = ctx.createPattern(this.#canvas, 'repeat')),
-      this.#pattern.get(ctx) ?? null
-    );
+  getPattern(ctx: CanvasRenderingContext2D) {
+    return ctx.createPattern(this.canvas, 'repeat');
+  }
 
-    if (pattern)
-      ctx.fillStyle = pattern;
+  setFill(ctx: CanvasRenderingContext2D) {
+    const pattern = this.getPattern(ctx);
+    if (!pattern) return;
+    ctx.fillStyle = pattern;
+  }
 
-    return this;
+  fillRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
+    this.setFill(ctx);
+    ctx.fillRect(x, y, width, height);
   }
 }
