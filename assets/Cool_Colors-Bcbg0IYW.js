@@ -1,0 +1,12 @@
+const n=`GIMP Palette
+Name: Cool Colors
+#
+ 17  42 198
+ 83 155 226
+ 22  16 102
+ 64  35  76
+  7  63 147
+ 44 108 204
+ 38  81  33
+  4  66  44
+`;export{n as default};
