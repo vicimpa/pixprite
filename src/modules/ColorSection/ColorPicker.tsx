@@ -103,7 +103,7 @@ export class ColorPicker extends Component<ColorPickerProps> {
     return (
       <>
         <CSSVariables calc={() => this.getVariables()}>
-          <Panel>
+          <Panel relative>
             <Flex column>
               <PointSlider
                 ref={this.blockRef}

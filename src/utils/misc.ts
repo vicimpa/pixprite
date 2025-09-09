@@ -49,7 +49,22 @@ export function clamp(v: number, min: number, max: number) {
 }
 
 const context = Symbol('context');
-export function getContext(canvas: HTMLCanvasElement & { [context]?: CanvasRenderingContext2D; }, read = false) {
+type Canvas = HTMLCanvasElement & {
+  [context]?: CanvasRenderingContext2D;
+};
+type OffCanvas = OffscreenCanvas & {
+  [context]?: OffscreenCanvasRenderingContext2D;
+};
+type CanvasOptions = {
+  read?: boolean;
+  clear?: boolean;
+};
+
+function getContext(canvas: Canvas, options?: CanvasOptions): CanvasRenderingContext2D;
+function getContext(canvas: OffCanvas, options?: CanvasOptions): OffscreenCanvasRenderingContext2D;
+function getContext(canvas: Canvas | OffCanvas, options?: CanvasOptions): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D {
+  const { read = false, clear = false } = options ?? {};
+  if (clear) delete canvas[context];
   const result = canvas[context] ?? (
     canvas[context] = canvas.getContext('2d', {
       willReadFrequently: read,
@@ -58,3 +73,5 @@ export function getContext(canvas: HTMLCanvasElement & { [context]?: CanvasRende
   result.imageSmoothingEnabled = false;
   return result;
 }
+
+export { getContext };

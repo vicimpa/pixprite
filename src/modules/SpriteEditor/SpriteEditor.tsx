@@ -9,6 +9,7 @@ import { signalRef } from "$utils/signal";
 import { ToolsView } from "../ToolsView";
 import { prop, reactive } from "@vicimpa/decorators";
 import detectInput from "./plugins/detectInput";
+import { Panel } from "$ui/Panel";
 
 @provide()
 @reactive()

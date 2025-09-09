@@ -34,7 +34,7 @@ export class ColorSection extends Component {
 
   render() {
     return (
-      <>
+      <Flex column inset>
         <Flex size={32} gap={4}>
           <EditButton />
           <i />
@@ -81,20 +81,18 @@ export class ColorSection extends Component {
             }}
           />
 
-          <Panel>
-            <Flex gap={4} wrap>
-              <rsp.$
-                $target={ColorView}
-                index={real(this, 'indexA')}
-                color={real(this, 'colorA')} />
-              <rsp.$
-                $target={ColorView}
-                index={real(this, 'indexB')}
-                color={real(this, 'colorB')} />
-            </Flex>
-          </Panel>
+          <Flex gap={4} wrap>
+            <rsp.$
+              $target={ColorView}
+              index={real(this, 'indexA')}
+              color={real(this, 'colorA')} />
+            <rsp.$
+              $target={ColorView}
+              index={real(this, 'indexB')}
+              color={real(this, 'colorB')} />
+          </Flex>
         </Flex>
-      </>
+      </Flex>
     );
   }
 }

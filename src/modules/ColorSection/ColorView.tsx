@@ -12,18 +12,24 @@ export type ColorViewProps = {
 const Text = styled.div`
   position: absolute;
   inset: 0;
-  text-shadow: 
-    -1px -1px 0px #000,
-    1px 1px 0px #000,
-    1px -1px 0px #000,
-    -1px 1px 0px #000,
-    -1px 0px 0px #000,
-    1px 0px 0px #000, 
-    0px -1px 0px #000, 
-    0px 1px 0px #000;
+`;
 
-  font-size: 16px;
+const Font = styled.label`
+  position: absolute;
+  inset: 0;
   text-align: center;
+  font-size: 16px;
+  color: #fff;
+
+  text-shadow: 
+  -1px -1px 0 #000,
+  1px 1px 0 #000,
+  1px -1px 0 #000,
+  -1px 1px 0 #000,
+  0 -1px 0 #000,
+  0 1px 0 #000,
+  -1px -0 0 #000,
+  1px -0 0 #000;
 `;
 
 
@@ -33,9 +39,9 @@ export class ColorView extends Component<ColorViewProps> {
     const { color, index = -1 } = this.props;
     const backgroundColor = color.toHex(true);
     return (
-      <GridView className="cursor-pointer min-w-40 h-6 relative grow-1">
+      <GridView className="cursor-pointer h-6 relative grow-1 overflow-hidden">
         <Text style={{ backgroundColor }}>
-          {index >= 0 ? `IDX: ${index}` : backgroundColor}
+          <Font>{index >= 0 ? `IDX: ${index}` : backgroundColor}</Font>
         </Text>
       </GridView>
     );

@@ -13,7 +13,7 @@ export class TimelineView extends Component<TimelineViewProps> {
       <>
         <Flex size={24}></Flex>
         <Flex size column>
-          <Panel $width={'100%'} $height={'100%'}>
+          <Panel>
             In progress
           </Panel>
         </Flex>

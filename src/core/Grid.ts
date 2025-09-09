@@ -1,3 +1,4 @@
+import { createElement } from "$utils/dom";
 import { getContext } from "$utils/misc";
 import { prop, reactive } from "@vicimpa/decorators";
 
@@ -10,10 +11,10 @@ export class Grid {
   @prop dark = '#5a5a5a';
   @prop light = '#a4a4a4';
 
-  @prop get canvas() {
-    const can = document.createElement('canvas');
-    const ctx = getContext(can)!;
+  @prop get context() {
     const { size, dark, light } = this;
+    const can = createElement('canvas');
+    const ctx = getContext(can)!;
     can.width = size * 2;
     can.height = size * 2;
     ctx.fillStyle = dark;
@@ -22,7 +23,7 @@ export class Grid {
     ctx.fillStyle = light;
     ctx.fillRect(size, 0, size, size);
     ctx.fillRect(0, size, size, size);
-    return can;
+    return ctx;
   }
 
   constructor(size?: number, dark?: string, light?: string) {
@@ -42,7 +43,7 @@ export class Grid {
 
   getPattern(ctx: CanvasRenderingContext2D & { [pattern]?: CanvasPattern | null; }) {
     return ctx[pattern] ?? (
-      ctx[pattern] = ctx.createPattern(this.canvas, 'repeat')
+      ctx[pattern] = ctx.createPattern(this.context.canvas, 'repeat')
     );
   }
 

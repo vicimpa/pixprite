@@ -85,10 +85,10 @@ export class CanvasSection extends Component<CanvasSectionProps> {
 
   render() {
     return (
-      <>
+      <Flex column inset>
         <Flex size={32}></Flex>
         <Flex size>
-          <Panel className="relative" $width={'100%'} $height={'100%'}>
+          <Panel>
             <InfoView.Item info={this.info}>
               <div ref={this.ref} className="absolute inset-0">
                 <StyledCanvas
@@ -111,8 +111,8 @@ export class CanvasSection extends Component<CanvasSectionProps> {
               </div>
             </InfoView.Item>
           </Panel>
-        </Flex >
-      </>
+        </Flex>
+      </Flex>
     );
   }
 }

@@ -16,6 +16,7 @@ import detectResize from "./plugins/detectResize";
 import { Grid } from "$core/Grid";
 import { MouseButton } from "$utils/mouse";
 import styled from "styled-components";
+import { Flex } from "$ui/Flex";
 
 const DEFAULT_PALETTE = await paletteCollection[0].fetch();
 
@@ -63,7 +64,7 @@ export class ColorList extends Component<ColorListProps> {
   @prop width = 0;
   @prop get height() {
     const { length, rowSize, colorSize, padding } = this;
-    return Math.ceil(length / rowSize) * (colorSize + padding);
+    return Math.ceil(length / rowSize) * (colorSize + padding) + padding;
   }
 
   @prop get length() {
@@ -71,7 +72,7 @@ export class ColorList extends Component<ColorListProps> {
   }
   @prop get rowSize() {
     const { colorSize, padding } = this, width = this.width;
-    return (width - padding) / (colorSize + padding) | 0;
+    return Math.max((width - padding) / (colorSize + padding) | 0, 1);
   }
 
   getPosition(i: number) {
@@ -132,131 +133,125 @@ export class ColorList extends Component<ColorListProps> {
 
   render() {
     return (
-      <Panel
-        ref={this.ref}
-        className="grow-1 relative"
-      >
-        <Scrolling>
-          <div
-            onMouseMove={({ nativeEvent: e }) => {
-              this.mouse = vec2(e.offsetX, e.offsetY);
-            }}
-            onMouseDown={({ nativeEvent: e, button }) => {
-              const i = this.mouseIndex;
+      <Flex size>
+        <Panel>
 
-              if (i === -1)
-                return;
+          <Scrolling>
+            <div
+              ref={this.ref}
+              onMouseMove={({ nativeEvent: e }) => {
+                this.mouse = vec2(e.offsetX, e.offsetY);
+              }}
+              onMouseDown={({ nativeEvent: e, button }) => {
+                const i = this.mouseIndex;
 
-              if (button === MouseButton.MIDDLE)
-                return;
+                if (i === -1)
+                  return;
 
-              batch(() => {
-                if (button === MouseButton.LEFT) {
-                  this.indexA = this.indexA === i ? undefined : i;
-                  this.indexB = this.indexB === i ? undefined : this.indexB;
+                if (button === MouseButton.MIDDLE)
+                  return;
 
-                  if (this.indexA !== undefined)
-                    this.props.onChange?.(this.data[i].value.clone(), false);
-                }
+                batch(() => {
+                  if (button === MouseButton.LEFT) {
+                    this.indexA = this.indexA === i ? undefined : i;
+                    this.indexB = this.indexB === i ? undefined : this.indexB;
 
-                if (button === MouseButton.RIGHT) {
-                  this.indexA = this.indexA === i ? undefined : this.indexA;
-                  this.indexB = this.indexB === i ? undefined : i;
-
-                  if (this.indexB !== undefined)
-                    this.props.onChange?.(this.data[i].value.clone(), true);
-                }
-              });
-            }}
-          >
-            <InfoView.Item info={this.colorInfo}>
-              <StyledCanvas
-                draw={(can, ctx) => {
-                  const {
-                    grid,
-                    colorSize,
-                    length,
-                    padding,
-                    width,
-                    height,
-                  } = this;
-
-                  grid.size = colorSize / 2;
-
-                  can.width = width;
-                  can.height = height;
-                  ctx.clearRect(0, 0, width, height);
-
-                  const paths: { path: Path2D, index: number; }[] = [];
-                  const tColorSize = colorSize / 2.5;
-
-                  for (let i = 0; i < length; i++) {
-                    const { x, y } = this.getPosition(i);
-
-                    const fill = new Path2D();
-                    fill.rect(x, y, colorSize, colorSize);
-
-                    const path = new Path2D();
-                    path.rect(x - padding, y - padding, colorSize + padding * 2, colorSize + padding * 2);
-                    paths.push({ path, index: i });
-
-                    const selectA = this.indexA === i;
-                    const selectB = this.indexB === i;
-                    const selectAny = selectA || selectB;
-                    const { value: color } = this.data[i];
-                    const { l } = color.toHsl();
-                    const accent = l >= .5 ? '#000' : '#fff';
-
-                    grid.setFill(ctx);
-                    ctx.fill(fill);
-                    ctx.fillStyle = color.toHex(true);
-                    ctx.fill(fill);
-                    if (selectAny) {
-                      ctx.strokeStyle = '#fff';
-                      ctx.fillStyle = accent;
-                      ctx.lineWidth = colorSize / 8;
-                      ctx.globalCompositeOperation = 'difference';
-                      ctx.stroke(fill);
-                      ctx.globalCompositeOperation = 'source-over';
-
-                      ctx.beginPath();
-
-                      if (selectA) {
-                        ctx.moveTo(x, y);
-                        ctx.lineTo(x + tColorSize, y);
-                        ctx.lineTo(x, y + tColorSize);
-                        ctx.lineTo(x, y);
-                      }
-
-                      if (selectB) {
-                        ctx.moveTo(x + colorSize, y + colorSize);
-                        ctx.lineTo(x + colorSize - tColorSize, y + colorSize);
-                        ctx.lineTo(x + colorSize, y + colorSize - tColorSize);
-                        ctx.lineTo(x + colorSize, y + colorSize);
-                      }
-
-                      ctx.fill();
-                      ctx.closePath();
-                    }
+                    if (this.indexA !== undefined)
+                      this.props.onChange?.(this.data[i].value.clone(), false);
                   }
 
-                  return dispose(
-                    effect(() => {
-                      const { x, y } = this.mouse;
-                      const find = paths.find(({ path }) => (
-                        ctx.isPointInPath(path, x, y)
-                      ));
+                  if (button === MouseButton.RIGHT) {
+                    this.indexA = this.indexA === i ? undefined : this.indexA;
+                    this.indexB = this.indexB === i ? undefined : i;
 
-                      this.mouseIndex = find?.index ?? -1;
-                      can.style.pointerEvents = find ? 'all' : 'none';
-                    })
-                  );
-                }}
-              />
-            </InfoView.Item>
-          </div>
-        </Scrolling>
-      </Panel>
+                    if (this.indexB !== undefined)
+                      this.props.onChange?.(this.data[i].value.clone(), true);
+                  }
+                });
+              }}
+            >
+              <InfoView.Item info={this.colorInfo}>
+                <StyledCanvas
+                  draw={(can, ctx) => {
+                    const { grid, colorSize, length, padding, width, height, } = this;
+
+                    grid.size = colorSize / 2;
+
+                    can.width = width;
+                    can.height = height;
+                    ctx.clearRect(0, 0, width, height);
+
+                    const paths: { path: Path2D, index: number; }[] = [];
+                    const tColorSize = colorSize / 2.5;
+
+                    for (let i = 0; i < length; i++) {
+                      const { x, y } = this.getPosition(i);
+
+                      const fill = new Path2D();
+                      fill.rect(x, y, colorSize, colorSize);
+
+                      const path = new Path2D();
+                      path.rect(x - padding, y - padding, colorSize + padding * 2, colorSize + padding * 2);
+                      paths.push({ path, index: i });
+
+                      const selectA = this.indexA === i;
+                      const selectB = this.indexB === i;
+                      const selectAny = selectA || selectB;
+                      const { value: color } = this.data[i];
+                      const { l } = color.toHsl();
+                      const accent = l >= .5 ? '#000' : '#fff';
+
+                      grid.setFill(ctx);
+                      ctx.fill(fill);
+                      ctx.fillStyle = color.toHex(true);
+                      ctx.fill(fill);
+                      if (selectAny) {
+                        ctx.strokeStyle = '#fff';
+                        ctx.fillStyle = accent;
+                        ctx.lineWidth = colorSize / 8;
+                        ctx.globalCompositeOperation = 'difference';
+                        ctx.stroke(fill);
+                        ctx.globalCompositeOperation = 'source-over';
+
+                        ctx.beginPath();
+
+                        if (selectA) {
+                          ctx.moveTo(x, y);
+                          ctx.lineTo(x + tColorSize, y);
+                          ctx.lineTo(x, y + tColorSize);
+                          ctx.lineTo(x, y);
+                        }
+
+                        if (selectB) {
+                          ctx.moveTo(x + colorSize, y + colorSize);
+                          ctx.lineTo(x + colorSize - tColorSize, y + colorSize);
+                          ctx.lineTo(x + colorSize, y + colorSize - tColorSize);
+                          ctx.lineTo(x + colorSize, y + colorSize);
+                        }
+
+                        ctx.fill();
+                        ctx.closePath();
+                      }
+                    }
+
+                    return dispose(
+                      effect(() => {
+                        const { x, y } = this.mouse;
+                        const find = paths.find(({ path }) => (
+                          ctx.isPointInPath(path, x, y)
+                        ));
+
+                        this.mouseIndex = find?.index ?? -1;
+                        can.style.pointerEvents = find ? 'all' : 'none';
+                      })
+                    );
+                  }}
+                />
+              </InfoView.Item>
+            </div>
+          </Scrolling>
+        </Panel>
+      </Flex>
     );
   }
 }
