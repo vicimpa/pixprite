@@ -37,6 +37,8 @@ body {
 
 * {
   user-select: none;
+  -webkit-user-select: none;
+  image-rendering: pixelated !important;
 }
 
 .text {

@@ -17,10 +17,12 @@ export type FlexItemProps = {
   $content?: string;
   $items?: string;
   $wrap?: boolean | string;
+  $inset?: boolean;
 };
 
 export const FlexItem = styled.div<FlexItemProps>`
-  position: relative;
+  position: ${p => p.$inset ? 'absolute' : 'relative'};
+  ${p => p.$inset ? 'inset: 0;' : ''}
   display: flex;
   flex-direction: ${p => (p.$column ? 'column' : 'row') + (p.$reverse ? '-reverse' : '')};
   ${p => p.$size === true ? 'flex-grow: 1;' : ''};
@@ -29,6 +31,9 @@ export const FlexItem = styled.div<FlexItemProps>`
   ${p => p.$content ? `justify-content: ${p.$content}` : ''};
   ${p => p.$items ? `align-items: ${p.$items}` : ''};
   flex-wrap: ${p => p.$wrap ? (p.$wrap === true ? 'wrap' : p.$wrap) : ''};
+  max-width: 100%;
+  max-height: 100%;
+  ${p => p.$inset ? 'overflow: hidden;' : ''}
 `;
 
 export type FlexProps = {
@@ -41,6 +46,7 @@ export type FlexProps = {
   items?: string;
   start?: boolean;
   wrap?: boolean | 'string';
+  inset?: boolean;
 } & PropsWithChildren;
 
 @provide()
@@ -90,7 +96,7 @@ export class Flex extends Component<FlexProps> {
   });
 
   render(): ReactNode {
-    const { column, reverse, gap, size, children, content, items, wrap } = this.props;
+    const { column, reverse, gap, size, children, content, items, wrap, inset } = this.props;
 
     return (
       <FlexItem
@@ -102,6 +108,7 @@ export class Flex extends Component<FlexProps> {
         $content={content}
         $items={items}
         $wrap={wrap}
+        $inset={inset}
       >
         {children}
         {this.resizerView}

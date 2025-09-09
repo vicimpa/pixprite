@@ -47,3 +47,14 @@ export function looper(fn: (delta: number, time: number) => any) {
 export function clamp(v: number, min: number, max: number) {
   return Math.min(max, Math.max(min, v));
 }
+
+const context = Symbol('context');
+export function getContext(canvas: HTMLCanvasElement & { [context]?: CanvasRenderingContext2D; }, read = false) {
+  const result = canvas[context] ?? (
+    canvas[context] = canvas.getContext('2d', {
+      willReadFrequently: read,
+    })!
+  );
+  result.imageSmoothingEnabled = false;
+  return result;
+}

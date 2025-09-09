@@ -1,7 +1,7 @@
 import { Component } from "react";
 import { prop, reactive } from "@vicimpa/decorators";
 import { Color } from "$core/Color";
-import { array, clamp, dispose } from "$utils/misc";
+import { array, clamp, dispose, nextFrame } from "$utils/misc";
 import { batch, computed, effect, signal } from "@preact/signals-react";
 import { InfoView } from "../InfoView";
 import { ColorInfo } from "./ColorInfo";
@@ -17,6 +17,7 @@ import { Grid } from "$core/Grid";
 import { MouseButton } from "$utils/mouse";
 import detectInput from "./plugins/detectInput";
 import styled from "styled-components";
+import rsp from "@vicimpa/rsp";
 
 const DEFAULT_PALETTE = await paletteCollection[0].fetch();
 
@@ -198,13 +199,17 @@ export class ColorList extends Component<ColorListProps> {
 
               this.scroll = clamp(scroll, 0, maxScroll);
               grid.size = colorSize / 2;
+              const effects: (() => void)[] = [];
 
-              if (!vec2(can.width, can.height).equals(this.viewSize)) {
-                can.width = width;
-                can.height = height;
-              }
-
-              ctx.clearRect(0, 0, width, height);
+              effects.push(
+                nextFrame(() => {
+                  if (!vec2(can.width, can.height).equals(this.viewSize)) {
+                    can.width = width;
+                    can.height = height;
+                  }
+                  ctx.clearRect(0, 0, width, height);
+                })
+              );
 
               const paths: { path: Path2D, index: number; }[] = [];
               const tColorSize = colorSize / 2.5;
@@ -229,56 +234,64 @@ export class ColorList extends Component<ColorListProps> {
                 const { l } = color.toHsl();
                 const accent = l >= .5 ? '#000' : '#fff';
 
-                grid.setFill(ctx);
-                ctx.fill(fill);
-                ctx.fillStyle = color.toHex(true);
-                ctx.fill(fill);
-                if (selectAny) {
-                  ctx.strokeStyle = '#fff';
-                  ctx.fillStyle = accent;
-                  ctx.lineWidth = colorSize / 8;
-                  ctx.globalCompositeOperation = 'difference';
-                  ctx.stroke(fill);
-                  ctx.globalCompositeOperation = 'source-over';
+                effects.push(
+                  nextFrame(() => {
+                    grid.setFill(ctx);
+                    ctx.fill(fill);
+                    ctx.fillStyle = color.toHex(true);
+                    ctx.fill(fill);
+                    if (selectAny) {
+                      ctx.strokeStyle = '#fff';
+                      ctx.fillStyle = accent;
+                      ctx.lineWidth = colorSize / 8;
+                      ctx.globalCompositeOperation = 'difference';
+                      ctx.stroke(fill);
+                      ctx.globalCompositeOperation = 'source-over';
 
-                  ctx.beginPath();
+                      ctx.beginPath();
 
-                  if (selectA) {
-                    ctx.moveTo(x, y);
-                    ctx.lineTo(x + tColorSize, y);
-                    ctx.lineTo(x, y + tColorSize);
-                    ctx.lineTo(x, y);
-                  }
+                      if (selectA) {
+                        ctx.moveTo(x, y);
+                        ctx.lineTo(x + tColorSize, y);
+                        ctx.lineTo(x, y + tColorSize);
+                        ctx.lineTo(x, y);
+                      }
 
+                      if (selectB) {
+                        ctx.moveTo(x + colorSize, y + colorSize);
+                        ctx.lineTo(x + colorSize - tColorSize, y + colorSize);
+                        ctx.lineTo(x + colorSize, y + colorSize - tColorSize);
+                        ctx.lineTo(x + colorSize, y + colorSize);
+                      }
 
-                  if (selectB) {
-                    ctx.moveTo(x + colorSize, y + colorSize);
-                    ctx.lineTo(x + colorSize - tColorSize, y + colorSize);
-                    ctx.lineTo(x + colorSize, y + colorSize - tColorSize);
-                    ctx.lineTo(x + colorSize, y + colorSize);
-                  }
-
-                  ctx.fill();
-                  ctx.closePath();
-                }
+                      ctx.fill();
+                      ctx.closePath();
+                    }
+                  })
+                );
               }
 
-              ctx.fillStyle = '#000';
-              ctx.fillRect(width - 10, 0, 10, height);
+              effects.push(
+                nextFrame(() => {
+                  ctx.fillStyle = '#000';
+                  ctx.fillRect(width - 10, 0, 10, height);
 
-              if (this.maxScroll > 0) {
-                const handleHeight = Math.max(20, height * (height / (height + maxScroll)));
-                const handleY = (this.scroll / maxScroll) * (height - handleHeight);
+                  if (maxScroll > 0) {
+                    const handleHeight = Math.max(20, height * (height / (height + maxScroll)));
+                    const handleY = (scroll / maxScroll) * (height - handleHeight);
 
-                ctx.fillStyle = '#fff';
-                ctx.fillRect(width - 10, handleY, 10, handleHeight);
+                    ctx.fillStyle = '#fff';
+                    ctx.fillRect(width - 10, handleY, 10, handleHeight);
 
-                ctx.strokeStyle = '#000';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(width - 10, handleY, 10, handleHeight);
-              }
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(width - 10, handleY, 10, handleHeight);
+                  }
+                })
+              );
 
               return dispose(
+                ...effects,
                 effect(() => {
                   const { x, y } = this.mouse;
                   const find = paths.find(({ path }) => (
@@ -291,6 +304,7 @@ export class ColorList extends Component<ColorListProps> {
               );
             }}
           />
+
         </InfoView.Item>
       </Panel>
     );

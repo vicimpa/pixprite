@@ -31,12 +31,14 @@ export class SpriteEditor extends Component {
           <Flex column size={200} resize>
             <ColorSection ref={this.color} />
           </Flex>
-          <Flex size column gap={8}>
-            <Flex size column>
-              <CanvasSection ref={this.canvas} />
-            </Flex>
-            <Flex column size={200} resize start>
-              <TimelineView ref={this.timeline} />
+          <Flex size>
+            <Flex inset column gap={8}>
+              <Flex size column>
+                <CanvasSection ref={this.canvas} />
+              </Flex>
+              <Flex column size={200} resize start>
+                <TimelineView ref={this.timeline} />
+              </Flex>
             </Flex>
           </Flex>
           <Flex size={32} column>

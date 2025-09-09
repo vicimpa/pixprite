@@ -1,4 +1,7 @@
+import { getContext } from "$utils/misc";
 import { prop, reactive } from "@vicimpa/decorators";
+
+const pattern = Symbol('pattern');
 
 @reactive()
 export class Grid {
@@ -9,11 +12,12 @@ export class Grid {
 
   @prop get canvas() {
     const can = document.createElement('canvas');
-    const ctx = can.getContext('2d')!;
+    const ctx = getContext(can)!;
     const { size, dark, light } = this;
     can.width = size * 2;
     can.height = size * 2;
     ctx.fillStyle = dark;
+    ctx.imageSmoothingEnabled = false;
     ctx.fillRect(0, 0, size * 2, size * 2);
     ctx.fillStyle = light;
     ctx.fillRect(size, 0, size, size);
@@ -36,8 +40,10 @@ export class Grid {
     return this;
   }
 
-  getPattern(ctx: CanvasRenderingContext2D) {
-    return ctx.createPattern(this.canvas, 'repeat');
+  getPattern(ctx: CanvasRenderingContext2D & { [pattern]?: CanvasPattern | null; }) {
+    return ctx[pattern] ?? (
+      ctx[pattern] = ctx.createPattern(this.canvas, 'repeat')
+    );
   }
 
   setFill(ctx: CanvasRenderingContext2D) {
@@ -49,5 +55,16 @@ export class Grid {
   fillRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
     this.setFill(ctx);
     ctx.fillRect(x, y, width, height);
+  }
+
+  fillRectManual(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
+    let i = 0, j = 0;
+    for (let sx = x; sx < x + width; sx += this.size, i++) {
+      for (let sy = y; sy < y + height; sy += this.size, j++) {
+        const color = ((i + j) & 1) ? this.dark : this.light;
+        ctx.fillStyle = color;
+        ctx.fillRect(sx, sy, this.size, this.size);
+      }
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { dispose, looper } from "$utils/misc";
+import { dispose, getContext, looper } from "$utils/misc";
 import { effect, useComputed } from "@preact/signals-react";
 import { useSignalRef } from "@preact/signals-react/utils";
 import { useEffect, useRef } from "react";
@@ -7,16 +7,14 @@ import { useEffect, useRef } from "react";
 type NativeCanvasProps = React.JSX.IntrinsicElements['canvas'];
 
 export type CanvasProps = {
+  read?: boolean;
   draw?: (can: HTMLCanvasElement, ctx: CanvasRenderingContext2D) => (() => void) | void;
   loop?: (can: HTMLCanvasElement, ctx: CanvasRenderingContext2D, delta: number, time: number) => void;
 } & Omit<NativeCanvasProps, 'ref' | 'target'>;
 
-export const Canvas = ({ draw, loop, ...props }: CanvasProps) => {
-  const _ctx = useRef<CanvasRenderingContext2D | null>(null);
+export const Canvas = ({ draw, loop, read, ...props }: CanvasProps) => {
   const ref = useSignalRef<HTMLCanvasElement | null>(null);
-  const ctx = useComputed(() => _ctx.current ?? (
-    _ctx.current = ref.current?.getContext('2d') ?? null
-  ));
+  const ctx = useComputed(() => ref.current && getContext(ref.current, read ?? false));
 
   useEffect(() => (
     effect(() => {
