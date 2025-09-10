@@ -1,0 +1,36 @@
+html,
+body {
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--bg);
+  color: var(--fg);
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  font-family: monospace;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+  image-rendering: pixelated;
+}
+
+body {
+  position: relative;
+}
+
+#root {
+  position: absolute;
+  inset: var(--gap);
+}
+
+.contents {
+  display: contents;
+}

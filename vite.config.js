@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import paths from "vite-tsconfig-paths";
+import glsl from "vite-plugin-glsl";
 
 export default defineConfig({
   root: './src',
@@ -20,5 +21,6 @@ export default defineConfig({
       plugins: [],
       tsDecorators: true,
     }),
+    glsl({ minify: process.argv.includes('build') })
   ],
 });

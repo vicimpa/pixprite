@@ -1,198 +1,155 @@
-import { byteHex } from "$utils/misc";
+import { rgbToHsv, hsvToRgb, rgbToHsl, hsvToHsl, hslToHsv } from "$utils/color";
+import { clampFloat, clampByte, byteToHex, floatToHex, toFixed } from "$utils/math";
+import { reactive, prop } from "@vicimpa/decorators";
+import { batch } from "@preact/signals-react";
 
-export interface RGBA {
-  r: number;
-  g: number;
-  b: number;
-  a: number;
-}
+const hexre = /^([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})$/i;
 
-export interface HSVA {
-  h: number;
-  s: number;
-  v: number;
-  a: number;
-}
-
-export interface HSLA {
-  h: number;
-  s: number;
-  l: number;
-  a: number;
-}
-
+@reactive()
 export class Color {
-  r: number = 0;
-  g: number = 0;
-  b: number = 0;
-  a: number = 1;
+  @prop private _r = 0; @prop private _g = 0; @prop private _b = 0;
+  @prop private _h = 0; @prop private _sv = 0; @prop private _sl = 0;
+  @prop private _v = 0; @prop private _l = 0; @prop private _a = 1;
 
-  constructor(r: number = 0, g: number = 0, b: number = 0, a: number = 1, is255 = true) {
-    this.set(r, g, b, a, is255);
-  }
+  get rgb(): [number, number, number] { return [this._r, this._g, this._b]; }
+  set rgb([r, g, b]: [number, number, number]) { this.setFromRgb(r, g, b, this._a); }
 
-  clone() {
-    return Object.assign(new Color(), this);
-  }
+  get rgba(): [number, number, number, number] { return [this._r, this._g, this._b, this._a]; }
+  set rgba([r, g, b, a]: [number, number, number, number]) { this.setFromRgb(r, g, b, a); }
 
-  set(r: number, g: number, b: number, a: number = 1, is255: boolean = true): this {
-    const mult = is255 ? 255 : 1;
-    this.r = r / mult;
-    this.g = g / mult;
-    this.b = b / mult;
-    this.a = a;
+  get hsv(): [number, number, number] { return [this._h, this._sv, this._v]; }
+  set hsv([h, s, v]: [number, number, number]) { this.setFromHsv(h, s, v, this._a); }
+
+  get hsva(): [number, number, number, number] { return [this._h, this._sv, this._v, this._a]; }
+  set hsva([h, s, v, a]: [number, number, number, number]) { this.setFromHsv(h, s, v, a); }
+
+  get hsl(): [number, number, number] { return [this._h, this._sl, this._l]; }
+  set hsl([h, s, l]: [number, number, number]) { this.setFromHsl(h, s, l, this._a); }
+
+  get hsla(): [number, number, number, number] { return [this._h, this._sl, this._l, this._a]; }
+  set hsla([h, s, l, a]: [number, number, number, number]) { this.setFromHsl(h, s, l, a); }
+
+  setFromHex(hex: string) {
+    hex = hex.trim();
+    if (hex.startsWith('#')) hex = hex.slice(1);
+    if (hex.length === 3) hex += 'f';
+    if (hex.length === 6) hex += 'ff';
+    if (hex.length === 4) hex = hex.replace(/\w/g, f => f + f);
+    const match = hexre.exec(hex);
+    if (!match) throw new Error('Invalid hex');
+    const [, r, g, b, a] = match;
+    this.setFromRgb(
+      parseInt(r, 16),
+      parseInt(g, 16),
+      parseInt(b, 16),
+      parseInt(a, 16) / 255,
+    );
     return this;
   }
 
-  fromHex(hex: string, alpha = 1, is255 = true): this {
-    alpha *= is255 ? 255 : 1;
-    if (hex[0] === '#') hex = hex.slice(1);
-    if (hex.length === 3 || hex.length === 4)
-      hex = hex.replace(/[\da-f]/i, e => e.repeat(2));
-    if (hex.length === 6) hex += byteHex(alpha);
-    if (hex.length !== 8) throw new Error('Invalid hex format');
+  setFromRgb(r: number, g: number, b: number, a: number) {
+    batch(() => {
+      this._r = clampByte(r);
+      this._g = clampByte(g);
+      this._b = clampByte(b);
+      this._a = clampFloat(a);
 
-    return this.set(
-      parseInt(hex.slice(0, 2), 16),
-      parseInt(hex.slice(2, 4), 16),
-      parseInt(hex.slice(4, 6), 16),
-      parseInt(hex.slice(6, 8), 16),
-      true
-    );
+      const hsv = rgbToHsv(this._r, this._g, this._b);
+      const hsl = rgbToHsl(this._r, this._g, this._b);
+      this._h = hsv.h;
+      this._sv = hsv.s;
+      this._v = hsv.v;
+      this._sl = hsl.s;
+      this._l = hsl.l;
+    });
+    return this;
   }
 
-  fromRgba(r: number, g: number, b: number, a: number = 1): this {
-    return this.set(r, g, b, a, true);
+  setFromHsv(h: number, s: number, v: number, a: number) {
+    batch(() => {
+      this._h = ((h % 360) + 360) % 360;
+      this._sv = clampFloat(s);
+      this._v = clampFloat(v);
+      this._a = clampFloat(a);
+
+      const { r, g, b } = hsvToRgb(this._h, this._sv, this._v);
+      this._r = r; this._g = g; this._b = b;
+
+      const { l, s: s_hsl } = hsvToHsl(this._h, this._sv, this._v);
+      this._l = l;
+      this._sl = s_hsl;
+    });
+    return this;
   }
 
-  fromHsv(h: number, s: number, v: number, a: number = 1): this {
-    let c = v * s;
-    let x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-    let m = v - c;
+  setFromHsl(h: number, s: number, l: number, a: number) {
+    batch(() => {
+      this._h = ((h % 360) + 360) % 360;
+      this._sl = clampFloat(s);
+      this._l = clampFloat(l);
+      this._a = clampFloat(a);
 
-    let r = 0, g = 0, b = 0;
-    if (h >= 0 && h < 60) [r, g, b] = [c, x, 0];
-    else if (h < 120) [r, g, b] = [x, c, 0];
-    else if (h < 180) [r, g, b] = [0, c, x];
-    else if (h < 240) [r, g, b] = [0, x, c];
-    else if (h < 300) [r, g, b] = [x, 0, c];
-    else[r, g, b] = [c, 0, x];
+      const { v, s: s_hsv } = hslToHsv(this._h, this._sl, this._l);
+      this._v = v;
+      this._sv = s_hsv;
 
-    return this.set(r + m, g + m, b + m, a, false);
+      const { r, g, b } = hsvToRgb(this._h, this._sv, this._v);
+      this._r = r; this._g = g; this._b = b;
+    });
+    return this;
   }
 
-  fromHsl(h: number, s: number, l: number, a: number = 1): this {
-    const v = l + s * Math.min(l, 1 - l);
-    const sv = v === 0 ? 0 : 2 * (1 - l / v);
-
-    let c = v * sv;
-    let x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-    let m = v - c;
-
-    let r = 0, g = 0, b = 0;
-    if (h >= 0 && h < 60) [r, g, b] = [c, x, 0];
-    else if (h < 120) [r, g, b] = [x, c, 0];
-    else if (h < 180) [r, g, b] = [0, c, x];
-    else if (h < 240) [r, g, b] = [0, x, c];
-    else if (h < 300) [r, g, b] = [x, 0, c];
-    else[r, g, b] = [c, 0, x];
-
-    return this.set(r + m, g + m, b + m, a, false);
-  }
-
-  fromInt(value: number): this {
-    const r = (value >> 24) & 0xFF;
-    const g = (value >> 16) & 0xFF;
-    const b = (value >> 8) & 0xFF;
-    const a = value & 0xFF / 255;
-    return this.set(r, g, b, a, true);
-  }
-
-  toRgb(is255 = true): RGBA {
-    const mult = is255 ? 255 : 1;
-    return {
-      r: Math.round(this.r * mult),
-      g: Math.round(this.g * mult),
-      b: Math.round(this.b * mult),
-      a: this.a,
-    };
-  }
-
-  toHex(includeAlpha = false): string {
-    const { r, g, b, a } = this.toRgb();
-    const hex = "#" + byteHex(r) + byteHex(g) + byteHex(b) +
-      (includeAlpha ? byteHex(a * 255 | 0) : '');
-    return hex.toUpperCase();
-  }
-
-  toAlphaByte() {
-    return Math.round(this.a * 255);
-  }
-
-  toHsv(): HSVA {
-    const r = this.r, g = this.g, b = this.b;
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const d = max - min;
-
-    let h = 0;
-    if (d !== 0) {
-      switch (max) {
-        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-        case g: h = (b - r) / d + 2; break;
-        case b: h = (r - g) / d + 4; break;
-      }
-      h *= 60;
+  toHexString(includeAlpha = false): string {
+    const r = byteToHex(this._r);
+    const g = byteToHex(this._g);
+    const b = byteToHex(this._b);
+    if (includeAlpha) {
+      const a = floatToHex(this._a);
+      return `#${r}${g}${b}${a}`;
     }
-
-    let s = max === 0 ? 0 : d / max;
-    let v = max;
-    return { h, s, v, a: this.a };
+    return `#${r}${g}${b}`;
   }
 
-  toHsl(): HSLA {
-    const r = this.r, g = this.g, b = this.b;
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const d = max - min;
-    const l = (max + min) / 2;
-
-    let h = 0, s = 0;
-
-    if (d !== 0) {
-      s = d / (1 - Math.abs(2 * l - 1));
-      switch (max) {
-        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-        case g: h = (b - r) / d + 2; break;
-        case b: h = (r - g) / d + 4; break;
-      }
-      h *= 60;
+  toRgbString(includeAlpha = false): string {
+    if (includeAlpha) {
+      return `rgba(${this._r}, ${this._g}, ${this._b}, ${toFixed(this._a, 3)})`;
     }
-
-    return { h, s, l, a: this.a };
+    return `rgb(${this._r}, ${this._g}, ${this._b})`;
   }
 
-  toInt(): number {
-    const { r, g, b, a } = this.toRgb(true);
-    return ((r & 0xFF) << 24) |
-      ((g & 0xFF) << 16) |
-      ((b & 0xFF) << 8) |
-      ((a * 255) & 0xFF);
+  toHslString(includeAlpha = false): string {
+    const h = Math.round(this._h);
+    const s = Math.round(this._sl * 100);
+    const l = Math.round(this._l * 100);
+    if (includeAlpha) {
+      return `hsla(${h}, ${s}%, ${l}%, ${toFixed(this._a, 3)})`;
+    }
+    return `hsl(${h}, ${s}%, ${l}%)`;
   }
 
-  toCssRgb(): string {
-    const { r, g, b, a } = this.toRgb();
-    return a === 1
-      ? `rgb(${r}, ${g}, ${b})`
-      : `rgba(${r}, ${g}, ${b}, ${a.toFixed(3)})`;
+  toHsvString(includeAlpha = false): string {
+    const h = Math.round(this._h);
+    const s = Math.round(this._sv * 100);
+    const v = Math.round(this._v * 100);
+    if (includeAlpha) {
+      return `hsva(${h}, ${s}%, ${v}%, ${toFixed(this._a, 3)})`;
+    }
+    return `hsv(${h}, ${s}%, ${v}%)`;
   }
 
-  toCssHsl(): string {
-    const { h, s, l, a } = this.toHsl();
-    const s100 = Math.round(s * 100);
-    const l100 = Math.round(l * 100);
-    return a === 1
-      ? `hsl(${Math.round(h)}, ${s100}%, ${l100}%)`
-      : `hsla(${Math.round(h)}, ${s100}%, ${l100}%, ${a.toFixed(3)})`;
+  static fromHex(hex: string) {
+    return new this().setFromHex(hex);
+  }
+
+  static fromRgb(r: number, g: number, b: number, a = 1) {
+    return new this().setFromRgb(r, g, b, a);
+  }
+
+  static fromHsl(h: number, s: number, l: number, a = 1) {
+    return new this().setFromHsl(h, s, l, a);
+  }
+
+  static fromHsv(h: number, s: number, v: number, a = 1) {
+    return new this().setFromHsv(h, s, v, a);
   }
 }

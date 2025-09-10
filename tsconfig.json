@@ -19,7 +19,8 @@
     "strict": true,
     "experimentalDecorators": true,
     "types": [
-      "vite/client"
+      "vite/client",
+      "vite-plugin-glsl/ext"
     ],
     "paths": {
       "$*": [
