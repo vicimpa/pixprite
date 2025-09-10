@@ -13,3 +13,9 @@ export const ColorText = styled.label`
   z-index: 1;
   pointer-events: none;
 `;
+
+export const ColorView = styled.div`
+  position: absolute;
+  inset: 0;
+  background-color: var(--color);
+`;

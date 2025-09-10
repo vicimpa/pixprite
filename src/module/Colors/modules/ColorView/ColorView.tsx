@@ -17,15 +17,17 @@ export const ColorView: FC<ColorViewProps> = ({ color }) => {
 
   return (
     <styled.ColorBox $grow>
-      <Flex $inset $content="center" $items="center">
+      <Panel>
         <Grid inset />
-        <Variables bg2={colorString}>
-          <Panel />
+        <Variables color={colorString}>
+          <styled.ColorView />
         </Variables>
-        <styled.ColorText>
-          HI
-        </styled.ColorText>
-      </Flex>
+        <Flex $inset $content="center" $items="center">
+          <styled.ColorText>
+            HI
+          </styled.ColorText>
+        </Flex>
+      </Panel>
     </styled.ColorBox>
   );
 };

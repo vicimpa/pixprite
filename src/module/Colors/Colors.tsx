@@ -4,10 +4,10 @@ import { Panel } from "$ui/Panel";
 import { prop, reactive } from "@vicimpa/decorators";
 import { provide } from "@vicimpa/react-decorators";
 import { Component } from "react";
-import { ColorList } from "./module/ColorList";
+import { ColorList } from "./modules/ColorList";
 import { signalRef } from "$utils/signals";
-import { ColorPicker } from "./module/ColorPicker";
-import { ColorView } from "./module/ColorView";
+import { ColorPicker } from "./modules/ColorPicker";
+import { ColorView } from "./modules/ColorView";
 import * as styled from "./styled";
 import { Resizer } from "$ui/Resizer";
 
@@ -18,7 +18,7 @@ export class Colors extends Component {
   picker = signalRef<ColorPicker>();
 
   colorA = Color.fromHex('#000');
-  colorB = Color.fromHex('#c7202073');
+  colorB = Color.fromHex('#c7202025');
 
   render() {
     return (

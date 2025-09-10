@@ -8,3 +8,4 @@ export function getContext(
     can[$ctx] = can.getContext('2d', options)!
   );
 }
+
