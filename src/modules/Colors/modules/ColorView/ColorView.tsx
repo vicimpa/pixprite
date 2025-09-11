@@ -1,6 +1,5 @@
 import { Flex } from "$ui/Flex";
 import { Panel } from "$ui/Panel";
-import { useComputed, useSignals } from "@preact/signals-react/runtime";
 import * as styled from "./styled";
 import type { Color } from "$core/Color";
 import type { FC } from "react";
@@ -13,7 +12,6 @@ export type ColorViewProps = {
 };
 
 export const ColorView: FC<ColorViewProps> = ({ color, index = -1 }) => {
-
   return (
     <styled.ColorBox $grow>
       <Panel>

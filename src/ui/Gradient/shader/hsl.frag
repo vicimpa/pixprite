@@ -1,30 +1,24 @@
 uniform vec4 a, b, c, d;
 
+vec3 hsl2hsv(vec3 hsl) {
+  float h = hsl.x;
+  float s = hsl.y;
+  float l = hsl.z;
+
+  float v = l + s * min(l, 1.0 - l);
+  float newS = (v == 0.0) ? 0.0 : 2.0 * (1.0 - l / v);
+
+  return vec3(h, newS, v);
+}
+
+vec3 hsv2rgb(vec3 c) {
+  vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+  vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+  return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
 vec3 hsl2rgb(vec3 c) {
-  float h = c.x;
-  float s = c.y;
-  float l = c.z;
-
-  float c1 = (1.0 - abs(2.0 * l - 1.0)) * s;
-  float x = c1 * (1.0 - abs(mod(h * 6.0, 2.0) - 1.0));
-  float m = l - c1 / 2.0;
-
-  vec3 rgb;
-
-  if (0.0 <= h && h < 1.0 / 6.0)
-    rgb = vec3(c1, x, 0.0);
-  else if (1.0 / 6.0 <= h && h < 2.0 / 6.0)
-    rgb = vec3(x, c1, 0.0);
-  else if (2.0 / 6.0 <= h && h < 3.0 / 6.0)
-    rgb = vec3(0.0, c1, x);
-  else if (3.0 / 6.0 <= h && h < 4.0 / 6.0)
-    rgb = vec3(0.0, x, c1);
-  else if (4.0 / 6.0 <= h && h < 5.0 / 6.0)
-    rgb = vec3(x, 0.0, c1);
-  else
-    rgb = vec3(c1, 0.0, x);
-
-  return rgb + vec3(m);
+  return hsv2rgb(hsl2hsv(c));
 }
 
 void mainFrag(out vec4 fragColor, in vec2 uv) {

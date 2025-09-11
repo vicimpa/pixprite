@@ -31,6 +31,7 @@ export class Editor extends Component {
         </Flex>
         <Flex $basis={32}>
           {/* Instruments */}
+          <Resizer start />
         </Flex>
       </Flex>
     );

@@ -5,17 +5,18 @@ import * as styled from "./styled";
 import { computed } from "@preact/signals-react";
 import { makeDrag } from "@vicimpa/easy-drag";
 import { clamp } from "$utils/math";
+import { Reactive } from "$core/Reactive";
 
 export type ResizerProps = {
   start?: true;
 };
 
 @reactive()
-export class Resizer extends Component<ResizerProps> {
+export class Resizer extends Reactive<ResizerProps> {
   ref = signalRef<HTMLDivElement>();
 
   @prop drag = false;
-  @prop start = this.props.start ?? false;
+  @prop get start() { return this.$props.start ?? false; };
 
   @prop get item() {
     return this.ref.value?.parentElement ?? null;
@@ -68,10 +69,6 @@ export class Resizer extends Component<ResizerProps> {
         data-drag={this.drag}
       />
   ));
-
-  componentDidUpdate(): void {
-    this.start = this.props.start ?? false;
-  }
 
   render() {
     return (

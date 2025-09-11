@@ -1,15 +1,20 @@
 import { rgbToHsv, hsvToRgb, rgbToHsl, hsvToHsl, hslToHsv } from "$utils/color";
 import { clampFloat, clampByte, byteToHex, floatToHex, toFixed } from "$utils/math";
-import { reactive, prop } from "@vicimpa/decorators";
-import { batch } from "@preact/signals-react";
 
 const hexre = /^([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})$/i;
 
-@reactive()
 export class Color {
-  @prop private _r = 0; @prop private _g = 0; @prop private _b = 0;
-  @prop private _h = 0; @prop private _sv = 0; @prop private _sl = 0;
-  @prop private _v = 0; @prop private _l = 0; @prop private _a = 1;
+  private _r = 0;
+  private _g = 0;
+  private _b = 0;
+
+  private _h = 0;
+  private _sv = 0;
+  private _sl = 0;
+
+  private _v = 0;
+  private _l = 0;
+  private _a = 1;
 
   get rgb(): [number, number, number] { return [this._r, this._g, this._b]; }
   set rgb([r, g, b]: [number, number, number]) { this.setFromRgb(r, g, b, this._a); }
@@ -48,54 +53,48 @@ export class Color {
   }
 
   setFromRgb(r: number, g: number, b: number, a: number) {
-    batch(() => {
-      this._r = clampByte(r);
-      this._g = clampByte(g);
-      this._b = clampByte(b);
-      this._a = clampFloat(a);
+    this._r = clampByte(r);
+    this._g = clampByte(g);
+    this._b = clampByte(b);
+    this._a = clampFloat(a);
 
-      const hsv = rgbToHsv(this._r, this._g, this._b);
-      const hsl = rgbToHsl(this._r, this._g, this._b);
-      this._h = hsv.h;
-      this._sv = hsv.s;
-      this._v = hsv.v;
-      this._sl = hsl.s;
-      this._l = hsl.l;
-    });
+    const hsv = rgbToHsv(this._r, this._g, this._b);
+    const hsl = rgbToHsl(this._r, this._g, this._b);
+    this._h = hsv.h;
+    this._sv = hsv.s;
+    this._v = hsv.v;
+    this._sl = hsl.s;
+    this._l = hsl.l;
     return this;
   }
 
   setFromHsv(h: number, s: number, v: number, a: number) {
-    batch(() => {
-      this._h = ((h % 360) + 360) % 360;
-      this._sv = clampFloat(s);
-      this._v = clampFloat(v);
-      this._a = clampFloat(a);
+    this._h = ((h % 360) + 360) % 360;
+    this._sv = clampFloat(s);
+    this._v = clampFloat(v);
+    this._a = clampFloat(a);
 
-      const { r, g, b } = hsvToRgb(this._h, this._sv, this._v);
-      this._r = r; this._g = g; this._b = b;
+    const { r, g, b } = hsvToRgb(this._h, this._sv, this._v);
+    this._r = r; this._g = g; this._b = b;
 
-      const { l, s: s_hsl } = hsvToHsl(this._h, this._sv, this._v);
-      this._l = l;
-      this._sl = s_hsl;
-    });
+    const { l, s: s_hsl } = hsvToHsl(this._h, this._sv, this._v);
+    this._l = l;
+    this._sl = s_hsl;
     return this;
   }
 
   setFromHsl(h: number, s: number, l: number, a: number) {
-    batch(() => {
-      this._h = ((h % 360) + 360) % 360;
-      this._sl = clampFloat(s);
-      this._l = clampFloat(l);
-      this._a = clampFloat(a);
+    this._h = ((h % 360) + 360) % 360;
+    this._sl = clampFloat(s);
+    this._l = clampFloat(l);
+    this._a = clampFloat(a);
 
-      const { v, s: s_hsv } = hslToHsv(this._h, this._sl, this._l);
-      this._v = v;
-      this._sv = s_hsv;
+    const { v, s: s_hsv } = hslToHsv(this._h, this._sl, this._l);
+    this._v = v;
+    this._sv = s_hsv;
 
-      const { r, g, b } = hsvToRgb(this._h, this._sv, this._v);
-      this._r = r; this._g = g; this._b = b;
-    });
+    const { r, g, b } = hsvToRgb(this._h, this._sv, this._v);
+    this._r = r; this._g = g; this._b = b;
     return this;
   }
 
