@@ -11,7 +11,7 @@ import baseFrag from "./shaders/base.frag";
 
 export type ShaderProps = {
   inset?: true;
-  uniforms?: Record<string, any>;
+  uniforms?: Record<string, any> | Signal<Record<string, any>>;
   shader?: string;
 } & Omit<React.JSX.IntrinsicElements['div'], 'children' | 'ref'>;
 
@@ -43,7 +43,7 @@ export const Shader: FC<ShaderProps> = ({ inset, uniforms = {}, shader = baseFra
       if (!can || !gl || !width || !height || !progInfo)
         return;
 
-      const data = Object.entries(uniforms)
+      const data = Object.entries(uniforms instanceof Signal ? uniforms.value : uniforms)
         .reduce((acc, [key, value]) => {
           acc[key] = value instanceof Signal ? value.value : value;
           return acc;

@@ -1,6 +1,6 @@
-import { Colors } from "$module/Colors";
-import { Editor } from "$module/Editor";
-import { Info } from "$module/Info";
+import { Colors } from "$modules/Colors";
+import { Editor } from "$modules/Editor";
+import { Info } from "$modules/Info";
 import { Flex } from "$ui/Flex";
 import { Resizer } from "$ui/Resizer";
 

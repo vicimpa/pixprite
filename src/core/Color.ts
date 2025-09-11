@@ -137,6 +137,10 @@ export class Color {
     return `hsv(${h}, ${s}%, ${v}%)`;
   }
 
+  clone() {
+    return Object.assign(new Color(), this);
+  }
+
   static fromHex(hex: string) {
     return new this().setFromHex(hex);
   }

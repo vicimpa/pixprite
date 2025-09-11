@@ -12,15 +12,7 @@ export type ColorPickerProps = {
 
 @reactive()
 export class ColorPicker extends Component<ColorPickerProps> {
-  color = new Color();
-
-  @prop get h() {
-    return this.color.hsv[0];
-  }
-
-  @prop get s() {
-    return this.color.hsl[1];
-  }
+  @prop color = new Color();
 
   render() {
     return (

@@ -61,7 +61,7 @@ export class Resizer extends Component<ResizerProps> {
   resizerView = computed(() => (
     this.direction === null ? null :
       <styled.Resizer
-        onPointerDown={this.mouseDown}
+        onMouseDown={this.mouseDown}
         $start={this.start}
         $column={this.column}
         $reverse={this.reverse}

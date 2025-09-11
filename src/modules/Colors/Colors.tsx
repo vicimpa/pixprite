@@ -18,7 +18,7 @@ export class Colors extends Component {
   picker = signalRef<ColorPicker>();
 
   colorA = Color.fromHex('#000');
-  colorB = Color.fromHex('#c7202025');
+  colorB = Color.fromHex('#ffffff');
 
   render() {
     return (
@@ -31,7 +31,7 @@ export class Colors extends Component {
             <Flex $grow>
               <ColorList ref={this.list} />
             </Flex>
-            <Flex $column $basis={200}>
+            <Flex $column $basis={256}>
               <ColorPicker ref={this.picker} />
               <Resizer start />
             </Flex>

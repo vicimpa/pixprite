@@ -12,6 +12,16 @@ export const ColorText = styled.label`
   font-weight: 900;
   z-index: 1;
   pointer-events: none;
+  color: #fff;
+  text-shadow: 
+    -1px 0 0 #000,
+    1px 0 0 #000,
+    0 -1px 0 #000,
+    0 1px 0 #000,
+    -1px -1px 0 #000,
+    1px 1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000;
 `;
 
 export const ColorView = styled.div`

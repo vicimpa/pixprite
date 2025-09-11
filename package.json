@@ -11,9 +11,9 @@
   "dependencies": {
     "@preact/signals-react": "^3.3.0",
     "@vicimpa/decorators": "^0.0.11",
-    "@vicimpa/easy-drag": "^0.1.9",
+    "@vicimpa/easy-drag": "^0.1.10",
     "@vicimpa/events": "^0.0.13",
-    "@vicimpa/glm": "^0.1.6",
+    "@vicimpa/glm": "^0.1.7",
     "@vicimpa/observers": "^0.0.9",
     "@vicimpa/react-decorators": "^0.1.11",
     "@vicimpa/rsp": "^0.1.8",
