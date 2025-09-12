@@ -33,7 +33,7 @@ export class Colors extends Component {
   }
 
   @useEffect()
-  detectPicker() {
+  detectChange() {
     return dispose(
       effect(() => {
         this.picker.value?.setColor(this.current);
@@ -46,6 +46,7 @@ export class Colors extends Component {
       <Flex $inset $column>
         <Flex $basis={32}>
           {/* Color params */}
+
         </Flex>
         <Flex $grow>
           <Flex $inset $column>

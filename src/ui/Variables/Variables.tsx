@@ -1,5 +1,5 @@
 
-import { value } from "$utils/signals";
+import { getValue } from "$utils/signals";
 import { useComputed, useSignal } from "@preact/signals-react";
 import { useEffect, useId, type FC, type PropsWithChildren } from "react";
 import { Head } from "$ui/Head";
@@ -15,7 +15,7 @@ export const Variables: FC<VariablesProps> = ({ children, ..._props }) => {
 
     Object.entries(props.value)
       .forEach(([key, data]) => {
-        output += `--${key}:${value(data)};`;
+        output += `--${key}:${getValue(data)};`;
       });
 
     output += '}';

@@ -1,22 +1,19 @@
-import { useSignalRef } from "$utils/signals";
+import { deepGetValue, getValue, useSignalRef, type DGV } from "$utils/signals";
 import { effect, Signal, useComputed, useSignal, useSignalEffect } from "@preact/signals-react";
 import * as styled from "./styled";
 import { useEffect, type FC } from "react";
-import { resizeObserver } from "@vicimpa/observers";
+import { intersectionObserver, resizeObserver } from "@vicimpa/observers";
 import { vec2, Vec2 } from "@vicimpa/glm";
 import { setUniforms } from "twgl.js";
 import boxVert from "./shaders/box.vert";
 import boxFrag from "./shaders/box.frag";
 import baseFrag from "./shaders/base.frag";
-import { useProgInfo } from "./utils/useProgInfo";
-import { nextFrame, nextTick, pool, usePool } from "$utils/common";
-import { RenderGL } from "$utils/render";
-
-const gl = pool(() => new RenderGL());
+import { useProgInfo, useRednerGL } from "./utils/useProgInfo";
+import { dispose } from "$utils/common";
 
 export type ShaderProps = {
   inset?: true;
-  uniforms?: Record<string, any> | Signal<Record<string, any>>;
+  uniforms?: DGV<Record<string, number | Iterable<number>> | {}>;
   shader?: string;
 } & Omit<React.JSX.IntrinsicElements['div'], 'children' | 'ref'>;
 
@@ -31,17 +28,23 @@ const getContext = (can: (HTMLCanvasElement & { [context]?: ImageBitmapRendering
 
 export const Shader: FC<ShaderProps> = ({ inset, uniforms = {}, shader = baseFrag, ...props }) => {
   const ref = useSignalRef<HTMLDivElement>(null);
+  const visible = useSignal(false);
   const size = useSignal<Vec2 | null>(null);
   const canvas = useSignalRef<HTMLCanvasElement>(null);
   const render = useComputed(() => getContext(canvas.value));
-  const glCtx = usePool(gl);
+  const glCtx = useRednerGL();
   const progInfo = useProgInfo(glCtx, boxVert, boxFrag + '\n' + shader);
 
   useSignalEffect(() => (
-    resizeObserver(ref.value, ({ contentRect: { width, height } }) => {
-      const newSize = vec2(width, height);
-      if (!size.value?.equals(newSize)) size.value = newSize;
-    })
+    dispose(
+      resizeObserver(ref.value, ({ contentRect: { width, height } }) => {
+        const newSize = vec2(width, height);
+        if (!size.value?.equals(newSize)) size.value = newSize;
+      }),
+      intersectionObserver(ref.value, ({ isIntersecting }) => [
+        visible.value = isIntersecting
+      ]),
+    )
   ));
 
   useEffect(() => (
@@ -49,16 +52,13 @@ export const Shader: FC<ShaderProps> = ({ inset, uniforms = {}, shader = baseFra
       const { width, height } = size.value ?? vec2();
       const { value: can } = canvas;
       const { value: ctx } = render;
+      const { value: isVisible } = visible;
       const { gl } = glCtx;
 
-      if (!can || !ctx || !width || !height)
+      if (!can || !ctx || !width || !height || !isVisible)
         return;
 
-      const data = Object.entries(uniforms instanceof Signal ? uniforms.value : uniforms)
-        .reduce((acc, [key, value]) => {
-          acc[key] = value instanceof Signal ? value.value : value;
-          return acc;
-        }, {} as Record<string, any>);
+      const data = deepGetValue(uniforms);
 
       can.width = width;
       can.height = height;

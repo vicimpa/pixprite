@@ -1,8 +1,10 @@
 import { Signal, untracked } from "@preact/signals-react";
 
-export function value<T>(o: T | Signal<T> | (() => T), pick = false): T {
+export type GV<T> = T | Signal<T> | (() => T);
+
+export function getValue<T>(o: GV<T>, pick = false): T {
   if (pick)
-    return untracked(() => value(o));
+    return untracked(() => getValue(o));
 
   if (o instanceof Function)
     return o();
