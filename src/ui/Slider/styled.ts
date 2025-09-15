@@ -31,5 +31,7 @@ export const Point = styled.div<PointProps>`
     inset 0 -1px 0 #000, 
     inset 0 1px 0 #000;
 
-  transform: translateX(var(--x, 0px)) translateY(var(--y, 0px));
+  transform: 
+    translateX(${p => p.$freezeX ? '0px' : 'var(--x, 0px)'}) 
+    translateY(${p => p.$freezeY ? '0px' : 'var(--y, 0px)'});
 `;

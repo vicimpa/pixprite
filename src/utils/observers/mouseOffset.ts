@@ -31,12 +31,13 @@ export function mouseOffset(
   clamp?: boolean,
   normalize?: boolean,
 ) {
+
   return computed(() => {
     if (el instanceof Signal)
       el = el.value;
 
     if (!el)
-      return null;
+      return vec2();
     const rect = el.getBoundingClientRect();
     const size = vec2(rect.width, rect.height);
     const offseetMouse = mouse.value.clone().sub(rect);

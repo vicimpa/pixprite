@@ -1,5 +1,4 @@
-#version 300 es
-precision highp float;
+#include "base.glsl"
 
 out vec2 fragCoord;
 
