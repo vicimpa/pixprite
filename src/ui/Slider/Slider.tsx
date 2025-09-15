@@ -3,7 +3,7 @@ import { prop, reactive, real } from "@vicimpa/decorators";
 import { Vec2, vec2 } from "@vicimpa/glm";
 import { signalRef } from "$utils/signals";
 import { Variables } from "$ui/Variables";
-import { contentSize, mouseOffset } from "$utils/observers";
+import { signalSize, signalMouse } from "$utils/observers";
 import { Reactive } from "$core/Reactive";
 import { batch, effect } from "@preact/signals-react";
 import { useEffect } from "$utils/decorators";
@@ -22,8 +22,8 @@ export type SliderProps = {
 @reactive()
 export class Slider extends Reactive<SliderProps> {
   ref = signalRef<HTMLDivElement>();
-  #mouse = mouseOffset(this.ref, true, true);
-  #size = contentSize(this.ref);
+  #mouse = signalMouse(this.ref, true, true);
+  #size = signalSize(this.ref);
 
   @prop get mouse() { return this.#mouse.value; }
   @prop get size() { return this.#size.value; }

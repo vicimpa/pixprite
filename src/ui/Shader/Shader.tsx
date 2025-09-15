@@ -1,15 +1,14 @@
-import { deepGetValue, getValue, useSignalRef, type DGV } from "$utils/signals";
-import { effect, Signal, useComputed, useSignal, useSignalEffect } from "@preact/signals-react";
+import { deepGetValue, useSignalRef, type DGV } from "$utils/signals";
+import { effect, useComputed } from "@preact/signals-react";
 import * as styled from "./styled";
 import { useEffect, type FC } from "react";
-import { intersectionObserver, resizeObserver } from "@vicimpa/observers";
-import { vec2, Vec2 } from "@vicimpa/glm";
+import { vec2 } from "@vicimpa/glm";
 import { setUniforms } from "twgl.js";
 import boxVert from "./shaders/box.vert";
 import boxFrag from "./shaders/box.frag";
 import baseFrag from "./shaders/base.frag";
 import { useProgInfo, useRednerGL } from "./utils/useProgInfo";
-import { dispose } from "$utils/common";
+import { useSignalSize, useSignalIntersect } from "$utils/observers";
 
 export type ShaderProps = {
   inset?: true;
@@ -28,24 +27,12 @@ const getContext = (can: (HTMLCanvasElement & { [context]?: ImageBitmapRendering
 
 export const Shader: FC<ShaderProps> = ({ inset, uniforms = {}, shader = baseFrag, ...props }) => {
   const ref = useSignalRef<HTMLDivElement>(null);
-  const visible = useSignal(false);
-  const size = useSignal<Vec2 | null>(null);
+  const visible = useSignalIntersect(ref);
+  const size = useSignalSize(ref);
   const canvas = useSignalRef<HTMLCanvasElement>(null);
   const render = useComputed(() => getContext(canvas.value));
   const glCtx = useRednerGL();
   const progInfo = useProgInfo(glCtx, boxVert, boxFrag + '\n' + shader);
-
-  useSignalEffect(() => (
-    dispose(
-      resizeObserver(ref.value, ({ contentRect: { width, height } }) => {
-        const newSize = vec2(width, height);
-        if (!size.value?.equals(newSize)) size.value = newSize;
-      }),
-      intersectionObserver(ref.value, ({ isIntersecting }) => [
-        visible.value = isIntersecting
-      ]),
-    )
-  ));
 
   useEffect(() => (
     effect(() => {

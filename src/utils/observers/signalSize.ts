@@ -1,9 +1,10 @@
-import { getValue } from "$utils/signals";
-import { computed, effect, signal, Signal } from "@preact/signals-react";
+import { getValue, type GV } from "$utils/signals";
+import { computed, effect, signal } from "@preact/signals-react";
 import { vec2 } from "@vicimpa/glm";
 import { resizeObserver } from "@vicimpa/observers";
+import { useMemo } from "react";
 
-export function contentSize(el: HTMLElement | null | Signal<HTMLElement | null>) {
+export function signalSize<T extends HTMLElement>(el: GV<T | null>) {
   var _dispose = () => { };
   const size = signal(vec2(), {
     watched() {
@@ -22,4 +23,8 @@ export function contentSize(el: HTMLElement | null | Signal<HTMLElement | null>)
   });
 
   return computed(() => size.value);
+}
+
+export function useSignalSize<T extends HTMLElement>(el: GV<T | null>) {
+  return useMemo(() => signalSize(el), [el]);
 }
