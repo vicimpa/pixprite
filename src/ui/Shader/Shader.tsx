@@ -7,7 +7,7 @@ import { setUniforms } from "twgl.js";
 import boxVert from "./shaders/box.vert";
 import boxFrag from "./shaders/box.frag";
 import baseFrag from "./shaders/base.frag";
-import { useProgInfo, useRednerGL } from "./utils/useProgInfo";
+import { useProgInfo, useRenderGL } from "./utils/useProgInfo";
 import { useSignalSize, useSignalIntersect } from "$utils/observers";
 
 export type ShaderProps = {
@@ -31,7 +31,7 @@ export const Shader: FC<ShaderProps> = ({ inset, uniforms = {}, shader = baseFra
   const size = useSignalSize(ref);
   const canvas = useSignalRef<HTMLCanvasElement>(null);
   const render = useComputed(() => getContext(canvas.value));
-  const glCtx = useRednerGL();
+  const glCtx = useRenderGL();
   const progInfo = useProgInfo(glCtx, boxVert, boxFrag + '\n' + shader);
 
   useEffect(() => (

@@ -4,7 +4,7 @@ import { createProgramInfo } from "twgl.js";
 import { usePool } from "$utils/common";
 import { glpool } from "./glpool";
 
-export function useRednerGL() {
+export function useRenderGL() {
   return usePool(glpool);
 }
 
