@@ -1,0 +1,38 @@
+{
+  "id": "theme-neon",
+  "name": "Neon Night",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "author": "Pixprite contributors",
+  "description": "Deep teal-black with magenta and lime highlights",
+  "contributes": {
+    "themes": [{
+      "id": "neon",
+      "label": "Neon Night",
+      "vars": {
+        "--fg": "#e4fbf6",
+        "--fg-dim": "#7fa9a3",
+        "--bg": "#0f1d22",
+        "--bg2": "#091317",
+        "--b1": "#03080a",
+        "--b2": "#24474f",
+        "--face": "#16313a",
+        "--face-hot": "#1e4450",
+        "--face-down": "#0c2229",
+        "--hilite": "#2c5c66",
+        "--shade": "#061014",
+        "--accent": "#ff3fb4",
+        "--accent-fg": "#1a0313",
+        "--sel": "#7cf03a",
+        "--sel-fg": "#0b1a03",
+        "--field": "#050d10",
+        "--menu": "#12272e",
+        "--workspace": "#1b3940",
+        "--tooltip": "#c7ffe9",
+        "--tooltip-fg": "#082018",
+        "--danger": "#ff5a3c",
+        "--icon-fill": "#5fd6c4"
+      }
+    }]
+  }
+}

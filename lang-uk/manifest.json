@@ -1,0 +1,19 @@
+{
+  "id": "lang-uk",
+  "name": "Українська",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "author": "Pixprite contributors",
+  "description": "Ukrainian interface translation",
+  "contributes": {
+    "languages": [
+      {
+        "code": "uk",
+        "name": "Українська",
+        "dir": "ltr",
+        "dict": "uk.json",
+        "extensions": { "game-rig": "game-rig.uk.json", "ai-assistant": "ai-assistant.uk.json" }
+      }
+    ]
+  }
+}
