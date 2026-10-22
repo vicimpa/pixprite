@@ -1,0 +1,96 @@
+{
+  "version": 2,
+  "extensions": [
+    {
+      "id": "ai-assistant",
+      "name": "AI assistant",
+      "version": "0.1.0",
+      "description": "Chat with an AI model that can inspect and edit your sprite",
+      "author": "Pixprite contributors",
+      "permissions": [
+        "sprite:read",
+        "sprite:write",
+        "ui:panel",
+        "storage",
+        "network:api.deepseek.com"
+      ],
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@2754633682616ce553da1e6fe855e9548b7828a5/ai-assistant/",
+      "files": {
+        "locales/en.json": "sha256-kGaV3iAXD+07X4pYUgldqOeZEhwJYKLoyC0BQe0EfPM=",
+        "locales/ru.json": "sha256-n5BgQKIpo7f20kRQudsI/edAZdKgrlwY/V5CmcrXPdc=",
+        "manifest.json": "sha256-hlYlId/17LQFkzNflwMb7Mi5kG8XJU2v9z44wjKDqn0=",
+        "src/chat.html": "sha256-dNaveEsM0/nuXUwDnq9PLNnDifUa2jfPv8g7ERPgWo4=",
+        "src/chat.ts": "sha256-T6etN6IMCU2cAd6zn0xoGRBIuduI2RPEgsE4J/fri+M=",
+        "src/tools.ts": "sha256-ZUqhfQ9jVOTTtD1Atzy16JD/3DgCpBIFNlJgM5gKUpc="
+      },
+      "i18n": {
+        "ru": {
+          "name": "ИИ-ассистент",
+          "description": "Чат с ИИ-моделью, которая может смотреть и править ваш спрайт"
+        }
+      }
+    },
+    {
+      "id": "game-rig",
+      "name": "Game rig",
+      "version": "0.5.0",
+      "description": "Map tags to a game character's states and directions, tune movement, transitions, collider and camera, and play it in a preview",
+      "author": "Pixprite contributors",
+      "permissions": [
+        "sprite:read",
+        "sprite:write",
+        "tags:lock",
+        "ui:panel"
+      ],
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@2754633682616ce553da1e6fe855e9548b7828a5/game-rig/",
+      "files": {
+        "locales/en.json": "sha256-lBEdmFMbdbX0gTnQe96X2bk6IgIXssp35uJvjNMfkDQ=",
+        "locales/ru.json": "sha256-tdcVtRzJMZ0sdvfc952839rRb9iJTUmkO/Bj6c3wTkQ=",
+        "manifest.json": "sha256-eiJZSXDrGWnPIz2eLkujHmYAMSpg7UCCQ5sRCXrvtyg=",
+        "src/main.ts": "sha256-hPapzO4m9mdJMiwlDFW/7M3uVIAuaaflVN3i8VPP5lk=",
+        "src/preview.html": "sha256-1P2rWNuHXrnG3DmEdNb+C8mgvl9uzEufJ+auSHZFq3I=",
+        "src/preview.ts": "sha256-ySkIFw6XPFJIWMn+Os6mjHY7Jja0aiSaZNORfJoIFbI=",
+        "src/rig.ts": "sha256-+ar+KrTh5rLX4z/o9uuevHBmmNDGuQWcueZ0D9E3R5Q=",
+        "src/settings.html": "sha256-7gdbRtj7WfIde51f0wkzjtb5BnDo1VtzTd7WKrd3x50=",
+        "src/settings.ts": "sha256-iIzMIH0DCE54H5/uxUIAl7rsopAann2TYnHgQf1nT8c=",
+        "src/zip.ts": "sha256-sPFEG0DpUAUss0mrSWZdkDe7ngzTMaiHUQXIUE1dXZI="
+      },
+      "i18n": {
+        "ru": {
+          "name": "Игровой риг",
+          "description": "Привязка тегов к состояниям и направлениям игрового персонажа, настройка движения, переходов, коллайдера и камеры, проверка в игровом превью"
+        }
+      }
+    },
+    {
+      "id": "lang-uk",
+      "name": "Українська",
+      "version": "1.0.0",
+      "description": "Ukrainian interface translation",
+      "author": "Pixprite contributors",
+      "permissions": [],
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@2754633682616ce553da1e6fe855e9548b7828a5/lang-uk/",
+      "files": {
+        "ai-assistant.uk.json": "sha256-jdmtWU5tfZlxw4FubW0eD1P+B6CPue7eI9cH+pwDA8k=",
+        "game-rig.uk.json": "sha256-2xpYJEe3Jimm+0Ic42ofMrEv7WvP33l45qlqSw+RxiE=",
+        "manifest.json": "sha256-tP2/otqj+bQvIKgIfZAKlAAL/VjBpNPIL5iUwx//qLc=",
+        "uk.json": "sha256-8NMz5J+b5UaW61A0bzddN8Ma8Az28h+ENw7oGPXz//U="
+      },
+      "completeness": {
+        "uk": 100
+      }
+    },
+    {
+      "id": "theme-neon",
+      "name": "Neon Night",
+      "version": "0.1.0",
+      "description": "Deep teal-black with magenta and lime highlights",
+      "author": "Pixprite contributors",
+      "permissions": [],
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@2754633682616ce553da1e6fe855e9548b7828a5/theme-neon/",
+      "files": {
+        "manifest.json": "sha256-HIqKMOBsvYiU7wxpQ/UBNvAVwVhYLmmRMDGtpW8ce2w="
+      }
+    }
+  ]
+}
