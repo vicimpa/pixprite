@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg, #231f2b); color: var(--fg, #ece6f2); font: 12px var(--font, sans-serif); overflow-x: hidden; }
+    body { padding: 6px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    #root { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    details { border: 1px solid var(--b2, #4a4258); background: var(--bg2, #17141d); min-width: 0; }
+    summary { padding: 3px 6px; cursor: pointer; color: var(--accent, #f0b24a); user-select: none; }
+    .body { padding: 4px 6px 6px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    /* Label above, control below when it doesn't fit beside */
+    .row { display: flex; align-items: center; gap: 4px 6px; flex-wrap: wrap; min-height: 20px; }
+    .row > span:first-child { flex: 1 1 8em; min-width: 0; color: var(--fg-dim, #8f87a0); }
+    .row > select, .row > .px-select { flex: 1 1 10em; min-width: 0; }
+    .unit { color: var(--fg-dim, #8f87a0); }
+    input, select, button { font: inherit; color: inherit; background: var(--field, #120f17); border: 1px solid var(--b2, #4a4258); padding: 1px 4px; min-width: 0; height: 20px; }
+    input[type=number] { width: 56px; }
+    input[type=color] { width: 32px; padding: 0; }
+    input[type=checkbox] { margin: 0; width: 13px; height: 13px; padding: 0; flex: 0 0 auto; }
+    button { background: var(--face, #3a3346); cursor: pointer; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    button:hover { background: var(--face-hot, #4a4259); }
+    button.primary { background: var(--accent, #f0b24a); color: var(--accent-fg, #1b1408); border-color: var(--b1, #0c0a10); height: 24px; }
+    .buttons { display: flex; flex-direction: column; gap: 4px; }
+    .buttons > button { width: 100%; }
+    .note { color: var(--fg-dim, #8f87a0); line-height: 1.35; }
+    .sub { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--b2, #4a4258); color: var(--fg-dim, #8f87a0); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+    /* One of several buttons */
+    .seg { display: flex; flex: 1 1 auto; }
+    .seg > button { flex: 1 1 0; border-radius: 0; margin-left: -1px; }
+    .seg > button.on { background: var(--sel, #6a5acd); color: var(--sel-fg, #fff); }
+    /* States: a chip each, with how many directions have a tag */
+    .chips { display: flex; flex-wrap: wrap; gap: 3px; }
+    .chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 4px 0 6px; border: 1px solid var(--b2, #4a4258); background: var(--face, #3a3346); cursor: pointer; user-select: none; }
+    .chip.on { background: var(--sel, #6a5acd); color: var(--sel-fg, #fff); border-color: var(--b1, #0c0a10); }
+    .chip .count { font-size: 10px; opacity: .8; }
+    .chip .count.full { color: var(--accent, #f0b24a); opacity: 1; }
+    .chip.on .count.full { color: inherit; }
+    .chip .count.none { color: var(--danger, #e2574c); opacity: 1; }
+    .chip .x { opacity: .6; padding: 0 2px; }
+    .chip .alt { font-size: 10px; padding: 0 3px; border: 1px solid currentColor; opacity: .8; }
+    .chip .x:hover { opacity: 1; color: var(--danger, #e2574c); }
+    .chips .add { flex: 0 1 auto; width: auto; max-width: 100%; }
+    .px-select { background: var(--face, #3a3346); }
+    .compassWrap, .colliderWrap { display: flex; justify-content: center; padding: 4px 0; }
+    .compass { cursor: pointer; }
+    .collider { cursor: crosshair; image-rendering: pixelated; border: 1px solid var(--b1, #0c0a10); max-width: 100%; }
+    .buttons.two { flex-direction: row; }
+    .buttons.two > button { flex: 1 1 0; width: auto; }
+    input.key { width: 64px; text-align: center; cursor: pointer; caret-color: transparent; }
+    /* Waiting for a key press */
+    #root input.key:focus { outline: none; border-color: var(--accent, #f0b24a); background: var(--sel, #6a5acd); color: var(--sel-fg, #fff); }
+    input[type=checkbox] { border: 1px solid var(--b2, #4a4258); }
+    .sticky { position: sticky; bottom: 0; padding-top: 4px; background: var(--bg, #231f2b); display: flex; }
+    .sticky button { flex: 1; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div class="sticky"><button class="primary" id="play"></button></div>
+  <script type="module" src="./settings.js"></script>
+</body>
+</html>

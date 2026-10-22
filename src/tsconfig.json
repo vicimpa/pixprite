@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../node_modules/.tmp/src.tsbuildinfo",
+    "jsx": "react-jsx",
+    "experimentalDecorators": true,
+    "types": ["vite/client", "vite-plugin-glsl/ext"],
+    "paths": {
+      "~/*": ["./*"],
+      "@pixprite/api": ["../packages/api/src/index.ts"],
+      "@pixprite/api/*": ["../packages/api/src/*"]
+    }
+  },
+  "include": ["."]
+}

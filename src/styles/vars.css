@@ -1,0 +1,6 @@
+/* Layout and type; colors come from the active theme in src/themes */
+:root {
+  --gap: 4px;
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-size: 10px;
+}

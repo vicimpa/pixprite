@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body { margin: 0; height: 100%; background: var(--bg, #231f2b); color: var(--fg, #ece6f2); font: 12px var(--font, sans-serif); }
+    body { display: flex; flex-direction: column; }
+    .bar { display: flex; gap: 8px; align-items: center; padding: 3px 6px; flex-wrap: wrap; border-bottom: 1px solid var(--b2, #4a4258); }
+    .bar label { display: flex; gap: 4px; align-items: center; }
+    .bar .info { margin-left: auto; color: var(--fg-dim, #8f87a0); }
+    button { font: inherit; color: inherit; background: var(--face, #3a3346); border: 1px solid var(--b2, #4a4258); padding: 1px 6px; cursor: pointer; }
+    canvas { flex: 1; min-height: 0; width: 100%; outline: none; display: block; cursor: crosshair; }
+    canvas:focus { box-shadow: inset 0 0 0 1px var(--accent, #f0b24a); }
+    .hint { padding: 3px 6px; color: var(--fg-dim, #8f87a0); border-top: 1px solid var(--b2, #4a4258); }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <label><input type="checkbox" id="collider" checked><span id="colliderLabel"></span></label>
+    <label><input type="checkbox" id="slices"><span id="slicesLabel"></span></label>
+    <button id="reset"></button>
+    <span class="info" id="info"></span>
+  </div>
+  <canvas id="view" tabindex="0"></canvas>
+  <div class="hint" id="hint"></div>
+  <script type="module" src="./preview.js"></script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    html, body { margin: 0; height: 100%; background: var(--bg, #1d1a22); color: var(--fg, #e6e1ee); font: 12px sans-serif; }
+    body { display: flex; flex-direction: column; }
+    button, input, textarea { font: inherit; color: inherit; background: var(--field, #120f17); border: 1px solid var(--b2, #4a4258); }
+    button { background: var(--face, #3a3346); padding: 2px 8px; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: default; }
+    .bar { display: flex; gap: 6px; padding: 4px 6px; align-items: center; }
+    .bar .grow { flex: 1; color: var(--fg-dim, #8f87a0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #log { flex: 1; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+    .msg { white-space: pre-wrap; word-break: break-word; padding: 4px 6px; border-radius: 3px; max-width: 92%; }
+    .user { align-self: flex-end; background: var(--sel, #6a5acd); color: var(--sel-fg, #fff); }
+    .assistant { align-self: flex-start; background: var(--face, #3a3346); }
+    .tool { align-self: flex-start; color: var(--fg-dim, #8f87a0); font-family: monospace; font-size: 11px; }
+    .error { align-self: stretch; color: var(--danger, #e2574c); }
+    .msg img { display: block; image-rendering: pixelated; max-width: 100%; margin-top: 4px; }
+    form.input { display: flex; gap: 4px; padding: 6px; }
+    form.input textarea { flex: 1; resize: none; height: 3.2em; padding: 3px; }
+  </style>
+</head>
+<body>
+  <div class="bar"><span class="grow" id="model"></span><button id="clear"></button><button id="settings"></button></div>
+  <div id="log"></div>
+  <form class="input" id="form"><textarea id="text"></textarea><button id="send" type="submit"></button></form>
+  <script type="module" src="./chat.js"></script>
+</body>
+</html>

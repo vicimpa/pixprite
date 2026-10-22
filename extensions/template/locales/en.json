@@ -1,0 +1,10 @@
+{
+  "cmd.hello": "Say hello",
+  "description": "Starting point for your own extension",
+  "hello": "Hello from {name}! The sprite is {w}×{h}.",
+  "layers.one": "{count} layer",
+  "layers.other": "{count} layers",
+  "name": "Extension template",
+  "noSprite": "No sprite is open",
+  "panel.info": "Sprite info"
+}

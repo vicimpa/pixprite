@@ -1,0 +1,13 @@
+{
+  "id": "ai-assistant",
+  "name": "%name%",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "author": "Pixprite contributors",
+  "description": "%description%",
+  "permissions": ["sprite:read", "sprite:write", "ui:panel", "storage", "network:api.deepseek.com"],
+  "contributes": {
+    "panels": [{ "id": "chat", "label": "%panel.chat%", "dock": "right", "page": "chat.html" }],
+    "locales": "locales/"
+  }
+}

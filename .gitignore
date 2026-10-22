@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Build caches
+*.tsbuildinfo
+.swc
+
+# Extensions are kept as source (extensions/); old builds went here
+public/extensions

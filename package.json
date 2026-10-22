@@ -1,18 +1,40 @@
 {
-  "name": "project",
+  "name": "pixprite",
+  "version": "0.0.1",
+  "description": "Pixel art and animation editor in the browser",
+  "license": "MIT",
+  "author": "vicimpa",
+  "homepage": "https://vicimpa.github.io/pixprite/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vicimpa/pixprite.git"
+  },
+  "keywords": [
+    "pixel-art",
+    "sprite-editor",
+    "animation",
+    "tilemap",
+    "editor"
+  ],
   "private": true,
-  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "i18n:check": "bun scripts/i18n-check.ts",
+    "ext:dev": "bun scripts/build-extensions.ts --dev",
+    "ext:check": "bun scripts/build-extensions.ts"
   },
   "dependencies": {
+    "@fontsource/pixelify-sans": "^5.3.0",
+    "@fontsource/tiny5": "^5.3.0",
     "@preact/signals-react": "^3.3.0",
     "@vicimpa/decorators": "^0.0.11",
+    "@vicimpa/easy-drag": "^0.1.10",
     "@vicimpa/events": "^0.0.13",
-    "@vicimpa/glm": "^0.1.6",
+    "@vicimpa/glm": "^0.1.7",
     "@vicimpa/observers": "^0.0.9",
     "@vicimpa/react-decorators": "^0.1.11",
     "@vicimpa/rsp": "^0.1.8",
@@ -21,16 +43,18 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "styled-components": "^6.1.19",
-    "tailwindcss": "^4.1.13"
+    "sucrase": "^3.35.1",
+    "twgl.js": "^7.0.0"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.13",
+    "@types/bun": "^1.4.3",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react-swc": "^4.0.1",
     "sass-embedded": "^1.92.1",
     "typescript": "~5.8.3",
     "vite": "^7.1.5",
+    "vite-plugin-glsl": "^1.5.1",
     "vite-tsconfig-paths": "^5.1.4"
   }
 }
