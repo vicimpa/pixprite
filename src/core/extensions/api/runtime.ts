@@ -6,6 +6,17 @@ import { commands, commandLabel, runCommand, available, COMMANDS } from "~/core/
 import { state } from "~/core/State";
 import { idb, STORAGE } from "../idb";
 import { addCommand, addValidator, callbackChanged, commandId, keyOf, toolOverlay } from "../Contributions";
+
+/** What a core command asks of an extension that runs it: viewing is free, changing the document needs sprite:write */
+function corePermissions(id: string): string[] {
+  const group = id.slice(0, id.indexOf('.'));
+  if (group === 'view' || group === 'window' || group === 'help') return [];
+  if (group === 'extensions') return ['never'];
+  if (id === 'edit.copy') return ['sprite:read', 'clipboard'];
+  if (id === 'edit.cut' || id === 'edit.paste' || id.startsWith('edit.paste')) return ['sprite:write', 'clipboard'];
+  if (group === 'file') return ['sprite:read'];
+  return ['sprite:write'];
+}
 import { fail, hosts, isObject, type Call, type Handlers } from "./common";
 
 type Kind = 'command' | 'tool' | 'filter' | 'importer' | 'exporter' | 'validator';
@@ -71,6 +82,7 @@ export const runtimeHandlers: Handlers = {
       return target!.invoke('command', full.slice(sep + 1), ...args);
     }
     const cmd = commands.get(full) ?? fail('not-found', `Unknown command ${id}`);
+    for (const need of corePermissions(full)) if (!c.host.can(need)) fail('permission', `${id} needs the "${need}" permission`);
     if (!available(cmd)) fail('invalid', `${id} is not available now`);
     runCommand(full);
   },

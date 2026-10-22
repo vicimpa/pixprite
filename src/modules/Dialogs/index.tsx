@@ -962,6 +962,7 @@ const About: FC<{ close: () => void; }> = ({ close }) => (
     <span style={{ fontSize: 20, color: 'var(--accent)' }}>Pixprite</span>
     <span>{t('dialog.about.aPixelArtAnd')}</span>
     <Muted>{t('dialog.about.fontsPixelifySansAnd')}</Muted>
+    <a href="https://github.com/vicimpa/pixprite" target="_blank" rel="noopener" style={{ color: 'var(--accent)' }}>github.com/vicimpa/pixprite</a>
   </Dialog>
 );
 

@@ -38,9 +38,12 @@ export const Splitter: FC<SplitterProps> = ({ vertical, value, dir, min = 60, ma
         el.dataset.drag = 'false';
         el.removeEventListener('pointermove', move);
         el.removeEventListener('pointerup', up);
+        el.removeEventListener('lostpointercapture', up);
       };
       el.addEventListener('pointermove', move);
       el.addEventListener('pointerup', up);
+      // Capture ends on cancel as well, which pointerup alone misses
+      el.addEventListener('lostpointercapture', up);
     }}
   />
 );

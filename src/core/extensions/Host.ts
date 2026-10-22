@@ -134,9 +134,12 @@ export class ExtensionHost {
     if (!this.manifest.entry) { this.status.value = 'running'; return; }
     try {
       const code = await this.entryCode(this.manifest.entry);
+      // Stopped while compiling: no worker may start for a host that is gone
+      if (this.status.peek() === 'stopped') return;
       await this.spawn(code.modules);
       this.status.value = 'running';
     } catch (e) {
+      if (this.status.peek() === 'stopped') return;
       this.error.value = e instanceof Error ? e.message : String(e);
       this.status.value = 'failed';
       report(this.ext, { level: 'error', message: `failed to start: ${this.error.value}`, stack: e instanceof Error ? e.stack : undefined, source: 'worker' });

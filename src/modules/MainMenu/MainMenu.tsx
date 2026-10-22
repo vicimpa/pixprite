@@ -146,7 +146,7 @@ const MENUS: { label: string; items: () => MenuItems; }[] = [
   },
   { label: 'menu.extensions', items: () => extensionsMenu(true) },
   {
-    label: 'menu.help', items: () => [item('help.shortcuts', t('common.keyboardShortcutsMenu')), '-', item('help.about')]
+    label: 'menu.help', items: () => [item('help.shortcuts', t('common.keyboardShortcutsMenu')), '-', item('help.github'), item('help.about')]
   },
 ];
 
@@ -179,7 +179,7 @@ const HOME_MENUS: { label: string; items: () => MenuItems; }[] = [
     ]
   },
   { label: 'menu.extensions', items: () => extensionsMenu(false) },
-  { label: 'menu.help', items: () => [item('help.shortcuts', t('common.keyboardShortcutsMenu')), '-', item('help.about')] },
+  { label: 'menu.help', items: () => [item('help.shortcuts', t('common.keyboardShortcutsMenu')), '-', item('help.github'), item('help.about')] },
 ];
 
 /** Commands extensions put in a main menu (`menu: 'file'`…) come last in it */

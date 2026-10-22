@@ -406,6 +406,7 @@ const list: Command[] = [
   { id: 'extensions.openInstalled', group: 'menu.extensions', home: true, run: () => void import("~/modules/Extensions").then(m => m.openExtensions('installed')) },
   { id: 'help.shortcuts', group: 'menu.help', keys: ['F1'], run: () => dialogs.shortcuts() },
   { id: 'help.about', group: 'menu.help', run: () => dialogs.about() },
+  { id: 'help.github', group: 'menu.help', run: () => void open('https://github.com/vicimpa/pixprite', '_blank', 'noopener') },
 ];
 
 /** Arrow keys move the selection instead of switching frames/layers when something is selected */

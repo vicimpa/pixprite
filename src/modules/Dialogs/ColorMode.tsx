@@ -18,6 +18,7 @@ const DITHERS: [Dither, string][] = [
   ['bayer4', 'Pattern 4×4'],
   ['bayer8', 'Pattern 8×8'],
   ['diffusion', 'Error diffusion'],
+  ['atkinson', 'Error diffusion, light (Atkinson)'],
 ];
 
 const ColorModeDialog: FC<{ close: () => void; }> = ({ close }) => {
@@ -62,7 +63,7 @@ const ColorModeDialog: FC<{ close: () => void; }> = ({ close }) => {
             {DITHERS.map(([d, l]) => <option key={d} value={d}>{l}</option>)}
           </Select>
         </Row>
-        {dither === 'diffusion' && (
+        {dither !== 'none' && (
           <Row>
             <FieldLabel>{t('common.amount')}</FieldLabel>
             <Range min={0} max={100} value={amount} onChange={e => setAmount(+e.target.value)} />

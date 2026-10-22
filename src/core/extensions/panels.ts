@@ -32,7 +32,7 @@ function read(): Layout {
   try {
     const v = JSON.parse(localStorage.getItem(STORE) ?? '{}');
     const obj = (x: unknown) => x && typeof x === 'object' ? x : {};
-    return { panels: obj(v?.panels) as Layout['panels'], sides: obj(v?.sides) as Layout['sides'], tabs: obj(v?.tabs) as Layout['tabs'] };
+    return { panels: obj(v?.panels) as Layout['panels'], sides: obj(v?.sides) as Layout['sides'], tabs: obj(v?.tabs) as Layout['tabs'], focus: typeof v?.focus === 'string' ? v.focus : undefined };
   } catch { return { panels: {}, sides: {}, tabs: {} }; }
 }
 

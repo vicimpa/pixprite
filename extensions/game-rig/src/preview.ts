@@ -225,7 +225,7 @@ function frameNow(): { frame: number; flip: boolean; } {
 
 function zoomNow() {
   if (!sprite || !rig) return 1;
-  if (rig.camera.zoom > 0) return rig.camera.zoom;
+  if (rig.camera.zoom > 0) return rig.camera.zoom * Math.max(1, Math.round(devicePixelRatio));
   return Math.max(1, Math.floor(Math.min(canvas.width / (sprite.width * 6), canvas.height / (sprite.height * 3.5))));
 }
 
@@ -354,7 +354,8 @@ function tick(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   const r = canvas.getBoundingClientRect();
-  const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+  // The backing store is in device pixels, so the picture stays sharp at any page zoom
+  const w = Math.max(1, Math.round(r.width * devicePixelRatio)), h = Math.max(1, Math.round(r.height * devicePixelRatio));
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   if (sprite && rig) { step(dt); updateCamera(dt); }
   draw();
@@ -396,7 +397,8 @@ canvas.addEventListener('pointerdown', e => {
   canvas.focus();
   if (rig?.movement !== 'rts' || hero.dead) return;
   const r = canvas.getBoundingClientRect(), zoom = zoomNow();
-  hero.target = { x: cam.x + (e.clientX - r.left - canvas.width / 2) / zoom, y: cam.y + (e.clientY - r.top - canvas.height / 2) / zoom };
+  const px = (e.clientX - r.left) * canvas.width / r.width, py = (e.clientY - r.top) * canvas.height / r.height;
+  hero.target = { x: cam.x + (px - canvas.width / 2) / zoom, y: cam.y + (py - canvas.height / 2) / zoom };
 });
 $('reset').addEventListener('click', () => { reset(); canvas.focus(); });
 

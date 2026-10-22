@@ -1080,5 +1080,8 @@
   "tool.text": "Текст",
   "tool.wand": "Волшебная палочка",
   "tool.zoom": "Масштаб",
-  "toolbar.rightClickForMore": "Правый клик — другие инструменты"
+  "toolbar.rightClickForMore": "Правый клик — другие инструменты",
+  "options.more": "Ещё",
+  "options.moreBrushSettings": "Другие настройки кисти: нажим пера, сглаживание, узор, библиотека",
+  "cmd.help.github": "Исходный код на GitHub"
 }

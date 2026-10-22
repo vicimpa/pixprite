@@ -204,6 +204,8 @@ export const Key = styled.span`
   &[data-next=true] { width: 75%; margin-right: -25%; border-right: none; }
   &[data-prev=true][data-next=true] { width: 110%; margin: 0; }
   &[data-linked=true] { background-color: var(--accent); }
+  /* Content inside a folded group: a smaller, dimmer dot */
+  &[data-folded] { width: 34%; height: 34%; opacity: 0.6; }
 `;
 
 export const Empty = styled.span`

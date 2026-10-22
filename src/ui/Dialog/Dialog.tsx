@@ -79,9 +79,10 @@ export const Dialog: FC<DialogProps> = ({
       x: Math.max(0, Math.min(innerWidth - 40, e.clientX - dx)),
       y: Math.max(0, Math.min(innerHeight - 20, e.clientY - dy)),
     });
-    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
+    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up); };
     addEventListener('pointermove', move);
     addEventListener('pointerup', up);
+    addEventListener('pointercancel', up);
   };
 
   return (

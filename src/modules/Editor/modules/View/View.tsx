@@ -613,7 +613,9 @@ export const View: FC = () => {
     const now = performance.now(), time = now;
     const dt = Math.min(100, now - (lastFrame.current || now));
     lastFrame.current = now;
-    const { width, height } = can;
+    // Drawing is in CSS pixels; the backing store is in device pixels
+    const k = can.width / Math.max(1, parseFloat(can.style.width) || can.width);
+    const width = can.width / k, height = can.height / k;
     // Viewport size first: the offsets below are derived from it (camera is centered)
     state.viewW = width;
     state.viewH = height;
@@ -654,11 +656,12 @@ export const View: FC = () => {
     if (s?.tick && pressed.current !== null) s.tick();
     if (s?.info !== undefined && state.hint !== s.info) state.hint = s.info;
 
+    ctx.setTransform(k, 0, 0, k, 0, 0);
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = cssVar('--workspace') || '#444';
     ctx.fillRect(0, 0, width, height);
     // Flipped view: the whole picture is drawn mirrored, pointer input is mirrored to match
-    ctx.setTransform(state.flipView ? -1 : 1, 0, 0, 1, state.flipView ? width : 0, 0);
+    ctx.setTransform(state.flipView ? -k : k, 0, 0, k, state.flipView ? width * k : 0, 0);
 
     // Brush preview: the current layer with one real dab at the cursor
     const tool = state.activeTool;
@@ -1047,7 +1050,7 @@ export const View: FC = () => {
       ctx.restore();
     }
 
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.setTransform(k, 0, 0, k, 0, 0);
     if (state.showRulers) drawRulers(ctx, width, height, ox, oy, zoom, state.flipView, lp && !pan.current ? lp : null);
 
     // Cursor kind follows what is under the mouse
@@ -1065,6 +1068,7 @@ export const View: FC = () => {
   return (
     <Canvas
       inset
+      hidpi
       loop={loop}
       style={{ touchAction: 'none' }}
       onPointerDown={onPointerDown}
