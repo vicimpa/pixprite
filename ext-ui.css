@@ -1,0 +1,125 @@
+/*
+ * Pixprite UI kit for extension panels and widgets (sandboxed iframes).
+ * The editor injects the current theme as css variables (--fg, --bg, --face, --accent…) before
+ * this file, so these rules follow the theme. Use plain elements or the .px-* classes.
+ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font: var(--font-size, 10px)/1.35 var(--font, system-ui, sans-serif);
+  -webkit-font-smoothing: none;
+}
+
+body { padding: 4px; overflow: auto; }
+
+a { color: var(--accent); }
+hr { border: none; border-top: 1px solid var(--b2); margin: 6px 0; }
+small, .px-dim { color: var(--fg-dim); }
+
+/* Buttons */
+button, .px-button {
+  height: var(--row, 20px);
+  padding: 0 .6em 1px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--face);
+  border: 1px solid var(--b1);
+  box-shadow: inset 1px 1px 0 var(--hilite), inset -1px -1px 0 var(--shade);
+  cursor: pointer;
+  /* One line, like the editor's buttons: a caption that doesn't fit is cut with an ellipsis */
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+button:hover:not(:disabled) { background: var(--face-hot); }
+button:active:not(:disabled) { background: var(--face-down); box-shadow: inset 1px 1px 0 var(--shade); }
+button:disabled { color: var(--fg-dim); cursor: default; }
+button:focus-visible { outline: 1px solid var(--accent); }
+.px-primary { background: var(--accent); color: var(--accent-fg); }
+.px-active { background: var(--sel); color: var(--sel-fg); }
+
+/* Fields */
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), select, textarea {
+  height: var(--row, 20px);
+  padding: 0 4px;
+  font: inherit;
+  color: var(--fg);
+  background: var(--field);
+  border: 1px solid var(--b1);
+  box-shadow: inset 1px 1px 0 var(--shade);
+}
+textarea { height: auto; padding: 4px; resize: vertical; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+
+input[type=checkbox] {
+  appearance: none;
+  width: calc(var(--font-size, 10px) + 2px);
+  height: calc(var(--font-size, 10px) + 2px);
+  margin: 0;
+  background: var(--field);
+  border: 1px solid var(--b1);
+  box-shadow: inset 1px 1px 0 var(--shade);
+  vertical-align: middle;
+  cursor: pointer;
+}
+input[type=checkbox]:checked { background: linear-gradient(var(--accent), var(--accent)) center / 6px 6px no-repeat, var(--field); }
+
+input[type=range] { accent-color: var(--accent); }
+
+label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+
+/* Layout helpers */
+.px-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.px-col { display: flex; flex-direction: column; gap: 6px; }
+.px-grow { flex: 1 1 auto; min-width: 0; }
+.px-section { color: var(--accent); border-bottom: 1px solid var(--b2); padding-bottom: 2px; margin: 4px 0; }
+
+.px-list { border: 1px solid var(--b1); background: var(--field); overflow: auto; }
+.px-list > * { padding: 3px 6px; }
+.px-list > * + * { border-top: 1px solid var(--b2); }
+.px-list > [aria-selected=true] { background: var(--sel); color: var(--sel-fg); }
+
+.px-error { color: var(--danger); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--face); border: 1px solid var(--b1); }
+::-webkit-scrollbar-track { background: var(--bg2, var(--bg)); }
+
+/* Select lists (ext-ui.js puts them in place of <select>) */
+.px-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 4px 0 6px;
+  text-align: left;
+}
+.px-select > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.px-select > svg { flex-shrink: 0; }
+.px-select[aria-expanded=true] { background: var(--face-down); }
+.px-select-list {
+  position: fixed;
+  z-index: 1000;
+  overflow-y: auto;
+  padding: 2px;
+  background: var(--menu);
+  border: 1px solid var(--b1);
+  box-shadow: inset 1px 1px 0 var(--hilite), 3px 3px 0 var(--shadow);
+}
+.px-select-item {
+  display: flex;
+  align-items: center;
+  min-height: var(--row, 20px);
+  padding: 0 8px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.px-select-item[data-active=true] { background: var(--sel); color: var(--sel-fg); }
+.px-select-item[data-selected=true] { font-weight: 600; }
+.px-select-item[data-disabled=true] { color: var(--fg-dim); cursor: default; }
