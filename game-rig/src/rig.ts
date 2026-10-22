@@ -327,7 +327,7 @@ export function nearestDir(rig: Rig, d: Compass): Dir {
 
 /** States to try when one has no tag, most specific first */
 function stateFallbacks(id: string): string[] {
-  const chain: Record<string, string[]> = { run: ['walk'], fall: ['jump'], land: ['idle'] };
+  const chain: Record<string, string[]> = { run: ['walk'], walk: ['run'], fall: ['jump'], land: ['idle'] };
   return [id, ...(chain[id] ?? []), 'idle'];
 }
 
