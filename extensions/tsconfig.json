@@ -1,0 +1,11 @@
+{
+  "//": "Shared by the extensions: each folder's tsconfig.json extends it. The editor compiles them itself (types are only checked here).",
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@pixprite/api": ["../packages/api/src/index.ts"],
+      "@pixprite/api/*": ["../packages/api/src/*"]
+    }
+  },
+  "files": []
+}

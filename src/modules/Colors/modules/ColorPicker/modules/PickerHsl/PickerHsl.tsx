@@ -1,12 +1,12 @@
-import { Color } from "$core/Color";
-import { Flex } from "$ui/Flex";
-import { Grid } from "$ui/Grid";
-import { Panel } from "$ui/Panel";
-import { Slider } from "$ui/Slider";
-import { signalRef } from "$utils/signals";
-import { Gradient } from "$ui/Gradient/Gradient";
+import { Color } from "~/core/Color";
+import { Flex } from "~/ui/Flex";
+import { Grid } from "~/ui/Grid";
+import { Panel } from "~/ui/Panel";
+import { Slider } from "~/ui/Slider";
+import { signalRef } from "~/utils/signals";
+import { Gradient } from "~/ui/Gradient/Gradient";
 import { prop, reactive, real } from "@vicimpa/decorators";
-import { Reactive } from "$core/Reactive";
+import { Reactive } from "~/core/Reactive";
 import { vec2 } from "@vicimpa/glm";
 import { untracked } from "@preact/signals-react";
 
@@ -90,7 +90,6 @@ export class PickerHsl extends Reactive<PickerHslProps> {
       <>
         <Flex $grow>
           <Panel>
-            {/* HL Slider */}
             <Gradient inset hsl gradient={real(this, 'hlGradient')} />
             <Slider ref={this.hlRef} flipY onChange={({ x, y }, alt) => {
               const [, s, , a] = this.color.hsla;
@@ -101,7 +100,6 @@ export class PickerHsl extends Reactive<PickerHslProps> {
         </Flex>
         <Flex $basis={32} $shrink={0}>
           <Panel>
-            {/* Sat Slider */}
             <Gradient inset hsl gradient={real(this, 'satGradient')} />
             <Slider ref={this.satRef} freezeY onChange={({ x }, alt) => {
               const [h, , l, a] = this.color.hsla;
@@ -112,7 +110,6 @@ export class PickerHsl extends Reactive<PickerHslProps> {
         </Flex>
         <Flex $basis={32} $shrink={0}>
           <Panel>
-            {/* Alpha Slider */}
             <Grid inset />
             <Gradient inset hsl gradient={real(this, 'alphaGradient')} />
             <Slider ref={this.alphaRef} freezeY onChange={({ x }, alt) => {

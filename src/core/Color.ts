@@ -1,5 +1,5 @@
-import { rgbToHsv, hsvToRgb, rgbToHsl, hsvToHsl, hslToHsv } from "$utils/color";
-import { clampFloat, clampByte, byteToHex, floatToHex, toFixed } from "$utils/math";
+import { rgbToHsv, hsvToRgb, rgbToHsl, hsvToHsl, hslToHsv } from "~/utils/color";
+import { clampFloat, clampByte, byteToHex, floatToHex, toFixed } from "~/utils/math";
 
 const hexre = /^([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})$/i;
 

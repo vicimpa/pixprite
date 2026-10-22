@@ -1,13 +1,13 @@
 import * as styled from "./styled";
 import { prop, reactive, real } from "@vicimpa/decorators";
 import { Vec2, vec2 } from "@vicimpa/glm";
-import { signalRef } from "$utils/signals";
-import { Variables } from "$ui/Variables";
-import { signalSize, signalMouse } from "$utils/observers";
-import { Reactive } from "$core/Reactive";
+import { signalRef } from "~/utils/signals";
+import { Variables } from "~/ui/Variables";
+import { signalSize, signalMouse } from "~/utils/observers";
+import { Reactive } from "~/core/Reactive";
 import { batch, effect } from "@preact/signals-react";
-import { useEffect } from "$utils/decorators";
-import { dispose } from "$utils/common";
+import { useEffect } from "~/utils/decorators";
+import { dispose } from "~/utils/common";
 import { windowEvents } from "@vicimpa/events";
 
 export type SliderProps = {
@@ -64,6 +64,31 @@ export class Slider extends Reactive<SliderProps> {
         this.alt = false;
       })
     );
+  }
+
+  /** The wheel nudges the value along the slider's free axis (Shift: bigger steps) */
+  @useEffect()
+  wheel() {
+    return effect(() => {
+      const el = this.ref.value;
+      if (!el) return;
+      const onWheel = (e: WheelEvent) => {
+        e.preventDefault();
+        const dir = (e.deltaY || e.deltaX) > 0 ? -1 : 1;
+        const k = dir * (e.shiftKey ? 0.1 : 0.01);
+        const clamp = (v: number) => Math.max(0, Math.min(1, v));
+        // Horizontal strips move in x; vertical strips and 2D fields move in y (fields use x with Alt)
+        const alongX = this.props.freezeY || (!this.props.freezeX && e.altKey);
+        const pos = vec2(alongX ? clamp(this.x + k) : this.x, alongX ? this.y : clamp(this.y + k));
+        batch(() => {
+          this.x = pos.x;
+          this.y = pos.y;
+          this.props.onChange?.(pos, false);
+        });
+      };
+      el.addEventListener('wheel', onWheel, { passive: false });
+      return () => el.removeEventListener('wheel', onWheel);
+    });
   }
 
   render() {

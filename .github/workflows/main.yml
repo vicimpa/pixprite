@@ -1,8 +1,23 @@
 name: CI
 
+# Builds and deploys the editor. Changes that can't affect it don't start a build:
+# extensions are published by extensions.yml, docs and texts are not part of the build
 on:
   push:
     branches: [ main ]
+    paths-ignore: &unrelated
+      - 'extensions/**'
+      - 'docs/**'
+      - '**/*.md'
+      - 'LICENSE'
+      - '.github/workflows/extensions.yml'
+      - 'scripts/build-extensions.ts'
+      - 'scripts/extensions.ts'
+      - 'scripts/check-versions.ts'
+      - '.vscode/**'
+      - '.gitignore'
+  pull_request:
+    paths-ignore: *unrelated
 
 jobs:
   build:
@@ -23,6 +38,7 @@ jobs:
           bun run build
           
       - name: Deploy
+        if: github.event_name == 'push'
         uses: crazy-max/ghaction-github-pages@v4
         with:
           target_branch: gh-pages 

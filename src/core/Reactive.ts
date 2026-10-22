@@ -1,6 +1,6 @@
 import { Component } from "react";
 import { signal, Signal } from "@preact/signals-react";
-import { entries } from "$utils/object";
+import { entries } from "~/utils/object";
 
 export type ReactiveProps<T> = {
   readonly [K in keyof T]: T[K]

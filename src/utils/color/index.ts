@@ -1,4 +1,4 @@
-import { clampByte } from "$utils/math";
+import { clampByte } from "~/utils/math";
 
 export function rgbToHsv(r: number, g: number, b: number) {
   r /= 255; g /= 255; b /= 255;

@@ -1,0 +1,87 @@
+name: Extensions
+
+# The editor's build has no extensions: they are published on their own, to the orphan branch
+# `extensions` (the public catalog, read through jsDelivr). Only `"public": false` ones stay out.
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'extensions/**'
+      - 'scripts/extensions.ts'
+      - 'scripts/build-extensions.ts'
+      - 'src/core/extensions/manifest.ts'
+      - '.github/workflows/extensions.yml'
+  pull_request:
+    paths:
+      - 'extensions/**'
+      - 'scripts/extensions.ts'
+      - 'scripts/build-extensions.ts'
+      - 'src/core/extensions/manifest.ts'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+
+      # Manifests, sources, locales and %key% references
+      - name: Check
+        run: bun scripts/build-extensions.ts
+
+      # A changed public extension needs a new version, or installed copies never update
+      - name: Versions
+        if: github.event_name == 'pull_request'
+        run: bun scripts/check-versions.ts origin/${{ github.base_ref }}
+
+  publish:
+    needs: check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: extensions-branch
+      cancel-in-progress: false
+    env:
+      CDN: https://cdn.jsdelivr.net/gh/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Open the extensions branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin extensions >/dev/null; then
+            git fetch origin extensions
+            git worktree add -B extensions pub origin/extensions
+          else
+            git worktree add --orphan -b extensions pub
+          fi
+          # The branch is the catalog and nothing else: start from empty
+          find pub -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+
+      # Two commits: the sources first, then registry.json with package paths pinned to that commit,
+      # so a cached manifest never meets newer sources (pinned files are cached forever)
+      - name: Publish
+        run: |
+          bun scripts/build-extensions.ts --out pub
+          # Sources only in this commit: the catalog keeps pointing at the last commit that changed them
+          git -C pub checkout HEAD -- registry.json 2>/dev/null || rm -f pub/registry.json
+          git -C pub add -A
+          git -C pub diff --cached --quiet || git -C pub commit -m "Extensions from ${GITHUB_SHA::7}"
+          SOURCES=$(git -C pub log -1 --format=%H -- . ':(exclude)registry.json')
+          bun scripts/build-extensions.ts --out pub --base "$CDN@$SOURCES/"
+          git -C pub add -A
+          git -C pub diff --cached --quiet || git -C pub commit -m "Catalog for ${SOURCES::7}"
+          git -C pub push origin extensions
+
+      # The branch url is cached by jsDelivr for hours; the pinned package paths need nothing
+      - name: Refresh the CDN
+        run: curl -fsS "https://purge.jsdelivr.net/gh/${{ github.repository }}@extensions/registry.json" || true

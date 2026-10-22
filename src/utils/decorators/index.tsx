@@ -1,4 +1,4 @@
-import type { Dispose } from "$utils/common";
+import type { Dispose } from "~/utils/common";
 import { type FC, useEffect as useReactEffect, Component, type PropsWithChildren, useState } from "react";
 
 type EffectProps = {

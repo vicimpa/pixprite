@@ -1,3 +1,6 @@
+@import url(@fontsource/tiny5/400.css);
+@import url(@fontsource/pixelify-sans/400.css);
+
 html,
 body {
   width: 100vw;
@@ -5,12 +8,22 @@ body {
   background-color: var(--bg);
   color: var(--fg);
   overflow: hidden;
+  /* A sideways two-finger swipe pans the canvas instead of going back / forward in history (macOS trackpads) */
+  overscroll-behavior: none;
 }
 
 body {
   display: flex;
   flex-direction: column;
-  font-family: monospace;
+  font-family: var(--font);
+  font-size: var(--font-size);
+  line-height: 1.2;
+}
+
+/* Bitmap-style font: keep its pixels sharp */
+:root[data-font="tiny5"] body {
+  -webkit-font-smoothing: none;
+  font-smooth: never;
 }
 
 * {
@@ -22,15 +35,54 @@ body {
   image-rendering: pixelated;
 }
 
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  outline: none;
+}
+
 body {
   position: relative;
 }
 
 #root {
   position: absolute;
-  inset: var(--gap);
+  inset: 0;
 }
 
 .contents {
   display: contents;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: var(--shade);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--face);
+  border: 1px solid var(--b1);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--shade);
+}
+
+.app-tooltip {
+  position: fixed;
+  z-index: 2000;
+  display: none;
+  max-width: 320px;
+  padding: 3px 7px;
+  color: var(--tooltip-fg);
+  background: var(--tooltip);
+  border: 1px solid var(--b1);
+  box-shadow: 2px 2px 0 var(--shadow);
+  font: inherit;
+  white-space: pre-line;
+  pointer-events: none;
 }

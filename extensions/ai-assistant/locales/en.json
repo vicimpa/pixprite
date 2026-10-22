@@ -1,0 +1,19 @@
+{
+  "clear": "Clear",
+  "description": "Chat with an AI model that can inspect and edit your sprite",
+  "error.empty": "The model sent an empty answer",
+  "error.http": "Request failed ({status}): {body}",
+  "error.rounds": "Stopped after {count} tool rounds",
+  "form.endpoint": "API endpoint (OpenAI-compatible)",
+  "form.key": "API key",
+  "form.model": "Model",
+  "name": "AI assistant",
+  "noKey": "No API key: open the settings",
+  "panel.chat": "AI assistant",
+  "placeholder": "Ask about the sprite or tell what to change…",
+  "rendered": "Rendered frame",
+  "send": "Send",
+  "settings": "Settings",
+  "system": "You are an assistant inside Pixprite, a pixel-art editor. Use the tools to look at and change the active sprite. Layer and frame numbers are 0-based indices. Read before you write, keep edits small and say briefly what you did. Answer in the user's language ({lang}).",
+  "thinking": "Thinking…"
+}

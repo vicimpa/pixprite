@@ -1,4 +1,4 @@
-import { getValue, type GV } from "$utils/signals";
+import { getValue, type GV } from "~/utils/signals";
 import { computed, effect, signal } from "@preact/signals-react";
 import { intersectionObserver } from "@vicimpa/observers";
 import { useMemo } from "react";

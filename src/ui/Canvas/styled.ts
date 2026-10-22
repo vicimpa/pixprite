@@ -13,5 +13,6 @@ export const Container = styled.div<{ $inset?: true; }>`
 
 export const Canvas = styled.canvas`
   position: absolute;
-  inset: 0;
+  left: 0;
+  top: 0;
 `;

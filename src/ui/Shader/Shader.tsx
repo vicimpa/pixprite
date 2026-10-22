@@ -1,4 +1,4 @@
-import { deepGetValue, useSignalRef, type DGV } from "$utils/signals";
+import { deepGetValue, useSignalRef, type DGV } from "~/utils/signals";
 import { effect, useComputed } from "@preact/signals-react";
 import * as styled from "./styled";
 import { useEffect, type FC } from "react";
@@ -8,7 +8,7 @@ import boxVert from "./shaders/box.vert";
 import boxFrag from "./shaders/box.frag";
 import baseFrag from "./shaders/base.frag";
 import { useProgInfo, useRednerGL } from "./utils/useProgInfo";
-import { useSignalSize, useSignalIntersect } from "$utils/observers";
+import { useSignalSize, useSignalIntersect } from "~/utils/observers";
 
 export type ShaderProps = {
   inset?: true;

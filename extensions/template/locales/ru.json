@@ -1,0 +1,12 @@
+{
+  "cmd.hello": "Поздороваться",
+  "description": "Заготовка для своего расширения",
+  "hello": "Привет от {name}! Спрайт {w}×{h}.",
+  "layers.few": "{count} слоя",
+  "layers.many": "{count} слоёв",
+  "layers.one": "{count} слой",
+  "layers.other": "{count} слоя",
+  "name": "Шаблон расширения",
+  "noSprite": "Спрайт не открыт",
+  "panel.info": "О спрайте"
+}

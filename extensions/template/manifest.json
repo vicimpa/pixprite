@@ -1,0 +1,32 @@
+{
+  "id": "template",
+  "name": "%name%",
+  "version": "0.1.0",
+  "public": false,
+  "apiVersion": 1,
+  "author": "Your name",
+  "description": "%description%",
+  "entry": "main.js",
+  "permissions": [
+    "sprite:read",
+    "ui:panel"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "id": "hello",
+        "label": "%cmd.hello%",
+        "menu": "help"
+      }
+    ],
+    "panels": [
+      {
+        "id": "info",
+        "label": "%panel.info%",
+        "dock": "right",
+        "page": "panel.html"
+      }
+    ],
+    "locales": "locales/"
+  }
+}

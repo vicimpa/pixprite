@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
-import type { RenderGL } from "$utils/render";
+import type { RenderGL } from "~/utils/render";
 import { createProgramInfo } from "twgl.js";
-import { usePool } from "$utils/common";
+import { usePool } from "~/utils/common";
 import { glpool } from "./glpool";
 
 export function useRednerGL() {

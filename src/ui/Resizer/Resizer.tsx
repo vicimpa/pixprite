@@ -1,11 +1,11 @@
 import { Component } from "react";
 import { reactive, prop } from "@vicimpa/decorators";
-import { signalRef, style } from "$utils/signals";
+import { signalRef, style } from "~/utils/signals";
 import * as styled from "./styled";
 import { computed } from "@preact/signals-react";
 import { makeDrag } from "@vicimpa/easy-drag";
-import { clamp } from "$utils/math";
-import { Reactive } from "$core/Reactive";
+import { clamp } from "~/utils/math";
+import { Reactive } from "~/core/Reactive";
 
 export type ResizerProps = {
   start?: true;

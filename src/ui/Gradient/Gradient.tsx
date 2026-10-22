@@ -1,4 +1,4 @@
-import { Shader, type ShaderProps } from "$ui/Shader";
+import { Shader, type ShaderProps } from "~/ui/Shader";
 import { Signal, useComputed } from "@preact/signals-react";
 import type { FC } from "react";
 import hslFrag from "./shader/hsl.frag";

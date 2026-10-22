@@ -1,7 +1,7 @@
 import { computed, Signal, signal } from "@preact/signals-react";
 import { vec2 } from "@vicimpa/glm";
 import { signalSize } from "./signalSize";
-import { getValue, type GV } from "$utils/signals";
+import { getValue, type GV } from "~/utils/signals";
 import { useMemo } from "react";
 import { signalPos } from "./signalPos";
 

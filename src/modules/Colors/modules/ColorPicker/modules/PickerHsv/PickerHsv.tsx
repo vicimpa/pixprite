@@ -1,12 +1,12 @@
-import { Color } from "$core/Color";
-import { Flex } from "$ui/Flex";
-import { Grid } from "$ui/Grid";
-import { Panel } from "$ui/Panel";
-import { Slider } from "$ui/Slider";
-import { signalRef } from "$utils/signals";
-import { Gradient } from "$ui/Gradient/Gradient";
+import { Color } from "~/core/Color";
+import { Flex } from "~/ui/Flex";
+import { Grid } from "~/ui/Grid";
+import { Panel } from "~/ui/Panel";
+import { Slider } from "~/ui/Slider";
+import { signalRef } from "~/utils/signals";
+import { Gradient } from "~/ui/Gradient/Gradient";
 import { prop, reactive, real } from "@vicimpa/decorators";
-import { Reactive } from "$core/Reactive";
+import { Reactive } from "~/core/Reactive";
 import { vec2 } from "@vicimpa/glm";
 import { untracked } from "@preact/signals-react";
 
@@ -90,7 +90,6 @@ export class PickerHsv extends Reactive<PickerHsvProps> {
       <>
         <Flex $grow>
           <Panel>
-            {/* SV Slider */}
             <Gradient
               inset
               gradient={real(this, 'svGradient')} />
@@ -106,7 +105,6 @@ export class PickerHsv extends Reactive<PickerHsvProps> {
         </Flex>
         <Flex $basis={32} $shrink={0}>
           <Panel>
-            {/* Hue Slider */}
             <Gradient
               inset
               gradient={real(this, 'hueGradient')} />
@@ -122,7 +120,6 @@ export class PickerHsv extends Reactive<PickerHsvProps> {
         </Flex>
         <Flex $basis={32} $shrink={0}>
           <Panel>
-            {/* Alpha Slider */}
             <Grid inset />
             <Gradient
               inset

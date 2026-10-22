@@ -1,0 +1,7 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../../node_modules/.tmp/ext-game-rig.tsbuildinfo"
+  },
+  "include": ["src"]
+}

@@ -3,14 +3,14 @@ import styled from "styled-components";
 export const Panel = styled.div`
   position: absolute;
   inset: 0px;
-  background-color: #000;
-  border: 2px solid var(--b1);
-  box-shadow: inset 0 0 4px #000;
+  background-color: var(--bg2);
+  border: 1px solid var(--b1);
+  box-shadow: inset 1px 1px 0 var(--shade);
 `;
 
 export const PanelContent = styled.div`
   position: absolute;
-  inset: 2px;
+  inset: 1px;
   border: none;
   background-color: var(--bg2);
 `;

@@ -1,5 +1,5 @@
-import { looper } from "$utils/common";
-import { getValue, type GV } from "$utils/signals";
+import { looper } from "~/utils/common";
+import { getValue, type GV } from "~/utils/signals";
 import { computed, effect, signal } from "@preact/signals-react";
 import { vec2 } from "@vicimpa/glm";
 import { useMemo } from "react";

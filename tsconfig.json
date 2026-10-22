@@ -1,34 +1,12 @@
 {
-  "compilerOptions": {
-    "tsBuildInfoFile": null,
-    "target": "esnext",
-    "useDefineForClassFields": true,
-    "lib": [
-      "esnext",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "moduleDetection": "force",
-    "noEmit": true,
-    "jsx": "react-jsx",
-    "strict": true,
-    "experimentalDecorators": true,
-    "types": [
-      "vite/client",
-      "vite-plugin-glsl/ext"
-    ],
-    "paths": {
-      "$*": [
-        "./src/*"
-      ]
-    }
-  },
-  "include": [
-    "src"
+  "//": "Each part has its own tsconfig.json (shared options in tsconfig.base.json); tsc -b checks them all",
+  "files": [],
+  "references": [
+    { "path": "./src" },
+    { "path": "./packages/api" },
+    { "path": "./scripts" },
+    { "path": "./extensions/ai-assistant" },
+    { "path": "./extensions/game-rig" },
+    { "path": "./extensions/template" }
   ]
 }

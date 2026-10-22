@@ -1,6 +1,6 @@
-import { Canvas, type CanvasProps } from "$ui/Canvas";
+import { Canvas, type CanvasProps } from "~/ui/Canvas";
 import { useMemo, type FC, type JSX } from "react";
-import { Grid as GridPattern } from "$core/Grid";
+import { Grid as GridPattern } from "~/core/Grid";
 
 export type GridProps = {
   size?: number;

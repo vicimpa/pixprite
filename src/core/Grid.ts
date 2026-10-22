@@ -1,4 +1,4 @@
-import { Render2D } from "$utils/render";
+import { Render2D } from "~/utils/render";
 import { prop, reactive } from "@vicimpa/decorators";
 
 @reactive()
