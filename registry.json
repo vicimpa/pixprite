@@ -14,7 +14,7 @@
         "storage",
         "network:api.deepseek.com"
       ],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@2754633682616ce553da1e6fe855e9548b7828a5/ai-assistant/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@ae176533ed3c19ac8a49d1edcae8a2764fe86b3c/ai-assistant/",
       "files": {
         "locales/en.json": "sha256-kGaV3iAXD+07X4pYUgldqOeZEhwJYKLoyC0BQe0EfPM=",
         "locales/ru.json": "sha256-n5BgQKIpo7f20kRQudsI/edAZdKgrlwY/V5CmcrXPdc=",
@@ -33,7 +33,7 @@
     {
       "id": "game-rig",
       "name": "Game rig",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "description": "Map tags to a game character's states and directions, tune movement, transitions, collider and camera, and play it in a preview",
       "author": "Pixprite contributors",
       "permissions": [
@@ -42,17 +42,17 @@
         "tags:lock",
         "ui:panel"
       ],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@2754633682616ce553da1e6fe855e9548b7828a5/game-rig/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@ae176533ed3c19ac8a49d1edcae8a2764fe86b3c/game-rig/",
       "files": {
         "locales/en.json": "sha256-lBEdmFMbdbX0gTnQe96X2bk6IgIXssp35uJvjNMfkDQ=",
         "locales/ru.json": "sha256-tdcVtRzJMZ0sdvfc952839rRb9iJTUmkO/Bj6c3wTkQ=",
-        "manifest.json": "sha256-eiJZSXDrGWnPIz2eLkujHmYAMSpg7UCCQ5sRCXrvtyg=",
+        "manifest.json": "sha256-BVijokQTSBLdoFPUiJb41TTPlEZULoqxAURHjgYS9eI=",
         "src/main.ts": "sha256-hPapzO4m9mdJMiwlDFW/7M3uVIAuaaflVN3i8VPP5lk=",
         "src/preview.html": "sha256-1P2rWNuHXrnG3DmEdNb+C8mgvl9uzEufJ+auSHZFq3I=",
-        "src/preview.ts": "sha256-ySkIFw6XPFJIWMn+Os6mjHY7Jja0aiSaZNORfJoIFbI=",
-        "src/rig.ts": "sha256-+ar+KrTh5rLX4z/o9uuevHBmmNDGuQWcueZ0D9E3R5Q=",
+        "src/preview.ts": "sha256-IKaxRz3GfSOQK+JB7kBKTceDucuvlUR/azi5lCqva/E=",
+        "src/rig.ts": "sha256-FcXeh9Wrox9vlqrGqkY5UDuge6kX82j6eZ6mOYWcUjY=",
         "src/settings.html": "sha256-7gdbRtj7WfIde51f0wkzjtb5BnDo1VtzTd7WKrd3x50=",
-        "src/settings.ts": "sha256-iIzMIH0DCE54H5/uxUIAl7rsopAann2TYnHgQf1nT8c=",
+        "src/settings.ts": "sha256-kM79006k6xpHcl2KF130QGSZ5wnpNM5uMv1MWJ5l/f0=",
         "src/zip.ts": "sha256-sPFEG0DpUAUss0mrSWZdkDe7ngzTMaiHUQXIUE1dXZI="
       },
       "i18n": {
@@ -69,7 +69,7 @@
       "description": "Ukrainian interface translation",
       "author": "Pixprite contributors",
       "permissions": [],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@2754633682616ce553da1e6fe855e9548b7828a5/lang-uk/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@ae176533ed3c19ac8a49d1edcae8a2764fe86b3c/lang-uk/",
       "files": {
         "ai-assistant.uk.json": "sha256-jdmtWU5tfZlxw4FubW0eD1P+B6CPue7eI9cH+pwDA8k=",
         "game-rig.uk.json": "sha256-2xpYJEe3Jimm+0Ic42ofMrEv7WvP33l45qlqSw+RxiE=",
@@ -77,7 +77,7 @@
         "uk.json": "sha256-8NMz5J+b5UaW61A0bzddN8Ma8Az28h+ENw7oGPXz//U="
       },
       "completeness": {
-        "uk": 100
+        "uk": 99.7
       }
     },
     {
@@ -87,7 +87,7 @@
       "description": "Deep teal-black with magenta and lime highlights",
       "author": "Pixprite contributors",
       "permissions": [],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@2754633682616ce553da1e6fe855e9548b7828a5/theme-neon/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@ae176533ed3c19ac8a49d1edcae8a2764fe86b3c/theme-neon/",
       "files": {
         "manifest.json": "sha256-HIqKMOBsvYiU7wxpQ/UBNvAVwVhYLmmRMDGtpW8ce2w="
       }
