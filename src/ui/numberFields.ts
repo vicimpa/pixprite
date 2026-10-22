@@ -64,10 +64,13 @@ export function installNumberFields() {
     const up = () => {
       removeEventListener('pointermove', move);
       removeEventListener('pointerup', up);
+      removeEventListener('pointercancel', up);
       document.body.style.cursor = '';
     };
     addEventListener('pointermove', move, { signal });
     addEventListener('pointerup', up, { signal });
+    // A gesture the browser takes over ends the scrub too
+    addEventListener('pointercancel', up, { signal });
   }, { signal });
 
   return () => ac.abort();

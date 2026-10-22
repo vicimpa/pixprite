@@ -1,3 +1,4 @@
+import { forwardRef, useState, type ChangeEvent, type ComponentProps } from "react";
 import styled, { css } from "styled-components";
 
 /** Raised pixel bevel shared by buttons and other clickable faces */
@@ -54,7 +55,7 @@ const ButtonBase = styled.button<{ $active?: boolean; $square?: boolean; $size?:
   }
 `;
 
-export const Input = styled.input`
+const InputBase = styled.input`
   ${sunken}
   height: var(--row);
   width: 3.6em;
@@ -70,6 +71,41 @@ export const Input = styled.input`
   }
 `;
 
+
+/**
+ * A number field keeps what is typed while it has focus and passes on only valid numbers within
+ * min..max: the parents clamp their values, so passing a half-typed one (an emptied field, "1" on the
+ * way to "15" with min 10) would snap it back at once and the field couldn't be cleared or retyped.
+ * Leaving the field commits the typed text clamped (or the minimum when it isn't a number).
+ */
+const NumberInput = forwardRef<HTMLInputElement, ComponentProps<typeof InputBase>>(function NumberInput({ onChange, onBlur, value, ...props }, ref) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const min = props.min !== undefined && props.min !== '' ? +props.min : -Infinity;
+  const max = props.max !== undefined && props.max !== '' ? +props.max : Infinity;
+  return (
+    <InputBase {...props} ref={ref} value={draft ?? value ?? ''}
+      onChange={e => {
+        const text = e.target.value, n = Number(text);
+        // Wheel and scrubbing (numberFields.ts) change it without focus: nothing to keep then
+        setDraft(document.activeElement === e.target ? text : null);
+        if (text.trim() !== '' && Number.isFinite(n) && n >= min && n <= max) onChange?.(e);
+      }}
+      onBlur={e => {
+        if (draft !== null) {
+          const n = Number(draft);
+          const v = Math.max(min, Math.min(max, draft.trim() !== '' && Number.isFinite(n) ? n : Number.isFinite(min) ? min : 0));
+          if (String(v) !== String(value)) onChange?.({ ...e, target: Object.assign(e.target, { value: String(v) }), currentTarget: e.currentTarget } as ChangeEvent<HTMLInputElement>);
+          setDraft(null);
+        }
+        onBlur?.(e);
+      }} />
+  );
+});
+
+/** Text and number fields; `type="number"` gets NumberInput's typing behaviour */
+export const Input = forwardRef<HTMLInputElement, ComponentProps<typeof InputBase>>(function Input(props, ref) {
+  return props.type === 'number' ? <NumberInput {...props} ref={ref} /> : <InputBase {...props} ref={ref} />;
+});
 
 const LabelBase = styled.label`
   display: inline-flex;

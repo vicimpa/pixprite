@@ -5,7 +5,7 @@
 import { signal } from "@preact/signals-react";
 import { languages } from "~/core/i18n";
 import { parseManifest, type Manifest } from "./manifest";
-import { idb, INSTALLED } from "./idb";
+import { idb, INSTALLED, STORAGE } from "./idb";
 
 export type ExtensionSource = 'registry' | 'file' | 'dev';
 
@@ -126,7 +126,8 @@ async function fetchPackage(base: string, integrity?: string, listed?: Record<st
   const at = (p: string) => new URL(p, base).href;
   const files: Record<string, Blob> = {};
   const manifestBuf = await (await get(at('manifest.json'))).arrayBuffer();
-  if (listed?.['manifest.json'] && !await matches(manifestBuf, listed['manifest.json'])) throw new Error(`Integrity check failed for ${base}manifest.json`);
+  // A listed package is checked file by file, the manifest included: a list without its hash proves nothing
+  if (listed && (!listed['manifest.json'] || !await matches(manifestBuf, listed['manifest.json']))) throw new Error(`Integrity check failed for ${base}manifest.json`);
   const manifest = parseManifest(JSON.parse(new TextDecoder().decode(manifestBuf)));
   files['manifest.json'] = new Blob([manifestBuf], { type: 'application/json' });
 
@@ -151,7 +152,7 @@ async function fetchPackage(base: string, integrity?: string, listed?: Record<st
     // Without a list the locale guesses may be missing; listed files must all be there
     if (!r.ok) { if (list) throw new Error(`HTTP ${r.status} for ${p}`); return; }
     const buf = await r.arrayBuffer();
-    if (list?.[p] && !await matches(buf, list[p])) throw new Error(`Integrity check failed for ${manifest.id}/${p}`);
+    if (list && (!list[p] || !await matches(buf, list[p]))) throw new Error(`Integrity check failed for ${manifest.id}/${p}`);
     files[p] = new Blob([buf], { type: r.headers.get('content-type') ?? mimeOf(p) });
   }));
   return { manifest, files };
@@ -224,6 +225,8 @@ export async function setEnabled(id: string, enabled: boolean) {
 export async function uninstall(id: string) {
   await lifecycle.stop(id);
   if (installedById(id)?.source !== 'dev') await idb(INSTALLED, 'readwrite', s => s.delete(id));
+  // Its stored data goes too: a later package with the same id must not read it
+  await idb(STORAGE, 'readwrite', s => s.delete(IDBKeyRange.bound(`${id}\n`, `${id}\n\uffff`)));
   installed.value = installed.peek().filter(e => e.id !== id);
 }
 

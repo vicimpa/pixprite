@@ -9,7 +9,7 @@ import { askText } from "~/ui/Dialog";
 import { Button, Check, Input, Label, Muted, Range as Slider, Select, Separator } from "~/ui/Button";
 import { Icon } from "~/ui/Icon";
 import { useSignals } from "@preact/signals-react/runtime";
-import { useEffect, useState, type FC } from "react";
+import { useEffect, useRef, useState, type FC, type ReactNode } from "react";
 import styled from "styled-components";
 import * as styled2 from "./styled";
 
@@ -31,6 +31,49 @@ const ToolName = styled.span`
   min-width: 72px;
   white-space: nowrap;
 `;
+
+const Popup = styled.div`
+  position: fixed;
+  z-index: 950;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px;
+  background-color: var(--menu);
+  border: 1px solid var(--b1);
+  box-shadow: inset 1px 1px 0 var(--hilite), 3px 3px 0 var(--shadow);
+`;
+
+const PopupRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+`;
+
+/** A button with a drop-down of secondary settings, so the bar stays one short row */
+const More: FC<{ children: ReactNode; }> = ({ children }) => {
+  const [at, setAt] = useState<{ x: number; y: number; } | null>(null);
+  const btn = useRef<HTMLButtonElement>(null), pop = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!at) return;
+    const down = (e: PointerEvent) => {
+      const el = e.target as Node;
+      if (!pop.current?.contains(el) && !btn.current?.contains(el)) setAt(null);
+    };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setAt(null); };
+    addEventListener('pointerdown', down, true);
+    addEventListener('keydown', key);
+    return () => { removeEventListener('pointerdown', down, true); removeEventListener('keydown', key); };
+  }, [at]);
+  return <>
+    <Button ref={btn} $active={!!at} title={t('options.moreBrushSettings')} onClick={() => {
+      const r = btn.current!.getBoundingClientRect();
+      setAt(at ? null : { x: r.left, y: r.bottom + 2 });
+    }}>{t('options.more')} ▾</Button>
+    {at && <Popup ref={pop} style={{ left: Math.min(at.x, innerWidth - 320), top: at.y }}>{children}</Popup>}
+  </>;
+};
 
 const BRUSH = ['pencil', 'eraser', 'line', 'curve', 'rect', 'ellipse', 'blur', 'jumble', 'spray'];
 const INK = ['pencil', 'spray', 'line', 'curve', 'rect', 'ellipse', 'contour', 'polygon', 'fill'];
@@ -242,18 +285,6 @@ export const ToolOptions: FC = () => {
         <Button onClick={() => { state.customBrush = null; }}>{t('options.dropBrush')}</Button>
       </>}
 
-      {has(INK) && <BrushLibrary />}
-
-      {(tool === 'pencil' || tool === 'eraser' || tool === 'spray') && <>
-        <Separator />
-        <Pressure spray={tool === 'spray'} />
-      </>}
-
-      {(tool === 'pencil' || tool === 'eraser') && (
-        <Num label={t('options.smooth')} value={state.stabilizer} min={0} max={64} set={v => { state.stabilizer = v; }}
-          title={t('options.stabilizerTheBrushTrails')} />
-      )}
-
       {tool === 'pencil' && (
         <Button $active={state.pixelPerfect} title={t('options.removesDoubledCornerPixels')}
           onClick={() => { state.pixelPerfect = !state.pixelPerfect; }}>
@@ -334,23 +365,6 @@ export const ToolOptions: FC = () => {
             {INKS.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
           </Select>
         </Label>
-      </>}
-
-      {(has(INK) && !state.customBrush && state.ink !== 'shade') && <>
-        <Label title={t('options.mixThePrimaryAnd')}>
-          {t('common.pattern')}
-          <Select value={state.paintPattern} onChange={e => { state.paintPattern = e.target.value as PaintPattern; }}>
-            <option value="none">{t('options.solid')}</option>
-            <option value="checker">{t('options.checker')}</option>
-            <option value="ordered2">{t('options.ordered2x2')}</option>
-            <option value="ordered4">{t('options.ordered4x4')}</option>
-            <option value="custom" disabled={!state.patternBits}>{t('options.fromSelection')}</option>
-          </Select>
-        </Label>
-        {(state.paintPattern === 'ordered2' || state.paintPattern === 'ordered4') && (
-          <Num label={t('options.density')} value={state.patternDensity} min={1} max={99} set={v => { state.patternDensity = v; }} title={t('options.shareOfPrimaryColor')} />
-        )}
-        <Button title={t('options.opaquePixelsOfThe')} onClick={() => runCommand('edit.patternFromSelection')}>{t('options.patternFromSelection')}</Button>
       </>}
 
       {showOpacity && <>
@@ -435,6 +449,34 @@ export const ToolOptions: FC = () => {
         <Button onClick={() => runCommand('view.actual')}>100%</Button>
         <Button onClick={() => runCommand('view.fit')}>{t('options.fit')}</Button>
         <Button onClick={() => runCommand('view.center')}>{t('options.center')}</Button>
+      </>}
+
+      {(has(INK) || tool === 'eraser') && <>
+        <Separator />
+        <More>
+          {(tool === 'pencil' || tool === 'eraser' || tool === 'spray') && <PopupRow><Pressure spray={tool === 'spray'} /></PopupRow>}
+          {(tool === 'pencil' || tool === 'eraser') && (
+            <Num label={t('options.smooth')} value={state.stabilizer} min={0} max={64} set={v => { state.stabilizer = v; }}
+              title={t('options.stabilizerTheBrushTrails')} />
+          )}
+          {has(INK) && !state.customBrush && state.ink !== 'shade' && <PopupRow>
+        <Label title={t('options.mixThePrimaryAnd')}>
+          {t('common.pattern')}
+          <Select value={state.paintPattern} onChange={e => { state.paintPattern = e.target.value as PaintPattern; }}>
+            <option value="none">{t('options.solid')}</option>
+            <option value="checker">{t('options.checker')}</option>
+            <option value="ordered2">{t('options.ordered2x2')}</option>
+            <option value="ordered4">{t('options.ordered4x4')}</option>
+            <option value="custom" disabled={!state.patternBits}>{t('options.fromSelection')}</option>
+          </Select>
+        </Label>
+        {(state.paintPattern === 'ordered2' || state.paintPattern === 'ordered4') && (
+          <Num label={t('options.density')} value={state.patternDensity} min={1} max={99} set={v => { state.patternDensity = v; }} title={t('options.shareOfPrimaryColor')} />
+        )}
+        <Button title={t('options.opaquePixelsOfThe')} onClick={() => runCommand('edit.patternFromSelection')}>{t('options.patternFromSelection')}</Button>
+          </PopupRow>}
+          {has(INK) && <PopupRow><BrushLibrary /></PopupRow>}
+        </More>
       </>}
 
       {has(SYMMETRY) && <>

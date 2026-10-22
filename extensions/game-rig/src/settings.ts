@@ -241,11 +241,18 @@ function compassSection(r: Rig, s: SpriteSnapshot) {
   );
 }
 
+/** Keeps a canvas backing store at the current pixel ratio, which changes with the page zoom */
+function fitBacking(c: HTMLCanvasElement, w: number, h: number) {
+  const W = Math.round(w * devicePixelRatio), H = Math.round(h * devicePixelRatio);
+  if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+}
+
 /** Draws the compass: the selected crossing's animation in the middle, dots for every direction */
 function drawCompass(now: number) {
   const c = compass, r = rig, s = sprite;
   if (!c || !c.isConnected || !r || !s) return;
   const g = c.getContext('2d')!;
+  fitBacking(c, COMPASS, COMPASS);
   const k = devicePixelRatio;
   g.setTransform(k, 0, 0, k, 0, 0);
   g.clearRect(0, 0, COMPASS, COMPASS);
@@ -307,6 +314,8 @@ function drawCompass(now: number) {
 
 let colCanvas: HTMLCanvasElement | null = null;
 let colZoom = 1;
+// Page zoom changes the pixel ratio and fires resize: the still collider picture is redrawn sharp
+addEventListener('resize', () => drawCollider());
 
 function colliderSection(r: Rig, s: SpriteSnapshot) {
   const sources = [{ value: '', label: t('collider.manual') }, ...s.slices.map(x => ({ value: x.name, label: t('collider.slice', { name: x.name }) }))];
@@ -344,6 +353,7 @@ function drawCollider() {
   const c = colCanvas, r = rig, s = sprite;
   if (!c || !r || !s) return;
   const g = c.getContext('2d')!;
+  fitBacking(c, s.width * colZoom, s.height * colZoom);
   const k = devicePixelRatio * colZoom;
   g.setTransform(k, 0, 0, k, 0, 0);
   // Checkerboard so transparent parts show

@@ -1,6 +1,6 @@
 import { t } from "~/core/i18n";
 import { runCommand } from "~/core/Commands";
-import { parentOf, type Range } from "~/core/Sprite";
+import { parentOf, subtreeStart, type Range } from "~/core/Sprite";
 import { state } from "~/core/State";
 import { Button, Check, Label, Muted, Range as Slider, Select, Separator } from "~/ui/Button";
 import { Icon } from "~/ui/Icon";
@@ -352,6 +352,11 @@ export const Timeline: FC = () => {
     state.save();
   };
 
+  const groupHas = (g: number, f: number) => {
+    for (let k = subtreeStart(sprite.layers, g); k < g; k++) if (!sprite.layers[k].group && sprite.layers[k].cels[f]) return true;
+    return false;
+  };
+
   // Cels linked to the active cel get highlighted
   const activeCel = sprite.getCel();
   // The copied range stays outlined until it is pasted
@@ -591,7 +596,10 @@ export const Timeline: FC = () => {
                   if (layer.group) return (
                     <styled.Cel key={f} data-hit="cel" data-l={l} data-f={f} data-group
                       data-current={current && f === sprite.frame} data-selected={inRange(r, l, f)} data-cross={current || f === sprite.frame}
-                      style={{ gridRow, gridColumn: f + 5 }} />
+                      style={{ gridRow, gridColumn: f + 5 }}>
+                      {/* A folded group still shows which frames have something inside it */}
+                      {layer.collapsed && groupHas(l, f) && <styled.Key data-folded />}
+                    </styled.Cel>
                   );
                   return (
                     <styled.Cel

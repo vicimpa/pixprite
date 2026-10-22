@@ -104,9 +104,21 @@
         else if (e.key === 'ArrowUp') { e.preventDefault(); step(-1); }
         else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(select, trigger, open.active()); }
         else if (e.key === 'Escape' || e.key === 'Tab') close();
-      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      } else if (e.altKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
         e.preventDefault();
         show(select, trigger);
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+        // A focused closed list steps through the values without opening, like a native select
+        e.preventDefault();
+        var dir = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : -1, o = select.options;
+        for (var i = select.selectedIndex + dir; i >= 0 && i < o.length; i += dir) {
+          if (!o[i].disabled) {
+            select.selectedIndex = i;
+            select.dispatchEvent(new Event('input', { bubbles: true }));
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            break;
+          }
+        }
       }
     });
   }

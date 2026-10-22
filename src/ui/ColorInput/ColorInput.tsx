@@ -86,9 +86,10 @@ function drag(e: React.PointerEvent<HTMLElement>, fn: (x: number, y: number) => 
   };
   at(e);
   const move = (ev: PointerEvent) => at(ev);
-  const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); };
+  const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('lostpointercapture', up); };
   el.addEventListener('pointermove', move);
   el.addEventListener('pointerup', up);
+  el.addEventListener('lostpointercapture', up);
 }
 
 /** Color field drawn by the app: a swatch that opens a picker (HSV field, hue strip, palette, hex) */

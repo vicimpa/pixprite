@@ -256,8 +256,16 @@ export async function encodeAseprite(doc: AseDocument): Promise<Uint8Array> {
     return best?.colors ?? palette;
   };
   const given = mode === 'indexed' && (doc.transparentIndex ?? -1) >= 0 ? Math.min(255, doc.transparentIndex!) : -1;
-  const transparent = given >= 0 ? given : Math.min(255, Math.max(palette.length, ...(doc.framePalettes ?? []).map(k => k.colors.length)));
   const packed = (cols: string[]) => cols.map(c => { const [r, g, b] = parseHex(c); return ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0; });
+  const longest = Math.max(palette.length, ...(doc.framePalettes ?? []).map(k => k.colors.length));
+  let transparent = given >= 0 ? given : Math.min(255, longest);
+  // A full palette has no free slot after it: the transparent index goes to an entry no opaque pixel uses
+  if (given < 0 && mode === 'indexed' && longest >= 256) {
+    const used = new Set<number>();
+    for (const layer of layers) for (const cel of layer.cels) if (cel?.data) for (const v of cel.data) if ((v >>> 24) >= 128) used.add((v | 0xff000000) >>> 0);
+    const cols = packed(palette);
+    for (let i = 255; i >= 0; i--) if (!used.has(cols[i])) { transparent = i; break; }
+  }
   /** Pixels in the file's format */
   const encodePixels = (data: Uint32Array, cols: number[]) => {
     if (mode === 'rgb') {

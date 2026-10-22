@@ -1080,5 +1080,8 @@
   "tool.text": "Text",
   "tool.wand": "Magic wand",
   "tool.zoom": "Zoom",
-  "toolbar.rightClickForMore": "Right click for more"
+  "toolbar.rightClickForMore": "Right click for more",
+  "options.more": "More",
+  "options.moreBrushSettings": "More brush settings: pen pressure, smoothing, pattern, library",
+  "cmd.help.github": "Source code on GitHub"
 }
