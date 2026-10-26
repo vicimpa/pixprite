@@ -12,16 +12,21 @@
         "sprite:write",
         "ui:panel",
         "storage",
-        "network:api.deepseek.com"
+        "network:api.deepseek.com",
+        "network:api.openai.com",
+        "network:openrouter.ai",
+        "network:localhost:11434",
+        "network:localhost:1234"
       ],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@ae176533ed3c19ac8a49d1edcae8a2764fe86b3c/ai-assistant/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@ebf2bfa2cde04bfdcc53f1f13d8373a774b57c14/ai-assistant/",
       "files": {
-        "locales/en.json": "sha256-kGaV3iAXD+07X4pYUgldqOeZEhwJYKLoyC0BQe0EfPM=",
-        "locales/ru.json": "sha256-n5BgQKIpo7f20kRQudsI/edAZdKgrlwY/V5CmcrXPdc=",
-        "manifest.json": "sha256-hlYlId/17LQFkzNflwMb7Mi5kG8XJU2v9z44wjKDqn0=",
-        "src/chat.html": "sha256-dNaveEsM0/nuXUwDnq9PLNnDifUa2jfPv8g7ERPgWo4=",
-        "src/chat.ts": "sha256-T6etN6IMCU2cAd6zn0xoGRBIuduI2RPEgsE4J/fri+M=",
-        "src/tools.ts": "sha256-ZUqhfQ9jVOTTtD1Atzy16JD/3DgCpBIFNlJgM5gKUpc="
+        "locales/en.json": "sha256-7oFaUo169jh5uUCEE8Jd1CciQUZi3JcrcOgCjzKfaHw=",
+        "locales/ru.json": "sha256-iROA3CgqAY3d6m++mFM8xsZHzbV/u5ntLQpbpxgh9Kk=",
+        "manifest.json": "sha256-mVz0RjHZjpHtrenNxv1cHo2K3+8v/dlsLcVoqY6AdR4=",
+        "src/chat.html": "sha256-87Y3ZTuOD+Kr9D363ZVffcWuO1aZvoaaUUAfAPACkJc=",
+        "src/chat.ts": "sha256-19DxnVtex+VPIrtgkUL3BRWZbERwd7qwic5ea5WRTfo=",
+        "src/markdown.ts": "sha256-0pYiMvqWVfutVrjU4iN/1Bbj5nAuxqpX7/ws3W21+KA=",
+        "src/tools.ts": "sha256-wEmDy7aznDnNMUnXyXs5uYKdQB7RUBmRTXqZDS59qrk="
       },
       "i18n": {
         "ru": {
@@ -42,7 +47,7 @@
         "tags:lock",
         "ui:panel"
       ],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@ae176533ed3c19ac8a49d1edcae8a2764fe86b3c/game-rig/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@ebf2bfa2cde04bfdcc53f1f13d8373a774b57c14/game-rig/",
       "files": {
         "locales/en.json": "sha256-lBEdmFMbdbX0gTnQe96X2bk6IgIXssp35uJvjNMfkDQ=",
         "locales/ru.json": "sha256-tdcVtRzJMZ0sdvfc952839rRb9iJTUmkO/Bj6c3wTkQ=",
@@ -69,9 +74,9 @@
       "description": "Ukrainian interface translation",
       "author": "Pixprite contributors",
       "permissions": [],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@ae176533ed3c19ac8a49d1edcae8a2764fe86b3c/lang-uk/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@ebf2bfa2cde04bfdcc53f1f13d8373a774b57c14/lang-uk/",
       "files": {
-        "ai-assistant.uk.json": "sha256-jdmtWU5tfZlxw4FubW0eD1P+B6CPue7eI9cH+pwDA8k=",
+        "ai-assistant.uk.json": "sha256-2ArPSUm8SNrQ+445pOqa9jn285LnT5NJhMPZmfqqhjw=",
         "game-rig.uk.json": "sha256-2xpYJEe3Jimm+0Ic42ofMrEv7WvP33l45qlqSw+RxiE=",
         "manifest.json": "sha256-tP2/otqj+bQvIKgIfZAKlAAL/VjBpNPIL5iUwx//qLc=",
         "uk.json": "sha256-8NMz5J+b5UaW61A0bzddN8Ma8Az28h+ENw7oGPXz//U="
@@ -87,7 +92,7 @@
       "description": "Deep teal-black with magenta and lime highlights",
       "author": "Pixprite contributors",
       "permissions": [],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@ae176533ed3c19ac8a49d1edcae8a2764fe86b3c/theme-neon/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@ebf2bfa2cde04bfdcc53f1f13d8373a774b57c14/theme-neon/",
       "files": {
         "manifest.json": "sha256-HIqKMOBsvYiU7wxpQ/UBNvAVwVhYLmmRMDGtpW8ce2w="
       }
