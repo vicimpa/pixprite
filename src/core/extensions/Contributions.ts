@@ -192,7 +192,7 @@ const WHEN: Record<string, () => boolean> = {
 };
 
 /** Registers an extension command; it runs the worker's callback (or tells the extension isn't ready) */
-export function addCommand(host: ExtensionHost, id: string, opts: { label?: string; menu?: string; key?: string; when?: string; } = {}) {
+export function addCommand(host: ExtensionHost, id: string, opts: { label?: string; menu?: string; key?: string; when?: string; params?: FormSchema; } = {}) {
   const when = opts.when?.split(/\s*&&\s*/).map(w => w.startsWith('!') ? () => !WHEN[w.slice(1)]?.() : WHEN[w] ?? (() => true));
   const raw = opts.label ?? id;
   const c: Command = {
@@ -203,6 +203,7 @@ export function addCommand(host: ExtensionHost, id: string, opts: { label?: stri
     enabled: () => !when || when.every(f => f()),
     home: !when?.length,
     ext: host.id,
+    get params() { return opts.params && resolveStrings(opts.params, host.strings()); },
   };
   return registerCommand(c);
 }

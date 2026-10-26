@@ -289,6 +289,31 @@ export function drawExtensionOverlay(ctx: CanvasRenderingContext2D, ox: number, 
   ctx.imageSmoothingEnabled = smooth;
 }
 
+/** Outlines places shown with `view.reveal`, fading out; called by the canvas view every frame */
+export function drawExtensionHighlights(ctx: CanvasRenderingContext2D, ox: number, oy: number, zoom: number) {
+  const list = extensionsHost.peek()?.highlights.peek();
+  if (!list?.length) return;
+  const now = performance.now();
+  const color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#f0b24a';
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  for (const { rect, until } of list) {
+    const left = until - now;
+    if (left <= 0) continue;
+    // Fully visible most of the time, fades out over the last 400 ms
+    const a = Math.min(1, left / 400);
+    const x = Math.round(ox + rect.x * zoom), y = Math.round(oy + rect.y * zoom);
+    const w = Math.round(rect.w * zoom), h = Math.round(rect.h * zoom);
+    ctx.globalAlpha = a * 0.18;
+    ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = a;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
+  }
+  ctx.restore();
+}
+
 const Toast = styled.div`
   position: fixed;
   left: 50%;

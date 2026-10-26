@@ -6,7 +6,8 @@ import type { CelInfo, DocumentInfo, LayerInfo, Locks, MetaTarget, PixelData, Re
 import { untracked } from "@preact/signals-react";
 import { Mask } from "~/core/Mask";
 import { lockedNotice, reframeCel, Sprite, type CelImage, type Layer } from "~/core/Sprite";
-import { state } from "~/core/State";
+import { Color } from "~/core/Color";
+import { setPaletteKeepingPixels, state } from "~/core/State";
 import { fail, int, isObject, type Call, type Handlers } from "./common";
 
 const docIds = new WeakMap<Sprite, string>();
@@ -18,7 +19,12 @@ export function docId(doc: Sprite) {
   return id;
 }
 
-export const docInfo = (d: Sprite): DocumentInfo => ({ id: docId(d), name: d.name, width: d.width, height: d.height, dirty: d.modified });
+export const docInfo = (d: Sprite): DocumentInfo => ({
+  id: docId(d), name: d.name, width: d.width, height: d.height, dirty: d.modified,
+  project: d.projectId ?? `session:${d.sessionId ?? docId(d)}`,
+});
+
+const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
 export function activeDoc() {
   return state.home ? null : state.sprite;
@@ -79,7 +85,8 @@ function layerInfo(l: Layer): LayerInfo {
 export function snapshot(s: Sprite): SpriteSnapshot {
   return {
     id: docId(s), name: s.name, width: s.width, height: s.height, colorMode: s.colorMode,
-    palette: s.colorMode === 'indexed' ? state.palette.slice() : null,
+    // The app palette is the active document's (swatches in rgb, the colors themselves in indexed)
+    palette: s === state.sprite ? state.palette.slice() : null,
     transparentIndex: s.transparentIndex,
     layers: s.layers.map(layerInfo),
     frames: s.frames.map(f => ({ duration: f.duration })),
@@ -315,6 +322,24 @@ export const spriteHandlers: Handlers = {
       for (const key of patch.keys) if (isObject(key)) s.updateSliceKey(k, { ...checkRect(key, s), frame: int(key.frame ?? 0, 'frame') }, null);
     }
   }, true),
+
+  'sprite.palette.set': (c, colors, opts) => {
+    const s = target(c);
+    // The app palette belongs to the active document
+    if (s !== state.sprite) fail('invalid', 'Only the active document\'s palette can be changed');
+    if (!Array.isArray(colors) || !colors.length || colors.length > 256 || !colors.every(v => typeof v === 'string' && HEX.test(v)))
+      fail('invalid', 'colors must be 1..256 css hex strings');
+    // Palette entries are opaque `#rrggbb`
+    const next = (colors as string[]).map(v => Color.fromHex(v).toHexString(false));
+    const now = state.palette;
+    if (next.join() === now.join()) return;
+    const op = next.length > now.length ? 'create' : next.length < now.length ? 'delete' : 'move';
+    if (s.isLocked('palette', op)) fail('locked', `locks.palette.${op}`);
+    // The palette effect records the undo step and recolors indexed pixels
+    if (isObject(opts) && opts.keepPixels) setPaletteKeepingPixels(next);
+    else state.palette = next;
+    if (c.tx === undefined) state.save();
+  },
 
   'sprite.selection.get': c => getSelection(target(c)),
   'sprite.selection.set': (c, sel) => write(c, 'Select', s => setSelection(s, sel), true),

@@ -5,7 +5,7 @@
  * Everything the UI shows is read from signals the host owns.
  */
 
-import type { Manifest, PixelData, Problem, RegistryEntryLike } from "./types";
+import type { Manifest, PixelData, Problem, Rect, RegistryEntryLike } from "./types";
 import { signal, type ReadonlySignal } from "@preact/signals-react";
 
 export type { RegistryEntryLike };
@@ -41,6 +41,8 @@ export interface ExtensionsHost {
   problems: ReadonlySignal<{ ext: string; validator: string; problems: Problem[]; }[]>;
   /** Preview of an extension tool's stroke, in sprite coordinates */
   overlay: ReadonlySignal<PixelData | null>;
+  /** Places an extension pointed at with `view.reveal`, in sprite coordinates */
+  highlights: ReadonlySignal<{ rect: Rect; until: number; }[]>;
   /** Last refused structural change (`locked` error), already translated */
   lockedNotice: ReadonlySignal<string | null>;
   /** Locks in the active document whose owner extension is not installed */

@@ -39,6 +39,7 @@ export const PERMISSION_FOR_METHOD = {
   'sprite.slices.remove': 'sprite:write',
   'sprite.slices.update': 'sprite:write',
   'sprite.selection.set': 'sprite:write',
+  'sprite.palette.set': 'sprite:write',
 
   'documents.list': 'sprite:read',
   'documents.active': 'sprite:read',
@@ -86,6 +87,7 @@ export const PERMISSION_FOR_METHOD = {
   'view.setPan': null,
   'view.toScreen': null,
   'view.toSprite': null,
+  'view.reveal': null,
 
   'state.get': null,
   'state.set': null,

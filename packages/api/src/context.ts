@@ -1,5 +1,5 @@
 import type {
-  DocumentInfo, EventMap, FormSchema, FormValues, Locks, LocksRecord, MetaTarget, PixelData, Point, Rect, Selection,
+  CommandInfo, DocumentInfo, EventMap, FormSchema, FormValues, Locks, LocksRecord, MetaTarget, PixelData, Point, Rect, Selection,
   SpriteSnapshot, StateKey, StateValues, TagInfo, LayerInfo, SliceInfo, ToolHandlers, Unsubscribe, Validator,
 } from "./types";
 
@@ -50,6 +50,14 @@ export interface SpriteApi {
     remove(index: number): Promise<void>;
     update(index: number, patch: Partial<SliceInfo>): Promise<void>;
   };
+  palette: {
+    /**
+     * Replaces the palette (1..256 css hex colors; the current one is in `get().palette`). One undo step.
+     * In the indexed mode pixels follow their entries (an edited entry recolors them); with `keepPixels`
+     * they keep their colors instead, for reordering. Needs `sprite:write`; the active document only
+     */
+    set(colors: string[], opts?: { keepPixels?: boolean; }): Promise<void>;
+  };
   selection: {
     get(): Promise<Selection>;
     /** `null` deselects */
@@ -81,9 +89,17 @@ export interface ExtensionContext {
   commands: {
     /** Binds a handler to a command declared in `contributes.commands` (or a new one) */
     register(id: string, run: (...args: unknown[]) => unknown): Unsubscribe;
-    /** Runs any command, built-ins included */
+    /**
+     * Runs a command and resolves with its result. A built-in that has `params` takes one object of
+     * arguments and then applies them without opening its dialog (`run('image.canvasSize', { width: 64 })`).
+     * Another extension's command (`<ext id>:<command id>`) can be run only when it is `public`
+     */
     run(id: string, ...args: unknown[]): Promise<unknown>;
-    list(): Promise<{ id: string; label: string; }[]>;
+    /**
+     * Commands this extension may run now: built-ins, its own and other extensions' public ones.
+     * `params` describes the arguments of a command that takes them; `ext` is the extension of the command
+     */
+    list(): Promise<CommandInfo[]>;
   };
 
   tools: {
@@ -127,6 +143,11 @@ export interface ExtensionContext {
     setPan(p: Point): Promise<void>;
     toScreen(p: Point): Promise<Point>;
     toSprite(p: Point): Promise<Point>;
+    /**
+     * Shows a place in the sprite: makes `layer` / `frame` active, moves the camera when `rect`
+     * (sprite pixels) is out of view, and with `highlight` outlines `rect` for a moment
+     */
+    reveal(target: { layer?: number; frame?: number; rect?: Rect; highlight?: boolean; }): Promise<void>;
   };
 
   state: {

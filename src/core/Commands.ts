@@ -14,6 +14,8 @@ import { askText } from "~/ui/Dialog";
 import { strokeSelectionDialog } from "~/modules/Dialogs/Stroke";
 import { paintSelection } from "~/core/Tools";
 import { saveCurrentToLibrary } from "~/core/Brushes";
+import { commandArgs, commandParams, PARAMETRIC } from "~/core/commandArgs";
+import type { FormSchema, FormValues } from "@pixprite/api";
 
 export type Command = {
   id: string;
@@ -22,7 +24,11 @@ export type Command = {
   /** Menu text key the command is listed under (`menu.file`…) */
   group: string;
   keys?: string[];
-  run: () => void;
+  run: () => unknown;
+  /** Arguments it takes when run by a program; built-ins describe theirs in commandArgs.ts */
+  params?: FormSchema;
+  /** Runs with checked arguments instead of asking (a command with `params` only) */
+  apply?: (args: FormValues) => unknown;
   enabled?: () => boolean;
   checked?: () => boolean;
   /** Also available on the home page */
@@ -547,8 +553,18 @@ export function available(c: Command) {
   return !c.enabled || c.enabled();
 }
 
-export function runCommand(id: string) {
+/** Arguments a command takes, or undefined when it takes none */
+export const commandSchema = (c: Command) => c.params ?? commandParams(c.id);
+
+/**
+ * Runs a command and returns its result. With `args`, a command that takes arguments applies them
+ * without opening its dialog; a wrong argument throws
+ */
+export function runCommand(id: string, args?: FormValues) {
   const c = cmd(id);
   if (!available(c)) return;
-  c.run();
+  const apply = c.apply ?? PARAMETRIC[c.id]?.apply;
+  const schema = commandSchema(c);
+  if (args && apply && schema) return apply(commandArgs(schema, args));
+  return c.run();
 }

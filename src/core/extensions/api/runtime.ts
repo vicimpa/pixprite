@@ -2,12 +2,20 @@
  * Registrations (commands, tools, filters, importers / exporters, validators), inter-extension calls,
  * per-extension storage and gated network access.
  */
-import { commands, commandLabel, runCommand, available, COMMANDS } from "~/core/Commands";
+import type { FormValues } from "@pixprite/api";
+import { commands, commandLabel, commandSchema, runCommand, available, COMMANDS } from "~/core/Commands";
 import { state } from "~/core/State";
 import { idb, STORAGE } from "../idb";
 import { addCommand, addValidator, callbackChanged, commandId, keyOf, toolOverlay } from "../Contributions";
 
 /** What a core command asks of an extension that runs it: viewing is free, changing the document needs sprite:write */
+/** `ext:command` is declared public in its extension's manifest */
+function isPublic(full: string) {
+  const sep = full.indexOf(':');
+  const host = hosts.get(full.slice(0, sep));
+  return !!host?.manifest.contributes?.commands?.some(cmd => cmd.id === full.slice(sep + 1) && cmd.public);
+}
+
 function corePermissions(id: string): string[] {
   const group = id.slice(0, id.indexOf('.'));
   if (group === 'view' || group === 'window' || group === 'help') return [];
@@ -79,14 +87,25 @@ export const runtimeHandlers: Handlers = {
       const ext = full.slice(0, sep);
       const target = hosts.get(ext);
       if (!target) fail('not-found', `${ext} is not running`);
+      // Another extension's command is its api only when it says so
+      if (ext !== c.host.id && !isPublic(full)) fail('permission', `${id} is not a public command of ${ext}`);
       return target!.invoke('command', full.slice(sep + 1), ...args);
     }
     const cmd = commands.get(full) ?? fail('not-found', `Unknown command ${id}`);
     for (const need of corePermissions(full)) if (!c.host.can(need)) fail('permission', `${id} needs the "${need}" permission`);
     if (!available(cmd)) fail('invalid', `${id} is not available now`);
-    runCommand(full);
+    if (args[0] !== undefined && !isObject(args[0])) fail('invalid', 'Arguments of a built-in command are an object');
+    let out: unknown;
+    try { out = await runCommand(full, args[0] as FormValues | undefined); } catch (e) { fail('invalid', e instanceof Error ? e.message : String(e)); }
+    // Built-ins return nothing an extension could use beyond plain values
+    return ['string', 'number', 'boolean'].includes(typeof out) ? out : null;
   },
-  'commands.list': () => COMMANDS.filter(available).map(cmd => ({ id: cmd.id, label: commandLabel(cmd) })),
+  'commands.list': c => COMMANDS
+    .filter(cmd => available(cmd) && (!cmd.ext || cmd.ext === c.host.id || isPublic(cmd.id)))
+    .map(cmd => {
+      const params = commandSchema(cmd);
+      return { id: cmd.id, label: commandLabel(cmd), ...cmd.ext ? { ext: cmd.ext } : {}, ...params ? { params } : {} };
+    }),
 
   'tools.register': (c, id) => {
     if (!declared(c, 'tools', checkId(id))) fail('not-found', `Tool "${id}" must be declared in contributes.tools`);

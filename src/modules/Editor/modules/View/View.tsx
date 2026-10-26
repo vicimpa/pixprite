@@ -14,7 +14,7 @@ import { dialogs } from "~/modules/Dialogs";
 import { Canvas } from "~/ui/Canvas";
 import { openContextMenu } from "~/ui/Menu";
 import { item } from "~/modules/MainMenu";
-import { drawExtensionOverlay } from "~/modules/Extensions";
+import { drawExtensionHighlights, drawExtensionOverlay } from "~/modules/Extensions";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef, type FC, type PointerEvent, type WheelEvent } from "react";
 
@@ -746,6 +746,7 @@ export const View: FC = () => {
     ctx.drawImage(image, ox, oy, sw, sh);
     if (prefs.onionFront) drawOnion();
     drawExtensionOverlay(ctx, ox, oy, zoom);
+    drawExtensionHighlights(ctx, ox, oy, zoom);
 
     const x0 = Math.max(0, Math.floor(-ox / zoom)), x1 = Math.min(sprite.width, Math.ceil((width - ox) / zoom));
     const y0 = Math.max(0, Math.floor(-oy / zoom)), y1 = Math.min(sprite.height, Math.ceil((height - oy) / zoom));

@@ -3,7 +3,7 @@
  * Dialogs the core has no generic version of yet (forms, color picker, progress) go through `uiBridge`,
  * which the interface fills in; until then they resolve as cancelled.
  */
-import type { FormSchema, FormValues, StateKey } from "@pixprite/api";
+import type { FormSchema, FormValues, Rect, StateKey } from "@pixprite/api";
 import { signal } from "@preact/signals-react";
 import { Color } from "~/core/Color";
 import { pickFile as pickLocalFile } from "~/core/Files";
@@ -20,6 +20,10 @@ function showPanel(host: { id: string; manifest: { contributes?: { panels?: { id
 }
 
 export type NotifyKind = 'info' | 'success' | 'warning' | 'error';
+
+/** Rects outlined on the canvas by `view.reveal`, in sprite pixels; fade out at `until` (performance.now) */
+export const highlights = signal<{ rect: Rect; until: number; }[]>([]);
+const HIGHLIGHT_MS = 1200;
 
 /** Running progress bars of extensions, shown by the interface */
 export const progressBars = signal<{ id: number; ext: string; label: string; value: number; }[]>([]);
@@ -83,6 +87,32 @@ export const uiHandlers: Handlers = {
   'view.setPan': (_c, p) => { if (isObject(p)) state.panTo(Number(p.x) || 0, Number(p.y) || 0); },
   'view.toScreen': (_c, p) => isObject(p) ? { x: state.offsetX + Number(p.x) * state.zoom, y: state.offsetY + Number(p.y) * state.zoom } : fail('invalid', 'point'),
   'view.toSprite': (_c, p) => isObject(p) ? { x: (Number(p.x) - state.offsetX) / state.zoom, y: (Number(p.y) - state.offsetY) / state.zoom } : fail('invalid', 'point'),
+  'view.reveal': (_c, target) => {
+    const o = isObject(target) ? target : {};
+    const s = state.sprite;
+    const index = (v: unknown, list: unknown[], what: string) =>
+      typeof v === 'number' && Number.isInteger(v) && list[v] ? v : fail('not-found', `No ${what} ${String(v)}`);
+    if (o.layer !== undefined) s.layer = index(o.layer, s.layers, 'layer');
+    if (o.frame !== undefined) s.frame = index(o.frame, s.frames, 'frame');
+    if (!isObject(o.rect)) return;
+    const r = o.rect;
+    const rect = { x: Number(r.x) || 0, y: Number(r.y) || 0, w: Math.max(1, Number(r.w) || 1), h: Math.max(1, Number(r.h) || 1) };
+    // Out of view (even partly): fly to its center, zooming out only when it doesn't fit
+    if (state.viewW && state.viewH) {
+      const zoom = state.zoomTarget;
+      const vw = state.viewW / zoom, vh = state.viewH / zoom;
+      const visible = rect.x >= state.camX - vw / 2 && rect.x + rect.w <= state.camX + vw / 2
+        && rect.y >= state.camY - vh / 2 && rect.y + rect.h <= state.camY + vh / 2;
+      if (!visible) {
+        const fit = Math.min(state.viewW / rect.w, state.viewH / rect.h) * 0.85;
+        state.flyTo(Math.min(zoom, Math.max(1, fit)), rect.x + rect.w / 2, rect.y + rect.h / 2);
+      }
+    }
+    if (o.highlight) {
+      const now = performance.now();
+      highlights.value = [...highlights.peek().filter(h => h.until > now), { rect, until: now + HIGHLIGHT_MS }];
+    }
+  },
 
   'state.get': (_c, key) => STATE_KEYS.includes(key) ? readState(key) : fail('invalid', `Unknown state ${key}`),
   'state.set': (_c, key, value) => {

@@ -73,7 +73,11 @@ export function validateManifest(m: unknown): string[] {
     need(it, at, 'id', 'label');
     if (!isObj(it.vars) || !Object.values(it.vars).every(v => typeof v === 'string')) err(`${at}.vars`, 'object of strings expected');
   });
-  list('commands', (it, at) => { need(it, at, 'id', 'label'); needsCode(at); });
+  list('commands', (it, at) => {
+    need(it, at, 'id', 'label'); needsCode(at);
+    if (it.public !== undefined && typeof it.public !== 'boolean') err(`${at}.public`, 'boolean expected');
+    if (it.params !== undefined) form(it.params, `${at}.params`);
+  });
   list('tools', (it, at) => {
     need(it, at, 'id', 'label', 'group'); path(it, at, 'icon'); needsCode(at);
     if (it.options !== undefined) form(it.options, `${at}.options`);

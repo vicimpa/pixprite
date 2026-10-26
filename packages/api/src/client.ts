@@ -172,6 +172,7 @@ function makeSprite(c: Connection, tx?: number): Transaction {
     tags: { add: call('tags.add'), remove: call('tags.remove'), update: call('tags.update') },
     slices: { add: call('slices.add'), remove: call('slices.remove'), update: call('slices.update') },
     selection: { get: call('selection.get'), set: call('selection.set') },
+    palette: { set: call('palette.set') },
   };
 }
 
@@ -226,7 +227,7 @@ function makeContext(c: Connection): ExtensionContext {
         };
       },
     },
-    view: fns('view', ['zoom', 'setZoom', 'pan', 'setPan', 'toScreen', 'toSprite']),
+    view: fns('view', ['zoom', 'setZoom', 'pan', 'setPan', 'toScreen', 'toSprite', 'reveal']),
     state: {
       get: key => c.call('state.get', [key]),
       set: (key, value) => c.call('state.set', [key, value]),

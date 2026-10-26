@@ -13,9 +13,9 @@ import { Dialog, FieldLabel, openDialog, Row, Section } from "~/ui/Dialog";
 import { useEffect, useMemo, useRef, useState, type FC, type ReactNode } from "react";
 import styled from "styled-components";
 
-type Scope = 'cel' | 'layer' | 'frame' | 'all' | 'range';
+export type Scope = 'cel' | 'layer' | 'frame' | 'all' | 'range';
 
-const SCOPES: [Scope, string][] = [
+export const SCOPES: [Scope, string][] = [
   ['cel', 'Current cel'],
   ['layer', 'All frames of this layer'],
   ['frame', 'All layers of this frame'],
@@ -35,10 +35,28 @@ function scopeCels(scope: Scope): [number, number][] {
   }
 }
 
-const toColor = (c: Color) => {
+export const toColor = (c: Color) => {
   const [r, g, b, a] = c.rgba;
   return packRgba(r, g, b, Math.round(a * 255));
 };
+
+/** What a filter works on: one cel's pixels, limited to the selection */
+function filterTarget(data: Uint32Array, layer: number): FilterTarget {
+  const { sprite } = state;
+  return {
+    w: sprite.width, h: sprite.height, data, mask: sprite.mask,
+    tiledX: state.tiledX, tiledY: state.tiledY,
+    lockAlpha: sprite.layers[layer]?.background,
+  };
+}
+
+/** Applies a filter to the cels of `scope` as one undo step; used by the dialogs and by commands run with arguments */
+export function applyFilter(title: string, run: (t: FilterTarget, ch: Channels) => Uint32Array, scope: Scope = 'cel', ch: Channels = ALL_CHANNELS) {
+  const { sprite } = state;
+  if (scope === 'range' && !sprite.range) scope = 'cel';
+  sprite.applyFilter(title, data => run(filterTarget(data, sprite.layer), ch), scopeCels(scope));
+  state.save();
+}
 
 const ChannelRow: FC<{ value: Channels; onChange: (c: Channels) => void; }> = ({ value, onChange }) => (
   <Row>
@@ -65,11 +83,6 @@ const FilterDialog: FC<{
   const [ch, setCh] = useState<Channels>(initial ?? ALL_CHANNELS);
   const [scope, setScope] = useState<Scope>(sprite.range ? 'range' : 'cel');
   const [preview, setPreview] = useState(true);
-  const target = (data: Uint32Array, layer: number): FilterTarget => ({
-    w: sprite.width, h: sprite.height, data, mask: sprite.mask,
-    tiledX: state.tiledX, tiledY: state.tiledY,
-    lockAlpha: sprite.layers[layer]?.background,
-  });
 
   // Live preview of the current cel, recomputed shortly after the last change
   useEffect(() => {
@@ -77,7 +90,7 @@ const FilterDialog: FC<{
     if (!sprite.getCel()) return;
     const cel = sprite.canvasPixels();
     const t = setTimeout(() => {
-      state.filterPreview = { layer: sprite.layer, frame: sprite.frame, data: run(target(cel, sprite.layer), ch) };
+      state.filterPreview = { layer: sprite.layer, frame: sprite.frame, data: run(filterTarget(cel, sprite.layer), ch) };
     }, 60);
     return () => clearTimeout(t);
   }, [preview, ch, ...deps]);
@@ -86,8 +99,7 @@ const FilterDialog: FC<{
   return (
     <Dialog title={title} onClose={close} submitLabel={t('common.apply')} onSubmit={() => {
       state.filterPreview = null;
-      sprite.applyFilter(title, (data) => run(target(data, sprite.layer), ch), scopeCels(scope));
-      state.save();
+      applyFilter(title, run, scope, ch);
     }}>
       {children}
       {initial !== null && <ChannelRow value={ch} onChange={setCh} />}

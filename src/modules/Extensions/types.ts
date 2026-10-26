@@ -1,4 +1,4 @@
-export type { Manifest, PixelData, Problem, FormSchema, FormValues, FormField, Permission } from "@pixprite/api";
+export type { Manifest, PixelData, Problem, Rect, FormSchema, FormValues, FormField, Permission } from "@pixprite/api";
 
 /** One row of public/extensions/registry.json */
 export type RegistryEntryLike = {

@@ -21,6 +21,22 @@ const DITHERS: [Dither, string][] = [
   ['atkinson', 'Error diffusion, light (Atkinson)'],
 ];
 
+/**
+ * Converts the active sprite; the pixel work runs in the background with a progress overlay
+ * (Cancel leaves the sprite as it was). Resolves when done or cancelled
+ */
+export function convertSpriteColorMode(mode: ColorMode, dither: Dither = 'none', amount = 1) {
+  const { sprite } = state;
+  return withProgress(t('dialog.colorMode.convertingColorMode'), (onProgress, signal) => sprite.convertColorModeAsync(mode, dither, amount,
+    (cels, palette) => runTask('convert', {
+      cels: cels.map(({ data, w, h, x, y }) => ({ data, w, h, x, y })), mode, palette, dither, amount,
+    }, { onProgress, signal })))
+    .then(() => state.save(), e => { if (!isCancelled(e)) throw e; });
+}
+
+export const COLOR_MODES = MODES;
+export const DITHER_MODES = DITHERS;
+
 const ColorModeDialog: FC<{ close: () => void; }> = ({ close }) => {
   const { sprite } = state;
   const [mode, setMode] = useState<ColorMode>(sprite.colorMode === 'indexed' ? 'rgb' : 'indexed');
@@ -43,12 +59,7 @@ const ColorModeDialog: FC<{ close: () => void; }> = ({ close }) => {
   return (
     <Dialog title={`Color mode (now ${sprite.colorMode})`} onClose={close} submitLabel={t('common.convert')} onSubmit={() => {
       state.filterPreview = null;
-      // Pixel work runs in the background with a progress overlay (Cancel leaves the sprite as it was)
-      void withProgress(t('dialog.colorMode.convertingColorMode'), (onProgress, signal) => sprite.convertColorModeAsync(mode, dither, amount / 100,
-        (cels, palette) => runTask('convert', {
-          cels: cels.map(({ data, w, h, x, y }) => ({ data, w, h, x, y })), mode, palette, dither, amount: amount / 100,
-        }, { onProgress, signal })))
-        .then(() => state.save(), e => { if (!isCancelled(e)) state.showTip(String((e as Error)?.message ?? e), 3000); });
+      convertSpriteColorMode(mode, dither, amount / 100).catch(e => state.showTip(String((e as Error)?.message ?? e), 3000));
     }}>
       <Row>
         <FieldLabel>{t('dialog.colorMode.convertTo')}</FieldLabel>

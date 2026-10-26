@@ -46,7 +46,17 @@ export type CommandContribution = {
   key?: string;
   /** Context condition, e.g. `sprite`, `selection` */
   when?: string;
+  /**
+   * Other extensions may run it (`ctx.commands.run('<this id>:<command id>', args)`): it is part of
+   * this extension's api. Without it only the user and the extension itself can run the command
+   */
+  public?: boolean;
+  /** Arguments it takes, as a form schema; shown by `commands.list` (labels may be `%key%`) */
+  params?: FormSchema;
 };
+/** A command as `commands.list` describes it */
+export type CommandInfo = { id: string; label: string; ext?: string; params?: FormSchema; };
+
 export type ToolContribution = {
   id: string;
   label: LocalizedString;
@@ -188,7 +198,7 @@ export type SpriteSnapshot = {
   width: number;
   height: number;
   colorMode: ColorMode;
-  /** Css hex colors; null in rgb mode without a palette */
+  /** The palette, css hex colors (in the indexed mode the only colors pixels can have); null for a document that isn't active */
   palette: string[] | null;
   transparentIndex: number;
   layers: LayerInfo[];
@@ -215,7 +225,14 @@ export type Selection = {
   mask: Uint8Array | null;
 };
 
-export type DocumentInfo = { id: string; name: string; width: number; height: number; dirty: boolean; };
+export type DocumentInfo = {
+  id: string; name: string; width: number; height: number; dirty: boolean;
+  /**
+   * Lasting key of the project, for data an extension keeps about it: survives reloads.
+   * An unsaved document has a temporary one that changes once it is first saved
+   */
+  project: string;
+};
 
 export type LockFlags = { create?: boolean; delete?: boolean; rename?: boolean; move?: boolean; resize?: boolean; };
 

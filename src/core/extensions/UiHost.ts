@@ -9,6 +9,7 @@ import { state } from "~/core/State";
 import { setExtensionsHost, type ExtensionsHost, type ExtensionStatus, type InstalledExtension as UiInstalled } from "~/modules/Extensions/bridge";
 import { hosts } from "./api/common";
 import { framePage, problems, runExtensionCommand, toolOverlay, validateNow } from "./Contributions";
+import { highlights } from "./api/ui";
 import * as registry from "./Registry";
 import { hostFor, hostsVersion, installExtensions as installRuntime } from "./Runtime";
 
@@ -49,6 +50,7 @@ const host: ExtensionsHost = {
     return [...groups.values()];
   }),
   overlay: computed(() => toolOverlay.value?.pixels ?? null),
+  highlights,
   lockedNotice: computed(() => {
     const n = spriteLockedNotice.value;
     return n ? t(`locks.${n.kind}.${n.op}`) : null;

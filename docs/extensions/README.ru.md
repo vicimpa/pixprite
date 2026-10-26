@@ -116,14 +116,14 @@ extensions/<id>/
 
 | Область | Главное |
 |---|---|
-| `sprite` | снимок `get()`, `getPixels`, `putPixels`, `render(frame, {scale, format})`, `transaction(label, fn)` — один шаг отмены, CRUD `layers/frames/tags/slices`, `selection.get/set` |
-| `documents` | `list`, `active`, `open`, `create`, `on('change')` |
+| `sprite` | снимок `get()`, `getPixels`, `putPixels`, `render(frame, {scale, format})`, `transaction(label, fn)` — один шаг отмены, CRUD `layers/frames/tags/slices`, `palette.set(colors, {keepPixels})`, `selection.get/set` |
+| `documents` | `list`, `active`, `open`, `create`, `on('change')`; `DocumentInfo.project` — постоянный ключ проекта для ваших данных о нём |
 | `events` | `on('sprite:change'│'selection'│'frame'│'tool'│'tags'│'playback'│'history', cb)` |
-| `commands` | `register`, `run(id, ...args)` (и встроенные), `list()` |
+| `commands` | `register`, `run(id, ...args)` (встроенные с аргументами, публичные команды других расширений), `list()` с `params`; см. ниже |
 | `tools` | `register(id, {onDown, onMove, onUp, onCancel})`, `overlay(pixels)` — превью штриха |
 | `filters`, `io` | фильтры `(pixels, options) => pixels`, импортёры и экспортёры |
 | `ui` | `notify`, `confirm`, `prompt`, `pickColor`, `pickFile`, `progress`, `showForm` |
-| `view`, `state`, `playback` | масштаб/сдвиг и пересчёт координат; fg/bg/tool/brushSize; play/stop/seek |
+| `view`, `state`, `playback` | масштаб/сдвиг и пересчёт координат, `reveal({layer, frame, rect, highlight})` — показать изменённое место; fg/bg/tool/brushSize; play/stop/seek |
 | `meta` | данные спрайта/слоя/кадра/тега/среза/ячейки под вашим id, сохраняются в файле проекта |
 | `storage` | `get/set/delete/keys` |
 | `locks` | `set({tags: {delete: true}, constraints: {frameMultiple: 4}})`; ядро отклоняет ломающие правки и показывает это в интерфейсе. Документ помнит владельца; без расширения предлагается снять блокировку |
@@ -134,6 +134,25 @@ extensions/<id>/
 
 Пиксели — `{rect, format, data: Uint8ClampedArray}`, 4 байта на пиксель, альфа не домножена. Буферы
 передаются (transfer), а не копируются: не используйте буфер после отправки.
+
+## Команды
+
+Всё, что есть в меню редактора, — команды, и `ctx.commands.run(id)` выполняет их так же, как пользователь.
+Команды, которые спрашивают настройки в диалоге (эффекты, размер холста и спрайта, цветовой режим, свойства
+слоя, кадра и ячейки, расширение/сужение/обводка выделения…), принимают ещё и объект аргументов: тогда
+применяются сразу, без диалога. `ctx.commands.list()` отдаёт для них `params` (`FormSchema`: ключи, диапазоны,
+значения по умолчанию); пропущенные аргументы берутся по умолчанию, неверные — ошибка.
+
+```ts
+await ctx.commands.run('image.canvasSize', { width: 64, height: 64, anchorY: 1 });
+await ctx.commands.run('fx.outline', { color: '#1b1a24', scope: 'layer' });
+```
+
+**Между расширениями.** Команда с `"public": true` — часть API вашего расширения: другие вызывают её как
+`ctx.commands.run('<ваш id>:<id команды>', ...args)` и получают то, что вернул обработчик. Опишите аргументы
+в `params`, чтобы их показывал `list()`. Команды без `public` могут запускать только пользователь и само
+расширение. Для API побогаче (объекты, несколько функций) верните его из `activate` — другие получат его через
+`ctx.extensions.get(id)`.
 
 ## Локализация
 

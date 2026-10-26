@@ -90,7 +90,8 @@ texts resolved per language, a sha256 of every file (checked on install), and fo
   "public": true,              // false: stays in the repository, never published (templates, work in progress)
   "permissions": ["sprite:read", "sprite:write"],
   "contributes": {
-    "commands":  [{ "id": "hello", "label": "%cmd.hello%", "menu": "help", "key": "Ctrl+Shift+H", "when": "sprite" }],
+    "commands":  [{ "id": "hello", "label": "%cmd.hello%", "menu": "help", "key": "Ctrl+Shift+H", "when": "sprite",
+                    "public": true, "params": [{ "key": "name", "type": "text", "label": "Who to greet" }] }],
     "tools":     [{ "id": "stamp", "label": "%tool.stamp%", "icon": "assets/stamp.svg", "group": "paint", "cursor": "crosshair",
                     "options": [{ "key": "size", "type": "slider", "label": "%opt.size%", "min": 1, "max": 32, "default": 4 }] }],
     "filters":   [{ "id": "posterize", "label": "%filter%", "options": [ /* FormSchema */ ] }],
@@ -154,14 +155,14 @@ and in panels (`await connect()`). Everything returns a promise.
 
 | Area | Highlights |
 |---|---|
-| `sprite` | `get()` snapshot, `getPixels(layer, frame, rect?, 'rgba'│'index')`, `putPixels`, `render(frame, {scale, format:'bitmap'│'png'})`, `transaction(label, fn)` = one undo step, `layers/frames/tags/slices` CRUD, `selection.get/set` |
-| `documents` | `list`, `active`, `open`, `create`, `on('change')` |
+| `sprite` | `get()` snapshot, `getPixels(layer, frame, rect?, 'rgba'│'index')`, `putPixels`, `render(frame, {scale, format:'bitmap'│'png'})`, `transaction(label, fn)` = one undo step, `layers/frames/tags/slices` CRUD, `palette.set(colors, {keepPixels})`, `selection.get/set` |
+| `documents` | `list`, `active`, `open`, `create`, `on('change')`; `DocumentInfo.project` is a lasting key for your data about a project |
 | `events` | `on('sprite:change'│'selection'│'frame'│'tool'│'tags'│'playback'│'history', cb)` |
-| `commands` | `register(id, fn)`, `run(id, ...args)` (built-ins too), `list()` |
+| `commands` | `register(id, fn)`, `run(id, ...args)` (built-ins with arguments, other extensions' public commands), `list()` with `params`; see below |
 | `tools` | `register(id, {onDown, onMove, onUp, onCancel})`, `overlay(pixels)` for the stroke preview |
 | `filters`, `io` | `filters.register(id, (pixels, options) => pixels)`, `io.registerImporter/registerExporter` |
 | `ui` | `notify`, `confirm`, `prompt`, `pickColor`, `pickFile`, `progress`, `showForm(title, schema)` |
-| `view`, `state`, `playback` | zoom/pan and coordinate mapping; fg/bg/tool/brushSize; play/stop/seek |
+| `view`, `state`, `playback` | zoom/pan and coordinate mapping, `reveal({layer, frame, rect, highlight})` to show a place you changed; fg/bg/tool/brushSize; play/stop/seek |
 | `meta` | per sprite/layer/frame/tag/slice/cel data, namespaced by your id, saved in the project file |
 | `storage` | `get/set/delete/keys` |
 | `locks` | `set({tags: {delete: true}, constraints: {frameMultiple: 4}})`; the core refuses breaking edits and marks them in the UI. Documents remember the owner; opening without the extension offers to unlock |
@@ -181,6 +182,25 @@ await ctx.sprite.transaction('Add outline', async tx => {
   await tx.putPixels(l, 0, pixels);
 });
 ```
+
+## Commands
+
+Everything in the editor's menus is a command, and `ctx.commands.run(id)` runs it like the user would.
+Commands that ask for settings in a dialog (effects, canvas and sprite size, color mode, layer, frame and
+cel properties, selection grow / shrink / border…) also take one object of arguments: then they apply at
+once, without the dialog. `ctx.commands.list()` gives each such command's `params` (a `FormSchema`: keys,
+ranges, defaults); omitted arguments take the defaults, wrong ones reject.
+
+```ts
+await ctx.commands.run('image.canvasSize', { width: 64, height: 64, anchorY: 1 });
+await ctx.commands.run('fx.outline', { color: '#1b1a24', scope: 'layer' });
+```
+
+**Between extensions.** A command declared with `"public": true` is part of your extension's api: others run it
+as `ctx.commands.run('<your id>:<command id>', ...args)` and get what your handler returns. Describe its
+arguments in `params` so `list()` shows them. Commands without `public` can be run only by the user and by
+your own extension. For a richer api (objects, several functions) return it from `activate` and let others
+use `ctx.extensions.get(id)`.
 
 ## Localization
 

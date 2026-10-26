@@ -9,23 +9,77 @@
     button, input, textarea { font: inherit; color: inherit; background: var(--field, #120f17); border: 1px solid var(--b2, #4a4258); }
     button { background: var(--face, #3a3346); padding: 2px 8px; cursor: pointer; }
     button:disabled { opacity: .5; cursor: default; }
-    .bar { display: flex; gap: 6px; padding: 4px 6px; align-items: center; }
-    .bar .grow { flex: 1; color: var(--fg-dim, #8f87a0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar { display: flex; gap: 4px; padding: 4px 6px; align-items: center; border-bottom: 1px solid var(--b2, #4a4258); }
+    .bar .title { flex: 1; min-width: 0; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar button { min-width: 22px; padding: 2px 4px; }
+    .bar button.on { background: var(--sel, #6a5acd); color: var(--sel-fg, #fff); }
+    main { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+    /* Chats: a drawer over the conversation */
+    #drawer { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; background: var(--bg, #1d1a22); }
+    #drawer[hidden] { display: none; }
+    #drawer-title { padding: 6px 8px 2px; color: var(--fg-dim, #8f87a0); font-size: 11px; text-transform: uppercase; }
+    #list { flex: 1; overflow: auto; padding: 2px 4px 6px; }
+    #list.locked .chat:not(.active) { opacity: .5; pointer-events: none; }
+    .chat { display: flex; align-items: center; gap: 6px; padding: 4px 6px; cursor: pointer; border-radius: 3px; }
+    .chat:hover { background: var(--row-hover, rgba(255, 255, 255, .06)); }
+    .chat.active { background: var(--row-sel, rgba(106, 90, 205, .3)); }
+    .chat .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chat .date { flex: none; color: var(--fg-dim, #8f87a0); font-size: 10px; }
+    .chat .del { flex: none; visibility: hidden; padding: 0 5px; background: transparent; border-color: transparent; color: var(--fg-dim, #8f87a0); }
+    .chat:hover .del { visibility: visible; }
+    .chat .del:hover { color: var(--danger, #e2574c); }
+    .empty { padding: 12px 8px; color: var(--fg-dim, #8f87a0); text-align: center; }
+    .status { display: flex; gap: 8px; margin: -2px 8px 6px; color: var(--fg-dim, #8f87a0); font-size: 10px; }
+    .status span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .status #model { flex: 1; min-width: 0; }
     #log { flex: 1; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
     .msg { white-space: pre-wrap; word-break: break-word; padding: 4px 6px; border-radius: 3px; max-width: 92%; }
     .user { align-self: flex-end; background: var(--sel, #6a5acd); color: var(--sel-fg, #fff); }
     .assistant { align-self: flex-start; background: var(--face, #3a3346); }
     .tool { align-self: flex-start; color: var(--fg-dim, #8f87a0); font-family: monospace; font-size: 11px; }
     .error { align-self: stretch; color: var(--danger, #e2574c); }
+    .error .continue { margin-left: 4px; color: var(--fg, #e6e1ee); }
     .msg img { display: block; image-rendering: pixelated; max-width: 100%; margin-top: 4px; }
-    form.input { display: flex; gap: 4px; padding: 6px; }
-    form.input textarea { flex: 1; resize: none; height: 3.2em; padding: 3px; }
+    /* Markdown of the replies */
+    .assistant { white-space: normal; }
+    .assistant > :first-child { margin-top: 0; }
+    .assistant > :last-child { margin-bottom: 0; }
+    .assistant p, .assistant ul, .assistant ol, .assistant pre, .assistant blockquote { margin: 0 0 6px; }
+    .assistant ul, .assistant ol { padding-left: 18px; }
+    .assistant li + li { margin-top: 2px; }
+    .assistant h3, .assistant h4, .assistant h5, .assistant h6 { margin: 8px 0 4px; font-size: 1em; }
+    .assistant h3 { font-size: 1.15em; }
+    .assistant code { font-family: monospace; font-size: 11px; background: var(--field, #120f17); padding: 0 3px; border-radius: 2px; }
+    .assistant pre { background: var(--field, #120f17); padding: 4px 6px; overflow-x: auto; border-radius: 2px; }
+    .assistant pre code { background: none; padding: 0; white-space: pre; }
+    .assistant blockquote { padding-left: 6px; border-left: 2px solid var(--b2, #4a4258); color: var(--fg-dim, #8f87a0); }
+    .assistant hr { border: 0; border-top: 1px solid var(--b2, #4a4258); margin: 6px 0; }
+    /* Messages waiting for the reply to end */
+    #queue { display: flex; flex-direction: column; gap: 3px; margin: 0 6px 4px; }
+    #queue[hidden] { display: none; }
+    .queued { display: flex; align-items: center; gap: 4px; padding: 2px 2px 2px 6px; border: 1px dashed var(--b2, #4a4258); color: var(--fg-dim, #8f87a0); }
+    .queued span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .queued .del { padding: 0 5px; background: transparent; border-color: transparent; color: inherit; }
+    .queued .del:hover { color: var(--danger, #e2574c); }
+    /* Input: one field with the button inside, growing with the text */
+    .input { margin: 0 6px 6px; display: flex; align-items: flex-end; gap: 4px; padding: 4px; background: var(--field, #120f17); border: 1px solid var(--b2, #4a4258); }
+    .input:focus-within { border-color: var(--accent, #f0b24a); }
+    /* Two lines at least (2 × 14px + padding), grown by chat.ts up to max-height */
+    .input textarea { box-sizing: border-box; flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: transparent; padding: 2px; height: 32px; min-height: 32px; max-height: 120px; line-height: 14px; }
+    .input textarea::placeholder { color: var(--fg-dim, #8f87a0); }
+    #send { flex: none; height: 20px; background: var(--accent, #f0b24a); color: var(--accent-fg, #fff); border-color: transparent; }
+    #send.stop { background: var(--danger, #e2574c); }
   </style>
 </head>
 <body>
-  <div class="bar"><span class="grow" id="model"></span><button id="clear"></button><button id="settings"></button></div>
-  <div id="log"></div>
-  <form class="input" id="form"><textarea id="text"></textarea><button id="send" type="submit"></button></form>
+  <div class="bar"><button id="chats">☰</button><span class="title" id="title"></span><button id="new">+</button><button id="settings">⚙</button></div>
+  <main>
+    <div id="log"></div>
+    <div id="drawer" hidden><div id="drawer-title"></div><div id="list"></div></div>
+  </main>
+  <div id="queue" hidden></div>
+  <div class="input"><textarea id="text" rows="2"></textarea><button id="send"></button></div>
+  <div class="status"><span id="model"></span><span id="hint"></span></div>
   <script type="module" src="./chat.js"></script>
 </body>
 </html>

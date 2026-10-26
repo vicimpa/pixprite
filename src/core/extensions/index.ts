@@ -9,6 +9,6 @@ export {
   framePage, runFilter, runImporter, runExporter, importerFor, validateNow, runExtensionCommand, keyOf,
   type FilterEntry, type IoEntry, type PanelEntry, type WidgetEntry, type MenuEntry, type ProblemEntry,
 } from "./Contributions";
-export { uiBridge, progressBars, type NotifyKind } from "./api/ui";
+export { uiBridge, progressBars, highlights, type NotifyKind } from "./api/ui";
 export { ExtensionHost, type HostStatus } from "./Host";
 export { hosts } from "./api/common";
