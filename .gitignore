@@ -37,3 +37,5 @@ test-results
 # Separate browser benchmark build and raw machine-specific measurements
 .benchmark-dist
 benchmark-results
+
+.extension-dist

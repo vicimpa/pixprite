@@ -7,6 +7,7 @@
  * reachable from an opaque-origin frame, so the linking has to happen inside it).
  */
 import { transform } from "sucrase";
+import { resolvePath as normalize, safePath } from './paths';
 
 // The API sources, as text: extensions get exactly the client this editor speaks to
 const API_SOURCES = import.meta.glob<string>('../../../packages/api/src/*.ts', { query: '?raw', import: 'default', eager: true });
@@ -21,17 +22,6 @@ export type ReadText = (path: string) => Promise<string | null>;
 
 const TRY = ['', '.ts', '.tsx', '.js', '.mjs', '/index.ts', '/index.js'];
 
-/** `a/b/../c` → `a/c`; null when it climbs out of the package */
-function normalize(path: string) {
-  const out: string[] = [];
-  for (const part of path.split('/')) {
-    if (!part || part === '.') continue;
-    if (part === '..') { if (!out.length) return null; out.pop(); }
-    else out.push(part);
-  }
-  return out.join('/');
-}
-
 const dirOf = (path: string) => path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : '';
 
 // import … from '…' · export … from '…' · import '…' · import('…')
@@ -39,6 +29,7 @@ const SPECIFIERS = /(\bimport\s*(?:[\w$*{}\s,]+?\s*from\s*)?|\bexport\s*(?:\*(?:
 
 /** Compiles `entry` and everything it imports; the entry is the last module */
 export async function compile(read: ReadText, entry: string): Promise<Linked> {
+  if (!safePath(entry)) throw new CompileError(`Bad entry path "${entry}"`);
   const modules: string[] = [];
   const index = new Map<string, number>();
   const visiting = new Set<string>();

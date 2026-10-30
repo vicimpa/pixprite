@@ -6,6 +6,8 @@ import { signal } from "@preact/signals-react";
 import { languages } from "~/core/i18n";
 import { parseManifest, type Manifest } from "./manifest";
 import { idb, INSTALLED, STORAGE } from "./idb";
+import { safePath } from './paths';
+export { safePath } from './paths';
 
 export type ExtensionSource = 'registry' | 'file' | 'dev';
 
@@ -132,16 +134,18 @@ async function fetchPackage(base: string, integrity?: string, listed?: Record<st
   files['manifest.json'] = new Blob([manifestBuf], { type: 'application/json' });
 
   let list: Record<string, string> | null = listed ?? null;
-  if (!list) try {
+  if (!list) {
     const r = await fetch(at('files.json'), { cache: 'no-cache' });
     if (r.ok) {
       const buf = await r.arrayBuffer();
-      if (integrity && !await matches(buf, integrity)) throw new Error('integrity');
-      list = JSON.parse(new TextDecoder().decode(buf));
-    }
-  } catch (e) {
-    if (e instanceof Error && e.message === 'integrity') throw new Error(`Integrity check failed for ${manifest.id}`);
+      if (integrity && !await matches(buf, integrity)) throw new Error(`Integrity check failed for ${manifest.id}`);
+      const value: unknown = JSON.parse(new TextDecoder().decode(buf));
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid files.json');
+      list = value as Record<string, string>;
+    } else if (r.status !== 404 && r.status !== 410) throw new Error(`HTTP ${r.status} for files.json`);
   }
+  if (list && (typeof list !== 'object' || Array.isArray(list) || !Object.values(list).every(v => typeof v === 'string' && /^(?:sha256-)?(?:[a-f\d]{64}|[A-Za-z\d+/]{43}=)$/i.test(v)))) throw new Error('Invalid files.json');
+  if (list && (!Object.hasOwn(list, 'manifest.json') || !await matches(manifestBuf, list['manifest.json']))) throw new Error(`Integrity check failed for ${manifest.id}/manifest.json`);
   if (!list && integrity && !await matches(manifestBuf, integrity)) throw new Error(`Integrity check failed for ${manifest.id}`);
   for (const p of Object.keys(list ?? {})) if (!safePath(p)) throw new Error(`Bad file path "${p}"`);
 
@@ -157,8 +161,6 @@ async function fetchPackage(base: string, integrity?: string, listed?: Record<st
   }));
   return { manifest, files };
 }
-
-export const safePath = (p: string) => !!p && !p.startsWith('/') && !/(^|\/)\.\.(\/|$)/.test(p) && !/^[a-z]+:/i.test(p);
 
 const MIME: Record<string, string> = {
   js: 'text/javascript', mjs: 'text/javascript', json: 'application/json', html: 'text/html', css: 'text/css',

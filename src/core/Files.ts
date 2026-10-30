@@ -287,7 +287,7 @@ export async function addDocuments(docs: Sprite[], failed: string[] = []) {
 }
 
 /** Opens files. Several plain images together become one animation (an image sequence) */
-export async function loadFiles(files: File[]) {
+export async function loadFiles(files: File[], assertActive = () => {}) {
   if (!files.length) return;
   const failed: string[] = [];
   const docs: Sprite[] = [];
@@ -295,7 +295,9 @@ export async function loadFiles(files: File[]) {
   // Palettes replace the palette, whatever else comes along
   for (const file of files.filter(f => PALETTE_EXTS.includes(ext(f.name)))) {
     try {
-      state.palette = (await import('./formats/Palette')).parsePalette(file.name, new Uint8Array(await file.arrayBuffer()));
+      const palette = (await import('./formats/Palette')).parsePalette(file.name, new Uint8Array(await file.arrayBuffer()));
+      assertActive();
+      state.palette = palette;
       state.showTip(`Palette loaded: ${state.palette.length} colors`);
     } catch { failed.push(file.name); }
   }
@@ -328,6 +330,7 @@ export async function loadFiles(files: File[]) {
       failed.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+  assertActive();
   await addDocuments(docs, failed);
 }
 
@@ -373,8 +376,8 @@ export async function importIntoDocument(mode: 'layer' | 'frames', place: 'cente
   }
 }
 
-export async function loadFile(file: File) {
-  return loadFiles([file]);
+export async function loadFile(file: File, assertActive?: () => void) {
+  return loadFiles([file], assertActive);
 }
 
 export async function openFile() {

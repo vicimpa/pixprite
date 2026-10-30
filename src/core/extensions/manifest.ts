@@ -2,6 +2,7 @@
  * Manifest validation and `%key%` resolution. No dependencies: also used by scripts/build-extensions.ts.
  */
 import { API_VERSION, type FormSchema, type Manifest } from "@pixprite/api";
+import { safePath } from './paths';
 
 export type { Manifest } from "@pixprite/api";
 
@@ -12,7 +13,7 @@ const FIELD_TYPES = new Set(['slider', 'number', 'color', 'select', 'checkbox', 
 const DOCKS = new Set(['left', 'right', 'bottom', 'float']);
 const SLOTS = new Set(['statusbar', 'toolbar']);
 /** Relative path inside the extension: no scheme, no leading slash, no `..` */
-const PATH = /^(?![a-z]+:|\/)(?!.*(^|\/)\.\.(\/|$))[\w\-./]+$/i;
+const PATH = { test: safePath };
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;

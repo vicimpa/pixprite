@@ -18,6 +18,8 @@ import { snapshot } from "./api/sprite";
 import type { ExtensionHost } from "./Host";
 import { resolveStrings } from "./manifest";
 import { readFile, readJson, safePath, type InstalledExtension } from "./Registry";
+import { resolvePath } from './paths';
+import { SANDBOX_POLICY } from './sandbox';
 
 /** Id of a contribution across extensions: `<extension id>:<contribution id>` */
 export const keyOf = (ext: string, id: string) => `${ext}:${id}`;
@@ -95,6 +97,7 @@ const dataUrl = (b: Blob) => new Promise<string>((resolve, reject) => {
  * its styles inlined and its images turned into data urls.
  */
 export async function framePage(ext: InstalledExtension, page: string): Promise<{ srcdoc: string; }> {
+  if (!safePath(page)) throw new Error(`Bad page path "${page}"`);
   const read = async (p: string) => (await readFile(ext, p))?.text() ?? null;
   let path = `src/${page}`;
   let text = await read(path);
@@ -106,7 +109,11 @@ export async function framePage(ext: InstalledExtension, page: string): Promise<
       + `<body><div id="root"></div><script type="module" src="./${page.split('/').pop()!.replace(/\.html$/, '.js')}"></script></body></html>`;
   }
   const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : '';
-  const resolve = (p: string) => new URL(p, `https://x/${dir}`).pathname.slice(1);
+  const resolve = (p: string) => {
+    const path = resolvePath(dir + p);
+    if (!path) throw new Error(`Bad resource path "${p}"`);
+    return path;
+  };
   const local = (p: string) => !/^([a-z]+:|\/\/|#|data:)/i.test(p);
   const jobs: Promise<void>[] = [];
   const swaps = new Map<string, string>();
@@ -136,7 +143,7 @@ export async function framePage(ext: InstalledExtension, page: string): Promise<
   }
   await Promise.all(jobs);
   for (const [from, to] of swaps) text = text.split(from).join(to);
-  return { srcdoc: text };
+  return { srcdoc: SANDBOX_POLICY + text };
 }
 
 /** Prefixes a dictionary of the extension's own keys with `ext.<id>.` */

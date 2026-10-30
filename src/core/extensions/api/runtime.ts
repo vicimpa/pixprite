@@ -171,14 +171,14 @@ export const runtimeHandlers: Handlers = {
     return keys.map(k => String(k).slice(prefix.length));
   },
 
-  'net.fetch': async (_c, url, init) => {
+  'net.fetch': async (c, url, init) => {
     const u = new URL(String(url));
     if (u.protocol !== 'https:' && !(u.protocol === 'http:' && /^(localhost|127\.0\.0\.1)$/.test(u.hostname))) fail('permission', 'Only https urls can be fetched');
     const o = isObject(init) ? init : {};
     const headers = isObject(o.headers) ? Object.fromEntries(Object.entries(o.headers).map(([k, v]) => [k, String(v)])) : undefined;
     const body = typeof o.body === 'string' || o.body instanceof ArrayBuffer ? o.body : undefined;
     // No cookies or other credentials of the editor go along
-    const r = await fetch(u, { method: typeof o.method === 'string' ? o.method : 'GET', headers, body, credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer' });
+    const r = await fetch(u, { method: typeof o.method === 'string' ? o.method : 'GET', headers, body, credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', signal: c.host.lifetime.signal });
     const data = await r.arrayBuffer();
     if (data.byteLength > MAX_BODY) fail('invalid', 'Response is too large');
     return { status: r.status, headers: Object.fromEntries(r.headers.entries()), body: data };

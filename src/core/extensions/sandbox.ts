@@ -1,0 +1,2 @@
+/** No direct network from extension code: all requests go through permission-checked net.fetch. */
+export const SANDBOX_POLICY = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; style-src 'unsafe-inline'; img-src data: blob:; font-src data: blob:; media-src data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'">`;

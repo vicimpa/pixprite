@@ -1,6 +1,11 @@
 /** Production assets plus deterministic deployment/extension fixtures, bound to loopback only. */
 import { resolve, sep } from 'node:path';
 import { pwaFixtures } from './pwa-fixtures';
+import { securityFixtures } from './security-fixtures';
+import { build } from 'vite';
+
+await build({ configFile: resolve(import.meta.dir, '../benchmarks/vite.security.config.ts'), logLevel: 'warn' });
+const securityRoot = resolve(import.meta.dir, '../.extension-dist');
 
 const root = resolve(import.meta.dir, '../dist');
 const pwa = await pwaFixtures(root);
@@ -31,6 +36,14 @@ Bun.serve({
   hostname: '127.0.0.1', port: 4173,
   async fetch(request) {
     const url = new URL(request.url);
+    const security = securityFixtures(request);
+    if (security) return security;
+    if (url.pathname.startsWith('/__security__/')) {
+      const path = resolve(securityRoot, '.' + url.pathname.slice('/__security__'.length));
+      if (!path.startsWith(securityRoot + sep)) return new Response('Forbidden', { status: 403 });
+      const file = Bun.file(path);
+      return await file.exists() ? new Response(file) : new Response('Not found', { status: 404 });
+    }
     const fixtureResponse = await pwa(request);
     if (fixtureResponse) return fixtureResponse;
     if (url.pathname === '/__e2e__/registry.json')

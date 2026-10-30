@@ -22,6 +22,7 @@ import { BOOT_END, BOOT_START, compile, LINKER, sourceOf } from "./compile";
 import { report } from "./DevLink";
 import { readFile, type InstalledExtension } from "./Registry";
 import { API_VERSION } from "@pixprite/api";
+import { SANDBOX_POLICY } from './sandbox';
 
 const HANDLERS: Handlers = { ...spriteHandlers, ...uiHandlers, ...runtimeHandlers, ...eventHandlers };
 
@@ -41,7 +42,7 @@ export type HostStatus = 'starting' | 'running' | 'failed' | 'stopped';
 
 // The relay inside the sandboxed iframe: starts the module worker from the code it is sent
 // and passes messages both ways, moving buffers instead of copying them.
-const RELAY = `<!doctype html><meta charset="utf-8"><script>${LINKER}
+const RELAY = `<!doctype html><meta charset="utf-8">${SANDBOX_POLICY}<script>${LINKER}
 const tr = (v, out = [], seen = new Set()) => {
   if (!v || typeof v !== 'object' || seen.has(v)) return out;
   seen.add(v);
@@ -97,6 +98,8 @@ export class ExtensionHost {
   private seq = 0;
   private nextTx = 1;
   private activation: { resolve(): void; reject(e: Error): void; } | null = null;
+  private disposed = false;
+  readonly lifetime = new AbortController();
 
   constructor(readonly ext: InstalledExtension) {
     this.id = ext.id;
@@ -116,7 +119,9 @@ export class ExtensionHost {
   /** The extension's own texts, prefix removed, fallbacks applied */
   strings() { return this.translator.snapshot().strings; }
 
-  onDispose(fn: () => void) { this.disposers.push(fn); }
+  onDispose(fn: () => void) { if (this.disposed) fn(); else this.disposers.push(fn); }
+
+  assertActive() { if (this.disposed) fail('cancelled', `${this.id} stopped`); }
 
   can(permission: string) { return this.permissions.includes(permission); }
 
@@ -127,6 +132,7 @@ export class ExtensionHost {
 
   /** Starts the worker (when the manifest has an `entry`) and waits for `activate` */
   async start() {
+    if (this.disposed) return;
     const texts = () => this.broadcast(I18N_CHANGE, (({ lang, dir, strings, core }) => ({ lang, dir, strings, core }))(this.translator.snapshot()));
     this.disposers.push(this.translator.on('change', texts));
     // Panels may have connected while the texts were still loading
@@ -135,11 +141,12 @@ export class ExtensionHost {
     try {
       const code = await this.entryCode(this.manifest.entry);
       // Stopped while compiling: no worker may start for a host that is gone
-      if (this.status.peek() === 'stopped') return;
+      if (this.disposed) return;
       await this.spawn(code.modules);
+      if (this.disposed) return;
       this.status.value = 'running';
     } catch (e) {
-      if (this.status.peek() === 'stopped') return;
+      if (this.disposed) return;
       this.error.value = e instanceof Error ? e.message : String(e);
       this.status.value = 'failed';
       report(this.ext, { level: 'error', message: `failed to start: ${this.error.value}`, stack: e instanceof Error ? e.stack : undefined, source: 'worker' });
@@ -191,6 +198,8 @@ export class ExtensionHost {
    * Sends `init` once it has loaded; returns the function that disconnects it.
    */
   connectFrame(iframe: HTMLIFrameElement, role: 'panel' | 'widget', contribution: string) {
+    this.assertActive();
+    if (!this.can('ui:panel')) fail('permission', 'Permission "ui:panel" is not granted');
     const ep: Endpoint = {
       role, contribution,
       post: msg => iframe.contentWindow?.postMessage(msg, '*', transferables(msg)),
@@ -237,7 +246,10 @@ export class ExtensionHost {
     return new Promise<T>((resolve, reject) => {
       const timer = window.setTimeout(() => {
         this.pending.delete(reqId);
-        reject(new HostError('internal', `${this.id}: ${kind} "${id}" timed out`));
+        const error = new HostError('internal', `${this.id}: ${kind} "${id}" timed out`);
+        reject(error);
+        this.error.value = error.message;
+        this.dispose('failed');
       }, INVOKE_MS);
       this.pending.set(reqId, { resolve: resolve as (v: unknown) => void, reject, timer });
       ep.post({ type: 'request', id: reqId, method: INVOKE, params: [kind, id, ...args] });
@@ -245,6 +257,7 @@ export class ExtensionHost {
   }
 
   beginTransaction(doc: Sprite) {
+    this.assertActive();
     const id = this.nextTx++;
     const guard = doc.protectHistory();
     guard.onRelease = () => { this.transactions.delete(id); };
@@ -253,6 +266,7 @@ export class ExtensionHost {
   }
 
   private async receive(ep: Endpoint, msg: unknown) {
+    if (this.disposed || (ep !== this.worker && !this.frames.has(ep))) return;
     if (!isObject(msg)) return;
     switch (msg.type) {
       case 'activated':
@@ -268,7 +282,7 @@ export class ExtensionHost {
           if (this.activation) { this.activation.reject(err); this.activation = null; }
           else {
             this.error.value = err.message;
-            this.status.value = 'failed';
+            this.dispose('failed');
             console.error(`[ext ${this.id}]`, err.message);
           }
         }
@@ -297,6 +311,7 @@ export class ExtensionHost {
   private async handle(ep: Endpoint, msg: RequestMessage) {
     if (typeof msg.id !== 'number') return;
     try {
+      this.assertActive();
       if (typeof msg.method !== 'string' || !Array.isArray(msg.params)) fail('invalid', 'Malformed request');
       if (!isMethod(msg.method)) fail('not-found', `Unknown method ${msg.method}`);
       const method = msg.method as keyof Handlers & string;
@@ -306,17 +321,21 @@ export class ExtensionHost {
       if (!handler) fail('not-found', `${method} is not available`);
       const call: Call = { host: this, endpoint: ep, tx: typeof msg.tx === 'number' ? msg.tx : undefined };
       const result = await handler!(call, ...msg.params);
+      this.assertActive();
       ep.post({ type: 'response', id: msg.id, result });
     } catch (e) {
       const code = e instanceof HostError ? e.code : 'internal';
       if (code === 'internal') console.error(`[ext ${this.id}] ${msg.method}`, e);
-      ep.post({ type: 'response', id: msg.id, error: { message: e instanceof Error ? e.message : String(e), code } });
+      if (!this.disposed) ep.post({ type: 'response', id: msg.id, error: { message: e instanceof Error ? e.message : String(e), code } });
     }
   }
 
   /** Stops the worker, closes open transactions and undoes every registration */
   dispose(status: HostStatus = 'stopped') {
-    if (this.status.peek() === 'stopped') return;
+    if (this.disposed) return;
+    this.disposed = true;
+    this.status.value = status;
+    this.lifetime.abort();
     for (const t of this.transactions.values()) t.guard.cancel();
     this.transactions.clear();
     this.stroke?.guard.cancel();
