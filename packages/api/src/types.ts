@@ -157,6 +157,8 @@ export type LayerInfo = {
   name: string;
   visible: boolean;
   locked: boolean;
+  /** Pixel edits preserve the layer silhouette and alpha. */
+  lockAlpha: boolean;
   background: boolean;
   continuous: boolean;
   /** 0..255 */

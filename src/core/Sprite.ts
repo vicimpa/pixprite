@@ -15,7 +15,7 @@ import type { SpriteContext } from "./SpriteContext";
 import * as SpriteHistory from "./SpriteHistory";
 import type { HistoryGuard, Snapshot } from "./SpriteHistory";
 import {
-  celPixel, celRect, cleanInfo, keepExt, lockedNotice, lockOwners, newLayer, parentOf, reframeCel,
+  alphaLockedCel, alphaLockedPixel, celPixel, celRect, cleanInfo, keepExt, lockedNotice, lockOwners, newLayer, parentOf, reframeCel,
   sliceKey, span, trimCel, type Cel, type CelImage, type ExtData, type Floating, type Frame,
   type FramePalette, type Guide, type Layer, type LockKind, type LockOp, type ProjectInfo, type Range,
   type RangeClip, type Slice, type SliceKey, type Tag, type TagDirection,
@@ -486,15 +486,22 @@ export class Sprite {
    * Replaces a cel (and every frame linked to it) with `cel`.
    * Transparent layers are trimmed to their content, background cels always cover the canvas.
    */
-  setCel(cel: Cel, layer = this.layer, frame = this.frame) {
+  setCel(cel: Cel, layer = this.layer, frame = this.frame, pixelEdit = false) {
     const l = this.layers[layer];
     if (!l) return;
-    if (l.tileset >= 0) return this.setTilemapCel(cel, layer, frame);
+    const lockedSource = pixelEdit && l.lockAlpha ? this.getCel(layer, frame) : null;
+    if (pixelEdit && l.lockAlpha) {
+      if (!cel) return;
+      cel = alphaLockedCel(lockedSource, cel);
+    }
+    if (l.tileset >= 0) return this.setTilemapCel(pixelEdit ? cel && { ...cel, tiles: undefined } : cel, layer, frame);
     let next = l.background ? reframeCel(cel, this.canvasRect, this.backgroundFill) : trimCel(cel);
     // Everything written lands on the palette (indexed) or on gray
     if (next && this.colorMode !== 'rgb') {
       next = { ...next, data: next.data.slice() };
       convertPixels(next.data, next.w, next.h, this.colorMode, this.palette);
+      // A transparent palette key must not erase pixels on an alpha-locked layer.
+      if (pixelEdit && l.lockAlpha) next = alphaLockedCel(lockedSource, next);
       if (!l.background) next = trimCel(next);
     }
     const old = l.cels[frame];
@@ -507,14 +514,25 @@ export class Sprite {
    * Writes a canvas-sized buffer into a cel. The cel grows to cover the canvas while editing,
    * so pixels it had outside the canvas survive, then it is trimmed again.
    */
-  putCanvas(data: Uint32Array, layer = this.layer, frame = this.frame) {
+  putCanvas(data: Uint32Array, layer = this.layer, frame = this.frame, respectAlpha = true) {
     const cel = this.getCel(layer, frame);
     const rect = unionRect(cel && celRect(cel), this.canvasRect)!;
     const out = reframeCel(cel, rect);
     const ox = -rect.x, oy = -rect.y;
-    for (let y = 0; y < this.height; y++)
-      out.data.set(data.subarray(y * this.width, (y + 1) * this.width), (y + oy) * rect.w + ox);
-    this.setCel(out, layer, frame);
+    if (respectAlpha && this.layers[layer]?.lockAlpha) {
+      let changed = false;
+      for (let y = 0; y < this.height; y++) for (let x = 0; x < this.width; x++) {
+        const i = (y + oy) * rect.w + x + ox;
+        const next = alphaLockedPixel(out.data[i], data[y * this.width + x]);
+        changed ||= next !== out.data[i];
+        out.data[i] = next;
+      }
+      if (!changed) return;
+    } else {
+      for (let y = 0; y < this.height; y++)
+        out.data.set(data.subarray(y * this.width, (y + 1) * this.width), (y + oy) * rect.w + ox);
+    }
+    this.setCel(out, layer, frame, respectAlpha);
   }
 
   get tileset(): Tileset | null {
@@ -1201,7 +1219,7 @@ export class Sprite {
   }
 
   /** Replace the selection's pixels with a whole-buffer filter result */
-  applyFilter(label: string, fn: (data: Uint32Array, mask: Mask | null) => Uint32Array, cels: [number, number][] = [[this.layer, this.frame]]): void {
+  applyFilter(label: string, fn: (data: Uint32Array, mask: Mask | null, layer: number) => Uint32Array, cels: [number, number][] = [[this.layer, this.frame]]): void {
     return SelectionOperations.applyFilter.call(this.operationContext, label, fn, cels);
   }
 

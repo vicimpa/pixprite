@@ -109,3 +109,10 @@ Outline добавляет новый строго валидируемый disc
 Границы результата проверяются до выделения output buffers. Изменение исходной геометрии после Apply может временно приостановить слишком большой стек: настройки enabled и Image сохраняются без изменений, load допускает такое состояние, renderer выводит ограниченный fallback и предупреждение. После уменьшения геометрии FX возобновляются. PNG/GIF/video используют тот же fallback; Bake и Aseprite отказывают до записи результата. Подробности — [Outline](outline.md#bounds-and-performance).
 
 Включённый Outline также переводит grayscale → RGB при Bake/Aseprite export, чтобы цвет контура не превращался в яркость. Стек только из opacity сохраняет grayscale. Режим исходного редактируемого документа при экспорте не меняется.
+
+
+## Другие эффекты и Lock Alpha в v6
+
+Стек также поддерживает `{id, type:"shadow", enabled, color, x, y, size}`, `{id, type:"glow", enabled, color, size, position}` и `{id, type:"overlay", enabled, color}`. `color` — unsigned RGBA 0…4294967295; X/Y тени — целые −1024…1024, размер тени — целый 0…128. Размер Glow — целый 1…128, положение — `inside|outside`. Все параметры и неизвестные discriminants проверяются до декодирования пикселей. Inner Outline — явный UI preset существующего `outline` с `position:"inside"`. Точная геометрия blur, falloff, alpha и bounds описана в [Layer FX](layer-fx.md#drop-shadow-glow-and-color-overlay).
+
+Необязательное `layer.lockAlpha` — boolean с default false. Оно сохраняет исходную alpha при pixel editing, включая кисти/ластик, заливки/градиенты, фильтры и extension `putPixels`; структурные преобразования и запекание действуют независимо. UI — **Свойства слоя → Заблокировать альфу**; API — `LayerInfo.lockAlpha` / `sprite.layers.update`. Неверный тип поля отвергается атомарно. Это ограничение редактирования, которое не меняет изображение и формат ресурсов, поэтому версия остаётся 6; старый reader может не поддерживать ограничение. Новые FX безопасно отвергаются уже существующей проверкой unknown effect type.

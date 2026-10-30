@@ -161,6 +161,7 @@ const LayerProperties: FC<{ close: () => void; index: number; }> = ({ close, ind
   const [opacity, setOpacity] = useState(Math.round(layer.opacity * 255));
   const [blend, setBlend] = useState<BlendMode>(layer.blend);
   const [clip, setClip] = useState(!!layer.clip);
+  const [lockAlpha, setLockAlpha] = useState(!!layer.lockAlpha);
   const [note, setNote] = useState(layer.userData?.text ?? '');
   const ref = layer.reference;
   const [refX, setRefX] = useState(String(Math.round(ref?.x ?? 0)));
@@ -169,7 +170,7 @@ const LayerProperties: FC<{ close: () => void; index: number; }> = ({ close, ind
   return (
     <Dialog title={t('common.layerProperties')} onClose={close} onSubmit={() => {
       const reference = ref && { ...ref, x: num(refX, ref.x), y: num(refY, ref.y), scale: Math.max(0.001, num(refScale, ref.scale * 100) / 100) };
-      sprite.updateLayer(index, { name: name || layer.name, opacity: opacity / 255, blend, clip, userData: note ? { ...layer.userData, text: note } : layer.userData?.color ? { color: layer.userData.color } : undefined, ...(reference ? { reference } : {}) });
+      sprite.updateLayer(index, { name: name || layer.name, opacity: opacity / 255, blend, clip, lockAlpha, userData: note ? { ...layer.userData, text: note } : layer.userData?.color ? { color: layer.userData.color } : undefined, ...(reference ? { reference } : {}) });
       state.save();
     }}>
       <Field label={t('common.name')}><Input value={name} style={{ width: 160 }} onChange={e => setName(e.target.value)} /></Field>
@@ -183,6 +184,7 @@ const LayerProperties: FC<{ close: () => void; index: number; }> = ({ close, ind
         <Range min={0} max={255} value={opacity} onChange={e => setOpacity(+e.target.value)} />
         <Input type="number" min={0} max={255} value={opacity} onChange={e => setOpacity(Math.max(0, Math.min(255, +e.target.value)))} />
       </Field>
+      {!layer.group && !layer.background && !ref && <Label><Check checked={lockAlpha} onChange={e => setLockAlpha(e.target.checked)} /> {t('dialog.layerProperties.lockAlpha')}</Label>}
       {!layer.background && !ref && <Label><Check checked={clip} onChange={e => setClip(e.target.checked)} /> {t('dialog.layerProperties.clipToLayerBelow')}</Label>}
       {ref && <>
         <Muted>{t('dialog.layerProperties.referenceImageShownIn')}</Muted>

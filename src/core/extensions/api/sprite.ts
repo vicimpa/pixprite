@@ -74,7 +74,7 @@ const celId = (cel: CelImage) => {
 
 function layerInfo(l: Layer): LayerInfo {
   return {
-    name: l.name, visible: l.visible, locked: l.locked, background: l.background, continuous: l.continuous,
+    name: l.name, visible: l.visible, locked: l.locked, lockAlpha: !!l.lockAlpha, background: l.background, continuous: l.continuous,
     opacity: l.opacity, blend: l.blend, group: l.group, depth: l.depth, collapsed: l.collapsed,
     tileset: l.tileset, clip: l.clip, reference: !!l.reference, userData: l.userData,
     cels: l.cels.map((cel, f): CelInfo | null => cel && {
@@ -148,7 +148,7 @@ function putPixels(s: Sprite, layer: number, frame: number, px: PixelData) {
   const out = reframeCel(cel, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
   for (let y = 0; y < rect.h; y++)
     out.data.set(words.subarray(y * rect.w, (y + 1) * rect.w), (rect.y - y0 + y) * out.w + (rect.x - x0));
-  s.setCel(out, layer, frame);
+  s.setCel(out, layer, frame, true);
 }
 
 async function render(s: Sprite, frame: number, opts: { scale?: number; layers?: number[]; format?: 'bitmap' | 'png'; } = {}) {
@@ -217,6 +217,7 @@ export const spriteHandlers: Handlers = {
   },
   'sprite.putPixels': (c, layer, frame, px) => write(c, 'Extension edit', s => {
     const [l, f] = checkCel(s, layer, frame);
+    if (s.lockedDeep(l)) fail('locked', 'Layer is locked');
     if (s.layers[l].group || s.layers[l].reference) fail('invalid', 'Layer has no pixels');
     putPixels(s, l, f, px);
   }),
@@ -258,7 +259,7 @@ export const spriteHandlers: Handlers = {
     s.removeLayers();
   }, true),
   'sprite.layers.update': (c, i, patch) => write(c, 'Layer properties', s => {
-    s.updateLayer(has(s.layers, i, 'layer'), pick<Layer>(patch, ['name', 'visible', 'locked', 'opacity', 'blend', 'userData']));
+    s.updateLayer(has(s.layers, i, 'layer'), pick<Layer>(patch, ['name', 'visible', 'locked', 'lockAlpha', 'opacity', 'blend', 'userData']));
   }, true),
   'sprite.layers.move': (c, from, to) => write(c, 'Move layer', s => {
     const a = has(s.layers, from, 'layer'), b = has(s.layers, to, 'layer');

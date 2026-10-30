@@ -36,7 +36,7 @@ export function filterTarget(data: Uint32Array, layer: number): FilterTarget {
   return {
     w: sprite.width, h: sprite.height, data, mask: sprite.mask,
     tiledX: state.tiledX, tiledY: state.tiledY,
-    lockAlpha: sprite.layers[layer]?.background,
+    lockAlpha: sprite.layers[layer]?.background || sprite.layers[layer]?.lockAlpha,
   };
 }
 
@@ -44,7 +44,7 @@ export function filterTarget(data: Uint32Array, layer: number): FilterTarget {
 export function applyFilter(title: string, run: (t: FilterTarget, ch: Channels) => Uint32Array, scope: Scope = 'cel', ch: Channels = ALL_CHANNELS) {
   const { sprite } = state;
   if (scope === 'range' && !sprite.range) scope = 'cel';
-  sprite.applyFilter(title, data => run(filterTarget(data, sprite.layer), ch), scopeCels(scope));
+  sprite.applyFilter(title, (data, _mask, layer) => run(filterTarget(data, layer), ch), scopeCels(scope));
   state.save();
 }
 

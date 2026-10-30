@@ -222,7 +222,7 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
         || ids.some(id => typeof id !== 'string' || !id || id.length > 256)))) throw new Error('Invalid baked layer effects');
     if (layer.celOpacity !== undefined && (!Array.isArray(layer.celOpacity) || layer.celOpacity.length !== data.frames.length
       || layer.celOpacity.some(v => !Number.isFinite(v) || v < 0 || v > 1))) throw new Error('Invalid cel opacity');
-    for (const key of ['visible', 'locked', 'background', 'continuous', 'group', 'collapsed', 'clip'] as const)
+    for (const key of ['visible', 'locked', 'lockAlpha', 'background', 'continuous', 'group', 'collapsed', 'clip'] as const)
       if (layer[key] !== undefined && typeof layer[key] !== 'boolean') throw new Error(`Invalid layer ${key}`);
     const tileset = layer.tileset ?? -1;
     if (!Number.isInteger(tileset) || tileset < -1 || tileset >= tilesets.length) throw new Error('Invalid layer tileset reference');

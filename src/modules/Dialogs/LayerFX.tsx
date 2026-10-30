@@ -1,7 +1,7 @@
 import { useEffect, useState, type FC } from 'react';
 import { useSignals } from '@preact/signals-react/runtime';
 import { packRgba } from '~/core/Image';
-import type { LayerFX } from '~/core/DocumentModel';
+import { hasColorEffects, type LayerFX } from '~/core/DocumentModel';
 import { state } from '~/core/State';
 import { t } from '~/core/i18n';
 import { Button, Check, Input, Label, Muted, Select } from '~/ui/Button';
@@ -66,22 +66,22 @@ const LayerFXDialog: FC<{ close: () => void; index: number }> = ({ close, index 
       {!draft.length && <Muted style={{ whiteSpace: 'normal' }}>{t('dialog.layerFX.empty')}</Muted>}
       {draft.map((effect, i) => <Row key={effect.id} data-testid="layer-effect" style={{ flexWrap: 'wrap' }}>
         <Label><Check aria-label={t('dialog.layerFX.enabled')} checked={effect.enabled} disabled={!editable}
-          onChange={event => update({ ...effect, enabled: event.target.checked })} /> {effect.type === 'opacity' ? t('common.opacity') : t('dialog.layerFX.outline')}</Label>
+          onChange={event => update({ ...effect, enabled: event.target.checked })} /> {effect.type === 'opacity' ? t('common.opacity') : t(`dialog.layerFX.${effect.type}`)}</Label>
         {effect.type === 'opacity' ? <>
           <Input aria-label={t('dialog.layerFX.amount')} type="number" min={0} max={100} step={1} disabled={!editable}
             value={Math.round(effect.amount * 100)} onChange={event => update({ ...effect, amount: Math.max(0, Math.min(100, Number(event.target.value))) / 100 })} />
           <Muted style={{ whiteSpace: 'normal' }}>%</Muted>
         </> : <>
-          <Label>{t('dialog.layerFX.color')} <input aria-label={t('dialog.layerFX.color')} type="color" disabled={!editable}
+          <Label>{t(effect.type === 'outline' ? 'dialog.layerFX.color' : 'dialog.layerFX.effectColor')} <input aria-label={t(effect.type === 'outline' ? 'dialog.layerFX.color' : 'dialog.layerFX.effectColor')} type="color" disabled={!editable}
             value={'#' + [0, 8, 16].map(shift => ((effect.color >>> shift) & 255).toString(16).padStart(2, '0')).join('')}
             onChange={event => {
               const rgb = event.target.value.slice(1);
               update({ ...effect, color: packRgba(parseInt(rgb.slice(0, 2), 16), parseInt(rgb.slice(2, 4), 16), parseInt(rgb.slice(4, 6), 16), effect.color >>> 24) });
             }} /></Label>
-          <Label>{t('dialog.layerFX.alpha')} <Input aria-label={t('dialog.layerFX.alpha')} type="number" min={0} max={255} step={1}
+          <Label>{t(effect.type === 'outline' ? 'dialog.layerFX.alpha' : 'dialog.layerFX.effectAlpha')} <Input aria-label={t(effect.type === 'outline' ? 'dialog.layerFX.alpha' : 'dialog.layerFX.effectAlpha')} type="number" min={0} max={255} step={1}
             disabled={!editable} value={effect.color >>> 24} onChange={event => update({ ...effect,
               color: ((effect.color & 0xffffff) | (Math.max(0, Math.min(255, Math.round(+event.target.value))) << 24)) >>> 0 })} /></Label>
-          <Label>{t('dialog.layerFX.thickness')} <Input aria-label={t('dialog.layerFX.thickness')} type="number" min={1} max={128} step={1}
+          {effect.type === 'outline' && <><Label>{t('dialog.layerFX.thickness')} <Input aria-label={t('dialog.layerFX.thickness')} type="number" min={1} max={128} step={1}
             disabled={!editable} value={effect.thickness} onChange={event => update({ ...effect, thickness: Math.max(1, Math.min(128, Math.round(+event.target.value) || 1)) })} /></Label>
           <Select title={t('dialog.layerFX.position')} value={effect.position} disabled={!editable}
             onChange={event => update({ ...effect, position: event.target.value as typeof effect.position })}>
@@ -94,7 +94,17 @@ const LayerFXDialog: FC<{ close: () => void; index: number }> = ({ close, index 
             <option value="round">{t('dialog.layerFX.round')}</option>
             <option value="miter">{t('dialog.layerFX.miter')}</option>
             <option value="bevel">{t('dialog.layerFX.bevel')}</option>
-          </Select>
+          </Select></>}
+          {(effect.type === 'shadow' || effect.type === 'glow') && <Label>{t('dialog.layerFX.size')} <Input aria-label={t('dialog.layerFX.size')}
+            type="number" min={effect.type === 'shadow' ? 0 : 1} max={128} step={1} disabled={!editable} value={effect.size}
+            onChange={event => update({ ...effect, size: Math.max(effect.type === 'shadow' ? 0 : 1, Math.min(128, Math.round(+event.target.value) || 0)) })} /></Label>}
+          {effect.type === 'shadow' && (['x', 'y'] as const).map(axis => <Label key={axis}>{axis.toUpperCase()} <Input aria-label={t(axis === 'x' ? 'dialog.layerFX.shadowX' : 'dialog.layerFX.shadowY')}
+            type="number" min={-1024} max={1024} step={1} disabled={!editable} value={effect[axis]}
+            onChange={event => update({ ...effect, [axis]: Math.max(-1024, Math.min(1024, Math.round(+event.target.value) || 0)) })} /></Label>)}
+          {effect.type === 'glow' && <Select title={t('dialog.layerFX.glowPosition')} value={effect.position} disabled={!editable}
+            onChange={event => update({ ...effect, position: event.target.value as typeof effect.position })}>
+            <option value="inside">{t('dialog.layerFX.inside')}</option><option value="outside">{t('dialog.layerFX.outside')}</option>
+          </Select>}
         </>}
         <Button type="button" aria-label={t('dialog.layerFX.up')} disabled={!editable || i === 0} onClick={() => move(i, -1)}>↑</Button>
         <Button type="button" aria-label={t('dialog.layerFX.down')} disabled={!editable || i === draft.length - 1} onClick={() => move(i, 1)}>↓</Button>
@@ -105,6 +115,16 @@ const LayerFXDialog: FC<{ close: () => void; index: number }> = ({ close, index 
       { id: crypto.randomUUID(), type: 'opacity', enabled: true, amount: 1 }])}>{t('dialog.layerFX.addOpacity')}</Button>
     <Button type="button" disabled={!editable || draft.length >= 64} onClick={() => setDraft(effects => [...effects,
       { id: crypto.randomUUID(), type: 'outline', enabled: true, color: 0xff000000, thickness: 1, position: 'outside', join: 'round' }])}>{t('dialog.layerFX.addOutline')}</Button>
+    <Row style={{ flexWrap: 'wrap' }}>
+      <Button type="button" disabled={!editable || draft.length >= 64} onClick={() => setDraft(effects => [...effects,
+        { id: crypto.randomUUID(), type: 'outline', enabled: true, color: 0xff000000, thickness: 1, position: 'inside', join: 'round' }])}>{t('dialog.layerFX.addInnerOutline')}</Button>
+      <Button type="button" disabled={!editable || draft.length >= 64} onClick={() => setDraft(effects => [...effects,
+        { id: crypto.randomUUID(), type: 'shadow', enabled: true, color: 0x80000000, x: 2, y: 2, size: 2 }])}>{t('dialog.layerFX.addShadow')}</Button>
+      <Button type="button" disabled={!editable || draft.length >= 64} onClick={() => setDraft(effects => [...effects,
+        { id: crypto.randomUUID(), type: 'glow', enabled: true, color: 0xffffffff, size: 3, position: 'outside' }])}>{t('dialog.layerFX.addGlow')}</Button>
+      <Button type="button" disabled={!editable || draft.length >= 64} onClick={() => setDraft(effects => [...effects,
+        { id: crypto.randomUUID(), type: 'overlay', enabled: true, color: 0xff000000 }])}>{t('dialog.layerFX.addOverlay')}</Button>
+    </Row>
     {layer.bakedEffects?.some(ids => ids.length > 0) && <Muted style={{ whiteSpace: 'normal' }}>{t('dialog.layerFX.residual')}</Muted>}
     <Row>
       <Label><Check checked={preview} onChange={event => setPreview(event.target.checked)} /> {t('common.preview')}</Label>
@@ -123,7 +143,7 @@ const LayerFXDialog: FC<{ close: () => void; index: number }> = ({ close, index 
     </Row>
     {layer.group && <Muted style={{ whiteSpace: 'normal' }}>{t('dialog.layerFX.groupBake')}</Muted>}
     {layer.tileset >= 0 && <Muted style={{ whiteSpace: 'normal' }}>{t('dialog.layerFX.tileBake')}</Muted>}
-    {sprite.colorMode === 'gray' && draft.some(effect => effect.enabled && effect.type === 'outline') && <Muted style={{ whiteSpace: 'normal' }}>{t('dialog.layerFX.grayscaleBake')}</Muted>}
+    {sprite.colorMode === 'gray' && hasColorEffects(draft) && <Muted style={{ whiteSpace: 'normal' }}>{t('dialog.layerFX.grayscaleBake')}</Muted>}
     {sprite.colorMode === 'indexed' && <Muted style={{ whiteSpace: 'normal' }}>{t('dialog.layerFX.indexedBake')}</Muted>}
     {error && <span role="alert">{error}</span>}
   </Dialog>;

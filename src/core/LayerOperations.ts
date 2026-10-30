@@ -290,6 +290,7 @@ export function toggleCollapsed(this: SpriteContext, i: number): void {
 
 export function updateLayer(this: SpriteContext, index: number, patch: Partial<Omit<Layer, 'cels' | 'celOpacity'>>, label = 'Layer properties'): boolean {
   if (!this.layers[index]) return false;
+  if (patch.lockAlpha !== undefined && typeof patch.lockAlpha !== 'boolean') throw new Error('Invalid layer lockAlpha');
   if (patch.effects !== undefined) {
     validateLayerFX(patch.effects);
     patch = { ...patch, effects: patch.effects.map(effect => ({ ...effect })) };

@@ -1,6 +1,6 @@
 # Non-destructive Outline
 
-Open **Layer → Layer FX…** (or timeline **FX**) and choose **Add outline**. Set the RGB color, alpha byte (0–255), integer thickness (1–128), position and corners. Preview, animation, enable/disable, reorder, Apply/Cancel and frame/range/layer baking use the existing ordered stack. Close the dialog to draw or erase; the outline follows the new source silhouette immediately, including undo/redo. Applying an effect never changes Image resources or CelInstance transforms. Bake creates new resources in one undo step.
+Open **Layer → Layer FX…** (or timeline **FX**) and choose **Add outline**, or **Add inner outline** for the inside preset. Set the RGB color, alpha byte (0–255), integer thickness (1–128), position and corners. Preview, animation, enable/disable, reorder, Apply/Cancel and frame/range/layer baking use the existing ordered stack. Close the dialog to draw or erase; the outline follows the new source silhouette immediately, including undo/redo. Applying an effect never changes Image resources or CelInstance transforms. Bake creates new resources in one undo step.
 
 ## Pixel geometry
 

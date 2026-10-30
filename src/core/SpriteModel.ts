@@ -94,6 +94,8 @@ export type Layer = {
   name: string;
   visible: boolean;
   locked: boolean;
+  /** Pixel edits retain the existing silhouette and every alpha byte. Structural transforms are independent. */
+  lockAlpha?: boolean;
   /** Bottom-most opaque layer: always full, can't be moved, erasing paints the secondary color */
   background: boolean;
   /** New frames link this layer's cels instead of copying them */
@@ -300,3 +302,14 @@ export function normalizeDepths(layers: Layer[]) {
 
 export const span = ([a, b]: [number, number]) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 
+
+/** Lock Alpha is source-atop editing. Transparent/erasing results retain the source color. */
+export function alphaLockedPixel(source: number, next: number): number {
+  if (!(source >>> 24) || !(next >>> 24)) return source;
+  return ((source & 0xff000000) | (next & 0xffffff)) >>> 0;
+}
+
+/** Pixel editing only; cel placement/structural transformations deliberately use setCel directly. */
+export function alphaLockedCel(source: Cel, next: CelImage): CelImage {
+  return { ...next, data: next.data.map((pixel, i) => alphaLockedPixel(celPixel(source, next.x + i % next.w, next.y + Math.floor(i / next.w)), pixel)) };
+}

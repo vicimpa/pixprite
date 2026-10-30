@@ -161,3 +161,24 @@ test('@smoke security: a document decode finishing after stop cannot change edit
   await expect.poll(() => api(page, 'status')).toMatchObject({ lateCheck: true });
   expect(await api(page, 'status')).toMatchObject({ status: 'stopped', documents: before.documents, pixels: before.pixels });
 });
+
+test('real extension API exposes persistent Lock Alpha, preserves every alpha byte in putPixels, and respects layer locks', async ({ page }) => {
+  await api(page, 'install', extension(`return {async probe() {
+    const rect={x:0,y:0,w:2,h:2};
+    const put=data=>ctx.sprite.putPixels(0,0,{rect,format:'rgba',data:new Uint8ClampedArray(data)});
+    await put([255,0,0,73, 0,0,0,0, 0,0,255,255, 0,0,0,0]);
+    await ctx.sprite.layers.update(0,{lockAlpha:true});
+    const enabled=(await ctx.sprite.get()).layers[0].lockAlpha;
+    await put(Array(4).fill([0,255,0,255]).flat());
+    const painted=Array.from((await ctx.sprite.getPixels(0,0,rect)).data);
+    await put(Array(16).fill(0));
+    const erased=Array.from((await ctx.sprite.getPixels(0,0,rect)).data);
+    await ctx.sprite.layers.update(0,{locked:true});
+    let locked='allowed';try{await put(Array(16).fill(255));}catch(e){locked=e.code;}
+    return {enabled,painted,erased,locked};
+  }};`), ['sprite:read', 'sprite:write']);
+  await api(page, 'ready');
+  const result = await api(page, 'invoke', 'probe');
+  const expected = [0, 255, 0, 73, 0, 0, 0, 0, 0, 255, 0, 255, 0, 0, 0, 0];
+  expect(result).toEqual({ enabled: true, painted: expected, erased: expected, locked: 'locked' });
+});

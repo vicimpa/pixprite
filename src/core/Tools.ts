@@ -1,4 +1,5 @@
 import { Color } from "~/core/Color";
+import { alphaLockedPixel } from './SpriteModel';
 import { signal } from "@preact/signals-react";
 import { blendOver, packRgba, unpackRgba, type Bitmap } from "~/core/Image";
 import { Mask, type SelectMode } from "~/core/Mask";
@@ -553,7 +554,8 @@ class Painter {
         if (this.painted[i]) continue;
         this.painted[i] = 1;
       }
-      this.cel[i] = this.ink(i, tx, ty);
+      const next = this.ink(i, tx, ty);
+      this.cel[i] = this.sprite.current?.lockAlpha ? alphaLockedPixel(this.origin[i], next) : next;
     }
   }
 

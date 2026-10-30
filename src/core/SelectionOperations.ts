@@ -58,15 +58,16 @@ export function selectedBitmap(this: SpriteContext, layer = this.layer, frame = 
   return { bmp, rect, shape };
 }
 
-export function eraseSelection(this: SpriteContext): void {
+export function eraseSelection(this: SpriteContext, structural = false): void {
   const { mask } = this;
   const l = this.current;
+  if (l?.lockAlpha && !structural) return;
   const fill = l?.background ? this.backgroundFill : 0;
   if (!mask) return this.setCel(l?.background ? this.filledCel() : null);
   if (!this.getCel()) return;
   const out = this.canvasPixels();
   for (let i = 0; i < out.length; i++) if (mask.data[i]) out[i] = fill;
-  this.putCanvas(out);
+  this.putCanvas(out, this.layer, this.frame, !structural);
 }
 
 export function makeFloating(this: SpriteContext, src: Bitmap, shape: Uint8Array, place: Placement, layer = this.layer, frame = this.frame): Floating {
@@ -95,7 +96,7 @@ export function liftSelection(this: SpriteContext, copy = false): Floating | nul
   this.floatingGuard = this.protectHistory();
   this.checkpoint(copy ? 'Duplicate selection' : 'Transform');
   this.floatingStart = this.historyPosition;
-  if (!copy) this.eraseSelection();
+  if (!copy) eraseSelection.call(this, true);
   this.setFloating(this.makeFloating(bmp, shape, {
     x: rect.x, y: rect.y, w: rect.w, h: rect.h, angle: 0,
     px: rect.x + rect.w / 2, py: rect.y + rect.h / 2,
@@ -230,7 +231,10 @@ export function mapPixels(this: SpriteContext, label: string, fn: (v: number) =>
   const cel = this.getCel();
   if (!this.editable || !cel) return;
   this.checkpoint(label);
-  if (!this.mask) return this.setCel({ ...cel, data: cel.data.map(fn) });
+  if (!this.mask) {
+    const next = { ...cel, data: cel.data.map(fn) };
+    return this.setCel(next, this.layer, this.frame, true);
+  }
   const out = this.canvasPixels();
   for (let i = 0; i < out.length; i++)
     if (this.mask.data[i]) out[i] = fn(out[i]);
@@ -238,16 +242,16 @@ export function mapPixels(this: SpriteContext, label: string, fn: (v: number) =>
 }
 
 /** Replace the selection's pixels with a whole-buffer filter result */
-export function applyFilter(this: SpriteContext, label: string, fn: (data: Uint32Array, mask: Mask | null) => Uint32Array, cels: [number, number][] = [[this.layer, this.frame]]): void {
+export function applyFilter(this: SpriteContext, label: string, fn: (data: Uint32Array, mask: Mask | null, layer: number) => Uint32Array, cels: [number, number][] = [[this.layer, this.frame]]): void {
   this.dropFloating();
   this.checkpoint(label);
   const done = new Set<Cel>();
   for (const [li, fi] of cels) {
     const l = this.layers[li];
     const cel = l?.cels[fi];
-    if (!l || l.locked || !cel || done.has(cel)) continue;
+    if (!l || this.lockedDeep(li) || l.reference || !cel || done.has(cel)) continue;
     // Filters see the canvas; linked cels share the result through putCanvas
-    this.putCanvas(fn(this.canvasPixels(li, fi), this.mask), li, fi);
+    this.putCanvas(fn(this.canvasPixels(li, fi), this.mask, li), li, fi);
     done.add(l.cels[fi]);
   }
   this.layers = this.layers.slice();

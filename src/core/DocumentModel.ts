@@ -1,6 +1,6 @@
 import type { Bitmap } from './Image';
 import type { Cel, CelImage, ExtData, Layer } from './SpriteModel';
-import { applyOutline, effectBounds } from './LayerEffects';
+import { applyColorEffect, applyOutline, effectBounds } from './LayerEffects';
 
 /** An immutable shared pixel resource. Its public data view is a defensive copy. */
 export type Image = Readonly<{ kind: 'image'; id: string; w: number; h: number; data: Uint32Array }>;
@@ -14,6 +14,9 @@ export type CelInstance = CelImage & {
 /** Ordered pixel processors; every new discriminant must be validated before decoding. */
 export type LayerFX = Readonly<{ id: string; enabled: boolean } & (
   { type: 'opacity'; amount: number } |
+  { type: 'shadow'; color: number; x: number; y: number; size: number } |
+  { type: 'glow'; color: number; size: number; position: 'inside' | 'outside' } |
+  { type: 'overlay'; color: number } |
   { type: 'outline'; color: number; thickness: number; position: 'inside' | 'center' | 'outside'; join: 'round' | 'miter' | 'bevel' }
 )>;
 
@@ -190,6 +193,13 @@ export function validateLayerFX(effects: unknown): asserts effects is LayerFX[] 
         || !Number.isInteger(effect.thickness) || effect.thickness < 1 || effect.thickness > 128
         || !['inside', 'center', 'outside'].includes(effect.position) || !['round', 'miter', 'bevel'].includes(effect.join))
         throw new Error('Invalid outline effect');
+    } else if (['shadow', 'glow', 'overlay'].includes(effect.type)) {
+      if (!Number.isInteger(effect.color) || effect.color < 0 || effect.color > 0xffffffff) throw new Error('Invalid effect color');
+      if (effect.type !== 'overlay' && (!Number.isInteger(effect.size) || effect.size < (effect.type === 'shadow' ? 0 : 1) || effect.size > 128))
+        throw new Error('Invalid effect size');
+      if (effect.type === 'shadow' && [effect.x, effect.y].some(v => !Number.isInteger(v) || Math.abs(v) > 1024))
+        throw new Error('Invalid shadow offset');
+      if (effect.type === 'glow' && !['inside', 'outside'].includes(effect.position)) throw new Error('Invalid glow position');
     } else throw new Error('Invalid layer effect');
     ids.add(effect.id);
   }
@@ -206,14 +216,15 @@ export function copyEffectScope(layer: Pick<Layer, 'bakedEffects'>) {
 }
 
 /** Custom colors cannot be represented by grayscale; indexed also cannot retain arbitrary alpha. */
-export const hasColorEffects = (effects: readonly LayerFX[] = []) => effects.some(effect => effect.enabled && effect.type === 'outline' && (effect.color >>> 24) > 0);
+export const hasColorEffects = (effects: readonly LayerFX[] = []) => effects.some(effect => effect.enabled && effect.type !== 'opacity' && (effect.color >>> 24) > 0);
 
 /** Conservative: arbitrary outline colors/alpha require RGB for indexed baking/export. */
-export const hasPixelEffects = (effects: readonly LayerFX[] = []) => effects.some(effect => effect.enabled && (effect.type === 'outline' ? (effect.color >>> 24) > 0 : effect.amount !== 1));
+export const hasPixelEffects = (effects: readonly LayerFX[] = []) => effects.some(effect => effect.enabled && (effect.type !== 'opacity' ? (effect.color >>> 24) > 0 : effect.amount !== 1));
 
 /** Shared ordered pipeline for live rendering, baking and every export. Sources never change. */
 export function bakeCel(cel: Cel, effects: readonly LayerFX[] = []): Cel {
   if (!cel) return null;
+  validateLayerFX(effects);
   effectBounds(cel, effects); // Check the entire stack before any output allocation.
   let result: CelImage = cel, opacity = 1;
   const flushOpacity = () => {
@@ -226,7 +237,7 @@ export function bakeCel(cel: Cel, effects: readonly LayerFX[] = []): Cel {
   for (const effect of effects) {
     if (!effect.enabled) continue;
     if (effect.type === 'opacity') opacity *= effect.amount;
-    else if (effect.color >>> 24) { flushOpacity(); result = applyOutline(result, effect); }
+    else if (effect.color >>> 24) { flushOpacity(); result = effect.type === 'outline' ? applyOutline(result, effect) : applyColorEffect(result, effect); }
   }
   flushOpacity();
   return { x: result.x, y: result.y, w: result.w, h: result.h, data: result.data,

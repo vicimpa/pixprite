@@ -31,7 +31,7 @@ export interface SpriteApi {
   layers: {
     add(opts?: Partial<Pick<LayerInfo, 'name' | 'opacity' | 'blend' | 'visible'>> & { at?: number; group?: boolean; }): Promise<number>;
     remove(index: number): Promise<void>;
-    update(index: number, patch: Partial<Pick<LayerInfo, 'name' | 'visible' | 'locked' | 'opacity' | 'blend' | 'userData'>>): Promise<void>;
+    update(index: number, patch: Partial<Pick<LayerInfo, 'name' | 'visible' | 'locked' | 'lockAlpha' | 'opacity' | 'blend' | 'userData'>>): Promise<void>;
     move(from: number, to: number): Promise<void>;
   };
   frames: {
