@@ -29,6 +29,7 @@ export type PixpriteData = {
   layers: RawLayer[];
   images?: RawImage[];
   tags?: Tag[];
+  hiddenFrameRanges?: [number, number][];
   slices?: Slice[];
   guides?: Guide[];
   framePalettes?: FramePalette[];
@@ -166,7 +167,9 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
   if (data.loop !== undefined && data.loop !== null && (!Array.isArray(data.loop) || data.loop.length !== 2
     || !data.loop.every(Number.isInteger) || data.loop[0] < 0 || data.loop[1] < data.loop[0] || data.loop[1] >= data.frames.length))
     throw new Error('Invalid loop range');
+  if (data.hiddenFrameRanges !== undefined && (!Array.isArray(data.hiddenFrameRanges) || data.hiddenFrameRanges.some(r => !Array.isArray(r) || r.length !== 2 || !r.every(Number.isInteger) || r[0] < 0 || r[1] < r[0] || r[1] >= data.frames.length))) throw new Error('Invalid hidden frame ranges');
   for (const tag of data.tags ?? []) {
+    if (tag.collapsed !== undefined && typeof tag.collapsed !== 'boolean') throw new Error('Invalid tag collapsed');
     if (!Number.isInteger(tag.from) || !Number.isInteger(tag.to) || tag.from < 0 || tag.to < tag.from || tag.to >= data.frames.length)
       throw new Error('Invalid tag range');
     if (!['forward', 'reverse', 'pingpong', 'pingpong-reverse'].includes(tag.direction)) throw new Error('Invalid tag direction');

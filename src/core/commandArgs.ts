@@ -209,7 +209,7 @@ export const PARAMETRIC: Record<string, Parametric> = {
   },
   'anim.goto': {
     params: [],
-    apply: a => { const sprite = s(); sprite.dropFloating(); sprite.frame = Number(a.frame); sprite.range = null; },
+    apply: a => { const sprite = s(); sprite.dropFloating(); sprite.goToFrame(Number(a.frame)); sprite.range = null; },
   },
   'cel.properties': {
     params: [],

@@ -1368,6 +1368,8 @@ test('layer mask UI paints a separate channel with real pencil/eraser/fill/gradi
   expect(saved.version).toBe(7); expect(saved.images.find((image: any) => image.id === 'red-mask-source').d).toBe(source);
   expect(saved.layers[0].cels).toEqual(fixture.layers[0].cels);
   await command(page, 'anim.next'); expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(inverted);
+  // Reload only after the undo's debounced autosave commits the restored mask flags.
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.layers[0].mask).toMatchObject({ enabled: true, inverted: true });
   await page.reload(); await expect(page.getByTestId('sprite-canvas')).toBeVisible();
   expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(inverted);
 });
@@ -1484,4 +1486,131 @@ test('mask resize preflight refuses oversized resource allocation atomically and
   await page.keyboard.press('b'); const box = await page.getByTestId('sprite-canvas').boundingBox();
   await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2); await command(page, 'file.save');
   await expect.poll(async () => (await documentNamed(page, fixture.name) as any).layers[1]?.cels[0] ?? null).not.toBeNull(); expect(errors).toEqual([]);
+});
+
+test('timeline folding unions overlapping tags and independent manual ranges, reveals hidden goto/keyboard destinations and persists hidden current frames with source pixels intact', async ({ page }) => {
+  test.setTimeout(90_000);
+  const fixture = { format: 'pixprite', version: 7, name: 'Timeline folding overlap', width: 1, height: 1,
+    frames: Array.from({ length: 12 }, (_, i) => ({ duration: 100 + i })),
+    images: [{ id: 'fold-red', w: 1, h: 1, d: Buffer.from([255, 0, 0, 255]).toString('base64') },
+      { id: 'fold-mask', w: 1, h: 1, d: Buffer.from([0, 0, 0, 128]).toString('base64') }],
+    tags: [{ name: 'A', from: 1, to: 4, color: '#ff0000', direction: 'forward', collapsed: true },
+      { name: 'B', from: 3, to: 6, color: '#00ff00', direction: 'forward', collapsed: true }],
+    hiddenFrameRanges: [[5, 7], [10, 10]],
+    layers: [{ name: 'Linked masked red', mask: { image: { kind: 'image', id: 'fold-mask' }, x: 0, y: 0, outside: 255, enabled: true, inverted: false },
+      cels: Array.from({ length: 12 }, (_, i) => i ? { link: 0 } : { x: 0, y: 0, image: { kind: 'image', id: 'fold-red' } }) }] };
+  await openFixture(page, fixture);
+  await expect.poll(() => documentNamed(page, fixture.name)).not.toBeNull();
+  const original: any = await documentNamed(page, fixture.name);
+  const folds = () => page.locator('[data-fold-from]');
+  await expect(folds()).toHaveCount(2); await expect(page.locator('[data-fold-from="1"]')).toHaveText('⋯7');
+  const exported = await pngPixels(page, await download(page, 'file.exportPng'));
+  await command(page, 'anim.play');
+  await expect(page.locator('[data-fold-from="1"][data-current=true]')).toBeVisible();
+  await command(page, 'anim.play');
+  await expect(page.locator('[data-fold-from="1"]')).toHaveText('⋯7');
+  await page.locator('[data-hit="frame"][data-f="0"]').click();
+  await page.getByTitle(/^A: frames/).click({ button: 'right' });
+  await page.getByText('Expand tag', { exact: true }).click();
+  await expect(page.locator('[data-fold-from="3"]')).toHaveText('⋯5'); // B and manual range still hide their own frames.
+  await page.getByRole('button', { name: 'Collapse tag: A', exact: true }).click();
+  await page.locator('[data-hit="frame"][data-f="8"]').click();
+  await page.locator('[data-hit="frame"][data-f="9"]').click({ modifiers: ['Shift'] });
+  await page.getByRole('button', { name: 'Collapse frames', exact: true }).click();
+  await expect(page.locator('[data-fold-from="1"]')).toHaveText('⋯10');
+  await command(page, 'anim.goto');
+  let go = page.getByRole('dialog', { name: 'Go to frame', exact: true });
+  await go.getByRole('spinbutton').fill('6'); await go.getByRole('button', { name: 'Go', exact: true }).click();
+  await expect(page.locator('[data-hit="frame"][data-f="5"]')).toHaveAttribute('data-current', 'true');
+  await expect(page.locator('[data-fold-from="1"]')).toHaveText('⋯4');
+  await expect(page.locator('[data-fold-from="8"]')).toHaveText('⋯3');
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator('[data-hit="frame"][data-f="4"]')).toHaveAttribute('data-current', 'true');
+  await expect(page.locator('[data-fold-from="1"]')).toHaveCount(0);
+  // A real cel click still selects original frame 7 after the removed columns.
+  await page.locator('[data-hit="cel"][data-l="0"][data-f="7"]').click();
+  await expect(page.locator('[data-hit="frame"][data-f="7"]')).toHaveAttribute('data-current', 'true');
+  await page.locator('[data-hit="frame"][data-f="7"]').click({ button: 'right' });
+  await page.getByText('Frame timing…', { exact: true }).click();
+  const timing = page.getByRole('dialog', { name: 'Frame timing', exact: true });
+  await expect(timing.getByRole('spinbutton').first()).toHaveValue('107');
+  await timing.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.keyboard.press('ArrowRight'); // Reveals manual range 8..9, leaving independent frame 10 folded.
+  await expect(page.locator('[data-hit="frame"][data-f="8"]')).toHaveAttribute('data-current', 'true');
+  await expect(page.locator('[data-fold-from="10"]')).toHaveText('⋯1');
+  await page.getByRole('button', { name: 'Collapse frames', exact: true }).click();
+  await expect(page.locator('[data-fold-from="8"][data-current=true]')).toHaveText('⋯1');
+  await command(page, 'file.save');
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.hiddenFrameRanges).toEqual([[10, 10], [8, 8]]);
+  const saved: any = await documentNamed(page, fixture.name);
+  expect(saved.images).toEqual(original.images); expect(saved.layers[0].cels).toEqual(fixture.layers[0].cels);
+  await page.reload(); await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  await expect(page.locator('[data-fold-from="8"][data-current=true]')).toHaveText('⋯1');
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(exported);
+  // Same-frame reveal must persist even though the frame signal itself does not change.
+  await command(page, 'anim.goto');
+  go = page.getByRole('dialog', { name: 'Go to frame', exact: true });
+  await go.getByRole('spinbutton').fill('9'); await go.getByRole('button', { name: 'Go', exact: true }).click();
+  await expect(page.locator('[data-hit="frame"][data-f="8"]')).toHaveAttribute('data-current', 'true');
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.hiddenFrameRanges).toEqual([[10, 10]]);
+  await page.reload(); await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  await expect(page.locator('[data-hit="frame"][data-f="8"]')).toHaveAttribute('data-current', 'true');
+  await page.locator('[data-fold-from="10"]').focus(); await page.keyboard.press('Enter');
+  await expect(folds()).toHaveCount(0);
+  await page.getByRole('button', { name: 'Collapse all', exact: true }).click();
+  await expect(page.locator('[data-fold-from="1"]')).toHaveText('⋯6');
+  await page.getByRole('button', { name: 'Expand all', exact: true }).click(); await expect(folds()).toHaveCount(0);
+  await command(page, 'file.save');
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.hiddenFrameRanges).toEqual([]);
+  const final: any = await documentNamed(page, fixture.name);
+  expect(final.images).toEqual(original.images); expect(final.layers[0]).toEqual(saved.layers[0]); expect(final.frames).toEqual(fixture.frames);
+  // Resize after collapse has fully saved: tag metadata must independently dirty the document.
+  await page.getByRole('button', { name: 'Collapse tag: A', exact: true }).click();
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.tags[0]).toMatchObject({ from: 1, to: 4, collapsed: true });
+  const tagBox = await page.getByTitle(/^A: frames/).boundingBox();
+  const cellBox = await page.locator('[data-hit="frame"][data-f="0"]').boundingBox();
+  await page.mouse.move(tagBox!.x + tagBox!.width - 1, tagBox!.y + tagBox!.height / 2); await page.mouse.down();
+  await page.mouse.move(tagBox!.x + tagBox!.width - 1 + cellBox!.width, tagBox!.y + tagBox!.height / 2, { steps: 5 }); await page.mouse.up();
+  await expect(page.locator('[data-fold-from="1"]')).toHaveText('⋯5');
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.tags[0].to).toBe(5);
+  await page.reload(); await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  await expect(page.locator('[data-fold-from="1"]')).toHaveText('⋯5');
+});
+
+test('large folded timeline keeps bounded cells, reaches the original last frame and pointer moves/selects across compressed columns by original indices', async ({ page }) => {
+  test.setTimeout(90_000);
+  const fixture = { format: 'pixprite', version: 7, name: 'Large timeline folding', width: 1, height: 1,
+    frames: Array.from({ length: 1000 }, (_, i) => ({ duration: 100 + i })),
+    images: [{ id: 'large-fold-red', w: 1, h: 1, d: Buffer.from([255, 0, 0, 255]).toString('base64') }],
+    hiddenFrameRanges: [[2, 500], [700, 900]],
+    layers: Array.from({ length: 100 }, (_, l) => ({ name: 'Layer ' + l,
+      cels: Array.from({ length: 1000 }, (_, i) => i ? { link: 0 } : { x: 0, y: 0, image: { kind: 'image', id: 'large-fold-red' } }) })) };
+  await openFixture(page, fixture);
+  await expect(page.locator('[data-fold-from="2"]')).toHaveText('⋯499');
+  const count = await page.locator('[data-hit="cel"], [data-folded-frames]').count(); expect(count).toBeGreaterThan(0); expect(count).toBeLessThan(1200);
+  const h1 = page.locator('[data-hit="frame"][data-f="1"]'), h502 = page.locator('[data-hit="frame"][data-f="502"]');
+  const a = await h1.boundingBox(), b = await h502.boundingBox();
+  expect(a).not.toBeNull(); expect(b).not.toBeNull();
+  expect(b!.x - a!.x).toBeCloseTo(a!.width * 3, 0);
+  // Shift-click a distant original frame that is only two visible columns away.
+  await h1.click(); await h502.click({ modifiers: ['Shift'] }); await command(page, 'file.save');
+  // Header styling asserts the original contiguous selection covers both visible sides of the fold.
+  await expect(page.locator('[data-hit="frame"][data-f="501"]')).toHaveAttribute('data-selected', 'true');
+  await h1.click(); // Reduces the selected range to the single source frame.
+  const before = await h1.boundingBox(), destination = await h502.boundingBox();
+  await page.mouse.move(before!.x + before!.width / 2, before!.y + before!.height / 2); await page.mouse.down();
+  await page.mouse.move(destination!.x + destination!.width / 4, destination!.y + destination!.height / 2, { steps: 8 }); await page.mouse.up();
+  await command(page, 'file.save');
+  await expect.poll(async () => (await documentNamed(page, fixture.name))?.frames.slice(498, 504).map(f => f.duration)).toEqual([599, 600, 601, 101, 602, 603]);
+  const moved: any = await documentNamed(page, fixture.name);
+  expect(moved.hiddenFrameRanges).toEqual([[1, 499], [700, 900]]);
+  expect(moved.images).toEqual(fixture.images); expect(moved.layers[0].cels).toEqual(fixture.layers[0].cels);
+  await page.keyboard.press('End');
+  await expect(page.locator('[data-hit="frame"][data-f="999"]')).toBeVisible();
+  await expect(page.locator('[data-hit="frame"][data-f="999"]')).toHaveAttribute('data-current', 'true');
+  expect(await page.locator('[data-hit="cel"], [data-folded-frames]').count()).toBeLessThan(1200);
+  await page.getByRole('button', { name: 'Expand all', exact: true }).click();
+  await expect(page.locator('[data-hit="frame"][data-f="999"]')).toBeVisible();
+  expect(await page.locator('[data-hit="cel"], [data-folded-frames]').count()).toBeLessThan(1200);
+  await page.keyboard.press('Home'); await expect(page.locator('[data-hit="frame"][data-f="0"]')).toBeVisible();
 });

@@ -69,6 +69,7 @@ function serialize(this: SpriteContext, binary = false, resource?: CaptureResour
     height: this.height,
     frames: this.frames,
     tags: this.tags,
+    hiddenFrameRanges: this.hiddenFrameRanges,
     slices: this.slices,
     guides: this.guides,
     framePalettes: this.framePalettes,
@@ -169,6 +170,7 @@ export function load(this: SpriteContext, data: unknown): void {
   this.frames = frames;
   this.layers = layers;
   this.tags = tags;
+  this.hiddenFrameRanges = (data.hiddenFrameRanges ?? []).map(r => [...r]);
   this.loop = loop;
   this.tilesets = tilesets;
   this.slices = data.slices ?? [];

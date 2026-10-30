@@ -60,7 +60,7 @@ function frameStep(dir: 1 | -1, inTag = false) {
   sprite.dropFloating();
   const { from, to } = inTag ? sprite.playRange() : { from: 0, to: sprite.frames.length - 1 };
   const len = to - from + 1;
-  sprite.frame = from + (((sprite.frame - from + dir) % len) + len) % len;
+  sprite.goToFrame(from + (((sprite.frame - from + dir) % len) + len) % len);
   sprite.range = null;
 }
 
@@ -297,12 +297,12 @@ const list: Command[] = [
   { id: 'anim.moveRight', group: 'menu.animation', keys: ['Alt+Right'], run: changed(() => s().moveFrame(1)) },
   { id: 'anim.newTag', group: 'menu.animation', run: () => { s().addTag(); dialogs.tagProperties(s().tags.length - 1); } },
   { id: 'anim.loop', group: 'menu.animation', keys: ['Alt+L'], run: () => s().setLoopSection(), checked: () => !!s().loop },
-  { id: 'anim.first', group: 'menu.animation', keys: ['Home'], run: () => { s().dropFloating(); s().frame = 0; s().range = null; } },
+  { id: 'anim.first', group: 'menu.animation', keys: ['Home'], run: () => { s().dropFloating(); s().goToFrame(0); s().range = null; } },
   { id: 'anim.prev', group: 'menu.animation', keys: ['Left'], run: () => frameStep(-1) },
   { id: 'anim.next', group: 'menu.animation', keys: ['Right'], run: () => frameStep(1) },
   { id: 'anim.prevInTag', group: 'menu.animation', keys: [','], run: () => frameStep(-1, true) },
   { id: 'anim.nextInTag', group: 'menu.animation', keys: ['.'], run: () => frameStep(1, true) },
-  { id: 'anim.last', group: 'menu.animation', keys: ['End'], run: () => { s().dropFloating(); s().frame = s().frames.length - 1; s().range = null; } },
+  { id: 'anim.last', group: 'menu.animation', keys: ['End'], run: () => { s().dropFloating(); s().goToFrame(s().frames.length - 1); s().range = null; } },
   { id: 'anim.goto', group: 'menu.animation', keys: ['Alt+G'], run: () => dialogs.gotoFrame() },
   { id: 'cel.duplicate', group: 'menu.animation', keys: ['Alt+D'], run: changed(() => s().duplicateCels(false)) },
   { id: 'cel.duplicateLinked', group: 'menu.animation', keys: ['Alt+Shift+D'], run: changed(() => s().duplicateCels(true)) },

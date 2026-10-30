@@ -1,3 +1,4 @@
+import { type FrameSpan } from './TimelineFolding';
 import { runTask, type TaskOptions } from './BackgroundTask';
 import { hydrateCapture } from './BackgroundDocument';
 import type { Locks, LocksRecord, MetaTarget } from "@pixprite/api";
@@ -56,6 +57,7 @@ export class Sprite {
   get editingMask() { return this.editingChannel === 'mask' && !!this.current?.mask; }
   @prop frames: Frame[] = [];
   @prop tags: Tag[] = [];
+  @prop hiddenFrameRanges: FrameSpan[] = [];
   @prop slices: Slice[] = [];
   /** Guide lines of the document (replaced, never mutated) */
   @prop guides: Guide[] = [];
@@ -72,6 +74,44 @@ export class Sprite {
   @prop range: Range | null = null;
   /** Playback loop section (inclusive frames), used when no tag covers the current frame */
   @prop loop: [number, number] | null = null;
+
+  /** Explicit navigation reveals every independent reason covering the destination. Playback/restore retain folds. */
+  goToFrame(frame: number) {
+    if (!Number.isFinite(frame)) return;
+    frame = Math.max(0, Math.min(this.frames.length - 1, Math.round(frame)));
+    this.revealFrames([frame, frame]);
+    this.frame = frame;
+  }
+
+  revealFrames([from, to]: FrameSpan) {
+    const intersects = (a: number, b: number) => a <= to && b >= from;
+    const tags = this.tags.map(t => t.collapsed && intersects(t.from, t.to) ? { ...t, collapsed: false } : t);
+    const ranges = this.hiddenFrameRanges.filter(([a, b]) => !intersects(a, b));
+    if (tags.some((t, i) => t !== this.tags[i]) || ranges.length !== this.hiddenFrameRanges.length) {
+      this.tags = tags; this.hiddenFrameRanges = ranges; this.touch();
+    }
+  }
+
+  collapseFrames(range: FrameSpan = this.range && this.range.type !== 'layers' ? this.range.frames : [this.frame, this.frame]) {
+    this.checkpoint('Collapse frames');
+    this.hiddenFrameRanges = [...this.hiddenFrameRanges, [...range] as FrameSpan];
+    this.touch();
+  }
+
+  collapseTag(index: number) {
+    const tag = this.tags[index];
+    if (!tag) return;
+    this.checkpoint('Fold tag');
+    this.tags = this.tags.map((t, i) => i === index ? { ...t, collapsed: !t.collapsed } : t);
+    this.touch();
+  }
+
+  foldAll(collapse: boolean) {
+    this.checkpoint(collapse ? 'Collapse all frames' : 'Expand all frames');
+    this.tags = this.tags.map(t => ({ ...t, collapsed: collapse }));
+    this.hiddenFrameRanges = collapse ? (this.tags.length ? this.hiddenFrameRanges : [[0, this.frames.length - 1]]) : [];
+    this.touch();
+  }
 
   /** Pixels are always RGBA; indexed / gray sprites keep every written pixel on the palette / gray */
   @prop colorMode: ColorMode = 'rgb';
@@ -258,6 +298,7 @@ export class Sprite {
     this.layers = [newLayer('Layer 1', 1)];
     this.frames = [{ duration: 100 }];
     this.tags = [];
+    this.hiddenFrameRanges = [];
     this.slices = [];
     this.guides = [];
     this.selectedSlices = [];
@@ -1567,6 +1608,7 @@ export class Sprite {
     this.layers = model.layers;
     this.frames = model.frames;
     this.tags = model.tags ?? [];
+    this.hiddenFrameRanges = model.hiddenFrameRanges ?? [];
     this.slices = model.slices ?? [];
     this.guides = model.guides ?? [];
     this.framePalettes = model.framePalettes ?? [];

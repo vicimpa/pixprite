@@ -1,3 +1,4 @@
+import { columnOf, columnPosition, frameAtColumn, frameColumns, type FrameColumn } from '~/core/TimelineFolding';
 import { t } from "~/core/i18n";
 import { runCommand } from "~/core/Commands";
 import { parentOf, subtreeStart, type Range } from "~/core/Sprite";
@@ -8,7 +9,7 @@ import { openContextMenu, type MenuItems } from "~/ui/Menu";
 import { item } from "~/modules/MainMenu";
 import { dialogs } from "~/modules/Dialogs";
 import { useSignals } from "@preact/signals-react/runtime";
-import { useEffect, useLayoutEffect, useRef, useState, type FC, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FC, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import * as styled from "./styled";
 import { useViewport } from "~/ui/useViewport";
@@ -32,7 +33,8 @@ const LAYER_MENU = (): MenuItems => [
 ];
 
 const FRAME_MENU = (): MenuItems => [
-  item('anim.frameProperties'), '-',
+  item('anim.frameProperties'),
+  { label: t('timeline.collapseFrames'), run: () => { state.sprite.collapseFrames(); state.save(); } }, '-',
   item('anim.newFrame'), item('anim.newEmptyFrame'), item('anim.deleteFrame'), '-',
   item('anim.newTag'), item('anim.loop'), item('anim.reverse'),
 ];
@@ -171,14 +173,12 @@ function contrastText(hex: string) {
 }
 
 /** Tags laid out in as few rows as possible; a long name reserves the frames it covers too */
-function tagRows() {
-  const { tags } = state.sprite;
-  const cell = state.ui.cell;
+function tagRows(columns: FrameColumn[], tags: typeof state.sprite.tags, cell: number) {
   // Rough label width in frames (the label can stick out past a short tag)
-  const end = (i: number) => Math.max(tags[i].to, tags[i].from + Math.ceil((tags[i].name.length * 7 + 14) / cell) - 1);
+  const end = (i: number) => Math.max(columnOf(columns, tags[i].to), columnOf(columns, tags[i].from) + Math.ceil((tags[i].name.length * 7 + 30) / cell) - 1);
   const rows: number[][] = [];
   tags.forEach((t, i) => {
-    const row = rows.find(r => r.every(j => end(i) < tags[j].from || t.from > end(j)));
+    const row = rows.find(r => r.every(j => end(i) < columnOf(columns, tags[j].from) || columnOf(columns, t.from) > end(j)));
     if (row) row.push(i);
     else rows.push([i]);
   });
@@ -202,11 +202,12 @@ export const Timeline: FC = () => {
     return false;
   };
   const order = sprite.layers.map((_, i) => sprite.layers.length - 1 - i).filter(i => !folded(i));
-  const rows = tagRows();
+  const columns = useMemo(() => frameColumns(sprite.frames.length, sprite.tags, sprite.hiddenFrameRanges), [sprite.frames.length, sprite.tags, sprite.hiddenFrameRanges]);
+  const rows = useMemo(() => tagRows(columns, sprite.tags, cell), [columns, sprite.tags, cell]);
   const r = sprite.range;
   const total = sprite.frames.reduce((a, f) => a + f.duration, 0);
   const headTop = rows.length * cell;
-  const frames = indices(visibleRange(sprite.frames.length, cell, viewport.left, viewport.width - cell * 3 - nameWidth));
+  const frames = indices(visibleRange(columns.length, cell, viewport.left, viewport.width - cell * 3 - nameWidth));
   const layerRows = indices(visibleRange(order.length, cell, viewport.top, viewport.height - headTop - cell));
 
   // Keep the current frame in view horizontally (also while playing)
@@ -214,10 +215,10 @@ export const Timeline: FC = () => {
     const el = scroll.current;
     if (!el) return;
     const left = cell * 3 + nameWidth;
-    const x = left + sprite.frame * cell;
+    const x = left + columnOf(columns, sprite.frame) * cell;
     if (x < el.scrollLeft + left) el.scrollLeft = x - left;
     else if (x + cell > el.scrollLeft + el.clientWidth) el.scrollLeft = x + cell - el.clientWidth;
-  }, [sprite.frame, sprite.frames.length, cell, viewport.width]);
+  }, [sprite.frame, sprite.frames.length, cell, viewport.width, columns]);
 
   // ...and the current layer vertically, only when the layer changes (playback leaves rows alone)
   useLayoutEffect(() => {
@@ -233,7 +234,7 @@ export const Timeline: FC = () => {
     sprite.dropFloating();
     state.playing = false;
     if (h.kind !== 'frame') sprite.layer = h.l;
-    if (h.kind !== 'layer') sprite.frame = h.f;
+    if (h.kind !== 'layer') sprite.goToFrame(h.f);
   };
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
@@ -245,6 +246,7 @@ export const Timeline: FC = () => {
     const inside = sameKind && inRange(r, l, f);
 
     if (e.button === 2) {
+      e.stopPropagation();
       // Right click keeps a range it lands in, so the menu acts on all of it
       if (!inside) { pick(h); sprite.range = rangeOf(h, h); }
       const menu = h.kind === 'frame' ? FRAME_MENU() : h.kind === 'layer' ? LAYER_MENU() : CEL_MENU();
@@ -303,7 +305,7 @@ export const Timeline: FC = () => {
       if (drag.anchor.kind === 'frame' && h.kind === 'layer') return;
       if (drag.anchor.kind === 'layer' && h.kind === 'frame') return;
       sprite.range = rangeOf(drag.anchor, h);
-      if (h.kind !== 'layer' && drag.anchor.kind !== 'layer') sprite.frame = h.f;
+      if (h.kind !== 'layer' && drag.anchor.kind !== 'layer') sprite.goToFrame(h.f);
       if (h.kind !== 'frame' && drag.anchor.kind !== 'frame') sprite.layer = h.l;
       return;
     }
@@ -396,6 +398,9 @@ export const Timeline: FC = () => {
         <Button $square title={t('timeline.deleteFrameS')} disabled={sprite.frames.length < 2} onClick={() => runCommand('anim.deleteFrame')}><Icon name="trash" scale="glyph" /></Button>
         <Button title={t('timeline.frameTimingAltT')} onClick={() => runCommand('anim.frameProperties')}>{sprite.frames[sprite.frame]?.duration}ms</Button>
         <Button title={t('timeline.tagTheSelectedFrames')} onClick={() => runCommand('anim.newTag')}>{t('timeline.tag')}</Button>
+        <Button onClick={() => { sprite.collapseFrames(); state.save(); }}>{t('timeline.collapseFrames')}</Button>
+        <Button onClick={() => { sprite.foldAll(true); state.save(); }}>{t('timeline.collapseAll')}</Button>
+        <Button onClick={() => { sprite.foldAll(false); state.save(); }}>{t('timeline.expandAll')}</Button>
         <Button $active={!!sprite.loop} title={t('timeline.loopTheSelectedFrames')} onClick={() => runCommand('anim.loop')}>{t('timeline.loop')}</Button>
         <Separator />
         <Button title={t('timeline.newLayerShiftN')} onClick={() => runCommand('layer.new')}><Icon name="plus" scale="glyph" /> {t('timeline.layer')}</Button>
@@ -432,15 +437,15 @@ export const Timeline: FC = () => {
       >
         <styled.Grid style={{
           gridTemplateRows: `repeat(${rows.length + 1 + order.length}, ${cell}px)`,
-          gridTemplateColumns: `${cell}px ${cell}px ${cell}px ${nameWidth}px repeat(${sprite.frames.length}, ${cell}px) 1fr`,
+          gridTemplateColumns: `${cell}px ${cell}px ${cell}px ${nameWidth}px repeat(${columns.length}, ${cell}px) 1fr`,
         }}>
           {rows.map((row, ri) => (
             <div key={'tags' + ri} className="contents">
               <styled.Corner style={{ gridRow: ri + 1, gridColumn: '1 / 5', top: ri * cell }} />
-              {row.filter(i => sprite.tags[i].from < frames.at(-1)! + 1 && Math.max(sprite.tags[i].to, sprite.tags[i].from + Math.ceil((sprite.tags[i].name.length * 7 + 14) / cell) - 1) >= (frames[0] ?? 0)).map(i => {
+              {row.filter(i => columnOf(columns, sprite.tags[i].from) < frames.at(-1)! + 1 && Math.max(columnOf(columns, sprite.tags[i].to), columnOf(columns, sprite.tags[i].from) + Math.ceil((sprite.tags[i].name.length * 7 + 30) / cell) - 1) >= (frames[0] ?? 0)).map(i => {
                 const tag = sprite.tags[i];
                 return (
-                  <styled.TagCell key={i} style={{ gridColumn: `${tag.from + 5} / ${tag.to + 6}`, gridRow: ri + 1, top: ri * cell }}>
+                  <styled.TagCell key={i} style={{ gridColumn: `${columnOf(columns, tag.from) + 5} / ${columnOf(columns, tag.to) + 6}`, gridRow: ri + 1, top: ri * cell }}>
                     <styled.Tag
                       style={{ borderColor: tag.color }}
                       title={`${tag.name}: frames ${tag.from + 1}–${tag.to + 1} (${tag.direction}). Click selects its frames, drag moves it, drag an end to resize, double click to edit`}
@@ -459,7 +464,9 @@ export const Timeline: FC = () => {
                         const start = { ...tag }, sx = e.clientX, last = sprite.frames.length - 1;
                         let changed = false;
                         const move = (ev: globalThis.PointerEvent) => {
-                          const df = Math.round((ev.clientX - sx) / cell);
+                          const anchor = mode === 'to' ? start.to : start.from;
+                          const origin = columnPosition(columns, anchor);
+                          const df = frameAtColumn(columns, origin + (ev.clientX - sx) / cell) - anchor;
                           let { from, to } = start;
                           if (mode === 'move') {
                             const d = Math.max(-from, Math.min(last - to, df));
@@ -479,7 +486,7 @@ export const Timeline: FC = () => {
                           if (changed) return state.save();
                           // A plain click selects the tag's frames
                           sprite.range = { type: 'frames', layers: [0, sprite.layers.length - 1], frames: [tag.from, tag.to] };
-                          sprite.frame = tag.from;
+                          sprite.goToFrame(tag.from);
                         };
                         addEventListener('pointermove', move);
                         addEventListener('pointerup', up);
@@ -489,12 +496,18 @@ export const Timeline: FC = () => {
                         e.preventDefault();
                         e.stopPropagation();
                         openContextMenu([
+                          { label: t(tag.collapsed ? 'timeline.expandTag' : 'timeline.collapseTag'), run: () => { sprite.collapseTag(i); state.save(); } },
                           { label: t('timeline.tagProperties'), run: () => dialogs.tagProperties(i) },
                           { label: t('common.deleteTag'), run: () => { sprite.removeTag(i); state.save(); } },
                         ], e.clientX, e.clientY);
                       }}
                     >
                       <styled.TagLabel style={{ background: tag.color, color: contrastText(tag.color) }}>
+                        <button type="button" data-tag-fold={i} aria-label={t(tag.collapsed ? 'timeline.expandTag' : 'timeline.collapseTag') + ': ' + tag.name}
+                          style={{ pointerEvents: 'auto', border: 0, padding: '0 3px', background: 'transparent', color: 'inherit', cursor: 'pointer' }}
+                          onPointerDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
+                          onClick={e => { e.stopPropagation(); sprite.collapseTag(i); state.save(); }}>{tag.collapsed ? '▸' : '▾'}</button>
                         {tag.name}{tag.direction === 'reverse' ? ' ←' : tag.direction === 'pingpong' ? ' ↔' : tag.direction === 'pingpong-reverse' ? ' ⇆' : ''}
                       </styled.TagLabel>
                     </styled.Tag>
@@ -502,7 +515,7 @@ export const Timeline: FC = () => {
                 );
               })}
               {/* Opaque band under the whole row, so layer rows scrolling beneath don't show through */}
-              <styled.TagFill style={{ gridRow: ri + 1, gridColumn: `5 / ${sprite.frames.length + 6}`, top: ri * cell }} />
+              <styled.TagFill style={{ gridRow: ri + 1, gridColumn: `5 / ${columns.length + 6}`, top: ri * cell }} />
             </div>
           ))}
 
@@ -519,7 +532,17 @@ export const Timeline: FC = () => {
           <styled.Corner style={{ gridRow: rows.length + 1, gridColumn: 4, top: headTop, left: cell * 3, justifyContent: 'flex-start', padding: '0 6px', cursor: 'default' }}>
             <Muted>{t('common.layers')}</Muted>
           </styled.Corner>
-          {frames.map(f => {
+          {frames.map(v => {
+            const col = columns[v], f = col.from;
+            if (col.folded) return <styled.FrameHead key={f} data-fold-from={f} data-fold-to={col.to}
+              role="button" tabIndex={0} aria-label={`${t('timeline.hiddenFrames')}: ${col.to - f + 1} (${f + 1}–${col.to + 1})`}
+              title={`${f + 1}–${col.to + 1}: ${t('timeline.expandAll')}`}
+              data-current={sprite.frame >= f && sprite.frame <= col.to}
+              style={{ gridRow: rows.length + 1, gridColumn: v + 5, top: headTop, fontSize: 9 }}
+              onPointerDown={e => e.stopPropagation()}
+              onClick={() => { sprite.revealFrames([f, col.to]); state.save(); }}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); sprite.revealFrames([f, col.to]); state.save(); } }}
+            >⋯{col.to - f + 1}</styled.FrameHead>;
             const frame = sprite.frames[f];
             const onionBand = state.onion && f !== sprite.frame && f >= sprite.frame - state.prefs.onionBefore && f <= sprite.frame + state.prefs.onionAfter;
             // Outer ends of the onion range can be dragged to change how many frames show
@@ -553,7 +576,9 @@ export const Timeline: FC = () => {
                   e.stopPropagation();
                   const sx = e.clientX, base = onionEdge === 'start' ? state.prefs.onionBefore : state.prefs.onionAfter;
                   const move = (ev: globalThis.PointerEvent) => {
-                    const df = Math.round((ev.clientX - sx) / cell);
+                    const anchor = onionEdge === 'start' ? onionStart : onionEnd;
+                    const origin = columnPosition(columns, anchor);
+                    const df = frameAtColumn(columns, origin + (ev.clientX - sx) / cell) - anchor;
                     const n = Math.max(0, base + (onionEdge === 'start' ? -df : df));
                     state.setPrefs(onionEdge === 'start' ? { onionBefore: n } : { onionAfter: n });
                     state.hint = `Onion skin: ${state.prefs.onionBefore} before, ${state.prefs.onionAfter} after`;
@@ -563,14 +588,14 @@ export const Timeline: FC = () => {
                   addEventListener('pointerup', up);
                 }}
                 data-drop={drop}
-                style={{ gridRow: rows.length + 1, gridColumn: f + 5, top: headTop }}
+                style={{ gridRow: rows.length + 1, gridColumn: v + 5, top: headTop }}
                 title={`Frame ${f + 1}, ${frame.duration}ms`}
               >
                 {f + 1}
               </styled.FrameHead>
             );
           })}
-          <styled.HeadFill style={{ gridRow: rows.length + 1, gridColumn: sprite.frames.length + 5, top: headTop }} />
+          <styled.HeadFill style={{ gridRow: rows.length + 1, gridColumn: columns.length + 5, top: headTop }} />
 
           {/* Layer rows, topmost first */}
           {layerRows.map(k => {
@@ -608,12 +633,16 @@ export const Timeline: FC = () => {
                 <styled.LayerCell data-hit="layer" data-l={l} data-current={current} data-selected={layerSel} data-drop={drop} style={{ left: cell * 3, gridRow, gridColumn: 4 }}>
                   <LayerName index={l} />
                 </styled.LayerCell>
-                {frames.map(f => {
+                {frames.map(v => {
+                  const col = columns[v], f = col.from;
+                  if (col.folded) return <styled.Cel key={f} data-folded-frames data-current={current && sprite.frame >= f && sprite.frame <= col.to}
+                    style={{ gridRow, gridColumn: v + 5, color: 'var(--fg-dim)' }} title={`${f + 1}–${col.to + 1}`}
+                    onPointerDown={e => e.stopPropagation()} onClick={() => { sprite.revealFrames([f, col.to]); state.save(); }}>⋯</styled.Cel>;
                   const c = layer.cels[f];
                   if (layer.group) return (
                     <styled.Cel key={f} data-hit="cel" data-l={l} data-f={f} data-group
                       data-current={current && f === sprite.frame} data-selected={inRange(r, l, f)} data-cross={current || f === sprite.frame}
-                      style={{ gridRow, gridColumn: f + 5 }}>
+                      style={{ gridRow, gridColumn: v + 5 }}>
                       {/* A folded group still shows which frames have something inside it */}
                       {layer.collapsed && groupHas(l, f) && <styled.Key data-folded />}
                     </styled.Cel>
@@ -629,7 +658,7 @@ export const Timeline: FC = () => {
                       data-cross={current || f === sprite.frame}
                       data-clip={!!clip && inRange(clip, l, f)}
                       data-drop={!!shifted && inRange(shifted, l, f)}
-                      style={{ gridRow, gridColumn: f + 5 }}
+                      style={{ gridRow, gridColumn: v + 5 }}
                     >
                       {c ? (
                         <styled.Key
@@ -641,7 +670,7 @@ export const Timeline: FC = () => {
                     </styled.Cel>
                   );
                 })}
-                <styled.RowFill data-current={current} style={{ gridRow, gridColumn: sprite.frames.length + 5 }} />
+                <styled.RowFill data-current={current} style={{ gridRow, gridColumn: columns.length + 5 }} />
               </div>
             );
           })}

@@ -51,8 +51,8 @@ function reveal(p: Problem) {
   const at = p.at;
   if (!at) return;
   if (at.layer !== undefined && at.layer < s.layers.length) s.layer = at.layer;
-  if (at.frame !== undefined && at.frame < s.frames.length) s.frame = at.frame;
-  else if (at.tag !== undefined && s.tags[at.tag]) s.frame = s.tags[at.tag].from;
+  if (at.frame !== undefined && at.frame < s.frames.length) s.goToFrame(at.frame);
+  else if (at.tag !== undefined && s.tags[at.tag]) s.goToFrame(s.tags[at.tag].from);
 }
 
 export function problemCount() {

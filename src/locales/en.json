@@ -1186,5 +1186,11 @@
   "tool.text": "Text",
   "tool.wand": "Magic wand",
   "tool.zoom": "Zoom",
-  "toolbar.rightClickForMore": "Right click for more"
+  "toolbar.rightClickForMore": "Right click for more",
+  "timeline.collapseFrames": "Collapse frames",
+  "timeline.collapseAll": "Collapse all",
+  "timeline.expandAll": "Expand all",
+  "timeline.collapseTag": "Collapse tag",
+  "timeline.expandTag": "Expand tag",
+  "timeline.hiddenFrames": "Hidden frames"
 }

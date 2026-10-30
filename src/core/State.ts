@@ -1240,7 +1240,7 @@ effect(() => {
   void state.paletteSelection; void state.editPaletteEntry; void state.showPivot;
   for (const k of DOC_PREFS) void state.prefs[k];
   const doc = state.sprite;
-  void doc.frame; void doc.layer; void doc.range; void doc.mask; void doc.selectedSlices; void doc.tilesetMode; void doc.transformAlgo;
+  void doc.frame; void doc.tags; void doc.hiddenFrameRanges; void doc.layer; void doc.range; void doc.mask; void doc.selectedSlices; void doc.tilesetMode; void doc.transformAlgo;
   clearTimeout(editorTimer);
   editorTimer = window.setTimeout(() => {
     // The last tools and view settings, for new documents and the next start

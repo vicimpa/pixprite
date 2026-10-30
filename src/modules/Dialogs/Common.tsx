@@ -307,7 +307,7 @@ const GotoFrame: FC<{ close: () => void; }> = ({ close }) => {
   return (
     <Dialog title={t('common.goToFrame')} onClose={close} submitLabel={t('dialog.gotoFrame.go')} onSubmit={() => {
       sprite.dropFloating();
-      sprite.frame = Math.max(0, Math.min(sprite.frames.length - 1, (num(n, 1) | 0) - 1));
+      sprite.goToFrame(Math.max(0, Math.min(sprite.frames.length - 1, (num(n, 1) | 0) - 1)));
       sprite.range = null;
     }}>
       <NumberField label={t('common.frame')} value={n} onChange={setN} min={1} max={sprite.frames.length} suffix={`of ${sprite.frames.length}`} />

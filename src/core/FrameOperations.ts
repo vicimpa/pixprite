@@ -1,3 +1,4 @@
+import { remapHiddenRanges } from './TimelineFolding';
 import type { SpriteContext } from "./SpriteContext";
 import {
   cloneCel, normalizeDepths, reframeCel, span, subtreeStart, TAG_COLORS, type Cel, type CelImage,
@@ -18,6 +19,9 @@ function setEffectScope(layer: Layer, frame: number, ids: string[] | undefined, 
 
 /** Inserts frames at `at` (before it) with the given cel source per layer */
 export function insertFrames(this: SpriteContext, at: number, count: number, make: (layer: Layer, li: number, k: number) => Cel, duration = 100): void {
+  const sources: (number | null)[] = this.frames.map((_, i) => i);
+  sources.splice(at, 0, ...Array<number | null>(count).fill(null));
+  this.hiddenFrameRanges = remapHiddenRanges(this.hiddenFrameRanges, sources);
   const frames = this.frames.slice();
   frames.splice(at, 0, ...Array.from({ length: count }, () => ({ duration })));
   this.layers.forEach((l, li) => {
@@ -85,6 +89,7 @@ export function removeFrames(this: SpriteContext): boolean {
   if (this.refuse('frames', 'delete') || sel.some(f => this.refuseFrameShift(f, -1))) return false;
   this.dropFloating();
   this.checkpoint(sel.length > 1 ? 'Delete frames' : 'Delete frame');
+  this.hiddenFrameRanges = remapHiddenRanges(this.hiddenFrameRanges, this.frames.map((_, i) => i).filter(i => !sel.includes(i)));
   for (const f of sel.slice().reverse()) {
     for (const l of this.layers) {
       l.cels.splice(f, 1);
@@ -142,6 +147,11 @@ export function moveFrames(this: SpriteContext, [a, b]: [number, number], before
     op: pick(l.celOpacity),
     fx: l.bakedEffects && pick(l.bakedEffects).map(ids => ids.slice()),
   }));
+  const sources: (number | null)[] = this.frames.map((_, i) => i).filter(i => copy || i < a || i > b);
+  const destination = !copy && before > b ? before - count : before;
+  sources.splice(destination, 0, ...Array.from({ length: count }, (_, k) => copy ? null : a + k));
+  this.hiddenFrameRanges = remapHiddenRanges(this.hiddenFrameRanges, sources);
+  if (copy) this.shiftTags(before, count);
   let at = before;
   if (!copy) {
     this.frames = this.frames.filter((_, i) => i < a || i > b);
@@ -363,6 +373,9 @@ export function reverseFrames(this: SpriteContext): void {
     sel.forEach((i, k) => arr[i] = part[k]);
   };
   if (!cels) {
+    const sources = this.frames.map((_, i) => i);
+    rev(sources);
+    this.hiddenFrameRanges = remapHiddenRanges(this.hiddenFrameRanges, sources);
     const frames = this.frames.slice();
     rev(frames);
     this.frames = frames;
@@ -481,6 +494,7 @@ export function addTag(this: SpriteContext): boolean {
     color: TAG_COLORS[this.tags.length % TAG_COLORS.length],
     direction: 'forward',
   }];
+  this.touch();
   return true;
 }
 
@@ -493,6 +507,7 @@ export function updateTag(this: SpriteContext, index: number, patch: Partial<Tag
   if (from !== t.from && to - from === t.to - t.from && this.refuse('tags', 'move')) return false;
   if (checkpoint) this.checkpoint('Tag properties');
   this.tags = this.tags.map((t, i) => i === index ? { ...t, ...patch } : t);
+  this.touch();
   return true;
 }
 
@@ -500,6 +515,7 @@ export function removeTag(this: SpriteContext, index: number): boolean {
   if (this.refuse('tags', 'delete')) return false;
   this.checkpoint('Delete tag');
   this.tags = this.tags.filter((_, i) => i !== index);
+  this.touch();
   return true;
 }
 

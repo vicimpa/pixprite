@@ -220,10 +220,10 @@ export const FullscreenPreview: FC = () => {
       if (e.key === '+' || e.key === '=') return setBg(b => b + 1 >= state.palette.length ? -1 : b + 1);
       if (e.key === '-') return setBg(b => b - 1 < -1 ? state.palette.length - 1 : b - 1);
       const nav: Record<string, () => void> = {
-        ArrowLeft: () => { sprite.frame = (sprite.frame - 1 + sprite.frames.length) % sprite.frames.length; },
-        ArrowRight: () => { sprite.frame = (sprite.frame + 1) % sprite.frames.length; },
-        Home: () => { sprite.frame = 0; },
-        End: () => { sprite.frame = sprite.frames.length - 1; },
+        ArrowLeft: () => { sprite.goToFrame((sprite.frame - 1 + sprite.frames.length) % sprite.frames.length); },
+        ArrowRight: () => { sprite.goToFrame((sprite.frame + 1) % sprite.frames.length); },
+        Home: () => { sprite.goToFrame(0); },
+        End: () => { sprite.goToFrame(sprite.frames.length - 1); },
       };
       if (nav[e.key]) return nav[e.key]();
       state.fullscreenPreview = false;

@@ -166,6 +166,8 @@ export type Frame = {
 export type TagDirection = 'forward' | 'reverse' | 'pingpong' | 'pingpong-reverse';
 
 export type Tag = {
+  /** Document UI metadata; rendering/export always includes every frame. */
+  collapsed?: boolean;
   name: string;
   from: number;
   to: number;

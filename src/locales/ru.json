@@ -1186,5 +1186,11 @@
   "tool.text": "Текст",
   "tool.wand": "Волшебная палочка",
   "tool.zoom": "Масштаб",
-  "toolbar.rightClickForMore": "Правый клик — другие инструменты"
+  "toolbar.rightClickForMore": "Правый клик — другие инструменты",
+  "timeline.collapseFrames": "Свернуть кадры",
+  "timeline.collapseAll": "Свернуть всё",
+  "timeline.expandAll": "Развернуть всё",
+  "timeline.collapseTag": "Свернуть тег",
+  "timeline.expandTag": "Развернуть тег",
+  "timeline.hiddenFrames": "Скрытые кадры"
 }
