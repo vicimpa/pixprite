@@ -88,6 +88,9 @@ export const Dialog: FC<DialogProps> = ({
   return (
     <styled.Window
       ref={ref}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
       data-wide={!!width && width > 560}
       style={{ width, ...(pos ? { position: 'fixed', left: pos.x, top: pos.y, margin: 0 } : {}) }}
       onKeyDown={e => e.stopPropagation()}

@@ -6,6 +6,7 @@
     { "path": "./src/tsconfig.test.json" },
     { "path": "./packages/api" },
     { "path": "./scripts" },
+    { "path": "./e2e" },
     { "path": "./extensions/ai-assistant" },
     { "path": "./extensions/game-rig" },
     { "path": "./extensions/template" }

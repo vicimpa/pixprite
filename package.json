@@ -27,7 +27,9 @@
     "typecheck": "tsc -b",
     "i18n:check": "bun scripts/i18n-check.ts",
     "ext:dev": "bun scripts/build-extensions.ts --dev",
-    "ext:check": "bun scripts/build-extensions.ts"
+    "ext:check": "bun scripts/build-extensions.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test --grep @smoke"
   },
   "dependencies": {
     "@fontsource/pixelify-sans": "^5.3.0",
@@ -49,6 +51,7 @@
     "twgl.js": "^7.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/bun": "^1.4.3",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",

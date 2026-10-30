@@ -690,28 +690,34 @@ export class State {
    */
   async persist() {
     for (const doc of this.docs) {
-      // Every open tab is kept, a brand-new empty one too (it is unsaved work)
-      const sid = doc.sessionId ??= newProjectId();
-      const editor = this.editorOf(doc);
-      const json = JSON.stringify(editor);
-      if (editor && json !== doc.storedEditor) {
-        doc.storedEditor = json;
-        doc.editor = editor;
-        await saveSession(sid, 'editor', editor).catch(e => console.warn('Saving the editor failed', e));
-      }
-      if (doc.version === doc.storedVersion) continue;
-      const version = doc.version;
-      await saveSession(sid, 'head', { projectId: doc.projectId, name: doc.name } satisfies SessionHead);
-      const data = JSON.parse(JSON.stringify(doc));
-      await saveSession(sid, 'data', data).catch(e => console.warn('Saving the working copy failed', e));
-      doc.storedVersion = version;
-      // A timed recovery copy now and then (at most every SNAPSHOT_MS per document)
-      const now = Date.now();
-      if (now - (lastSnapshot.get(doc) ?? 0) >= SNAPSHOT_MS) {
-        lastSnapshot.set(doc, now);
-        void saveSnapshot({
-          owner: doc.projectId ?? sid, name: doc.name, width: doc.width, height: doc.height, frames: doc.frames.length, thumb: thumbnail(doc),
-        }, data).then(() => this.projectsVersion++, e => console.warn('Saving a snapshot failed', e));
+      try {
+        // Every open tab is kept, a brand-new empty one too (it is unsaved work)
+        const sid = doc.sessionId ??= newProjectId();
+        const editor = this.editorOf(doc);
+        const json = JSON.stringify(editor);
+        if (editor && json !== doc.storedEditor) {
+          doc.editor = editor;
+          await saveSession(sid, 'editor', editor);
+          doc.storedEditor = json;
+        }
+        if (doc.version === doc.storedVersion) continue;
+        const version = doc.version;
+        await saveSession(sid, 'head', { projectId: doc.projectId, name: doc.name } satisfies SessionHead);
+        const data = JSON.parse(JSON.stringify(doc));
+        await saveSession(sid, 'data', data);
+        doc.storedVersion = version;
+        // A timed recovery copy now and then (at most every SNAPSHOT_MS per document)
+        const now = Date.now();
+        if (now - (lastSnapshot.get(doc) ?? 0) >= SNAPSHOT_MS) {
+          lastSnapshot.set(doc, now);
+          void saveSnapshot({
+            owner: doc.projectId ?? sid, name: doc.name, width: doc.width, height: doc.height, frames: doc.frames.length, thumb: thumbnail(doc),
+          }, data).then(() => this.projectsVersion++, e => console.warn('Saving a snapshot failed', e));
+        }
+      } catch (e) {
+        // Keep the version pending so a later autosave retries the same working copy.
+        console.warn('Saving the working copy failed', e);
+        this.showTip(`${t('msg.couldNotSave')}: ${(e as Error).message}`, 4000);
       }
     }
     store('pixprite:session', {

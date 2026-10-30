@@ -158,13 +158,15 @@ export const CommandPalette: FC = () => {
             if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => Math.min(shown.length - 1, a + 1)); }
             if (e.key === 'ArrowUp') { e.preventDefault(); setActive(a => Math.max(0, a - 1)); }
             if (e.key === 'Enter') {
+              // A command may open a form; this Enter belongs to the palette, not that form.
+              e.preventDefault();
               if (query.startsWith('=')) return close();
               if (shown[active]) run(shown[active].c);
             }
           }} />
         {query.startsWith('=') && <Item><b>{calc(query.slice(1))}</b><small>{t('commandPalette.enterCloses')}</small></Item>}
         {shown.map(({ c }, i) => (
-          <Item key={c.id} data-active={i === active} data-disabled={!available(c)}
+          <Item key={c.id} data-command={c.id} data-active={i === active} data-disabled={!available(c)}
             onPointerEnter={() => setActive(i)} onClick={() => run(c)}>
             {c.checked && <span>{c.checked() ? '✓' : '·'}</span>}
             <b>{commandLabel(c)}</b>

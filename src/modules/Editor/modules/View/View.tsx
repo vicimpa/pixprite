@@ -1068,6 +1068,7 @@ export const View: FC = () => {
 
   return (
     <Canvas
+      data-testid="sprite-canvas"
       inset
       hidpi
       loop={loop}
