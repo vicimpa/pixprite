@@ -143,15 +143,15 @@
 
 ### Разделение `Sprite.ts`
 
-- [ ] Вынести `SpriteHistory`.
-- [ ] Вынести `SpriteSerialization`.
-- [ ] Вынести `SpriteRenderer`.
-- [ ] Вынести `LayerOperations`.
-- [ ] Вынести `FrameOperations`.
-- [ ] Вынести `SelectionOperations`.
-- [ ] Вынести `TileOperations`.
-- [ ] Вынести `SpriteValidation`.
-- [ ] Выполнять разделение небольшими изменениями с прогоном тестов.
+- [x] Вынести `SpriteHistory`.
+- [x] Вынести `SpriteSerialization`.
+- [x] Вынести `SpriteRenderer`.
+- [x] Вынести `LayerOperations`.
+- [x] Вынести `FrameOperations`.
+- [x] Вынести `SelectionOperations`.
+- [x] Вынести `TileOperations`.
+- [x] Вынести `SpriteValidation`.
+- [x] Выполнять разделение небольшими изменениями с прогоном тестов.
 
 ### Модель документа 2.0
 
