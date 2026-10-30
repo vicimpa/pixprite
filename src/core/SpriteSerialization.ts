@@ -1,7 +1,8 @@
 import type { AseDocument } from "~/core/formats/Aseprite";
 import type { SpriteContext } from "./SpriteContext";
 import { cleanInfo, lockOwners, newLayer, TAG_COLORS, tagsByName, trimCel, type Cel, type CelImage, type Frame, type Layer } from "./SpriteModel";
-import { isExtData, isLocksRecord, migratePixpriteV3, PIXPRITE_VERSION, validateDocumentIntegrity, validatePixpriteShape } from "./SpriteValidation";
+import { isExtData, isLocksRecord, migratePixpriteV3, migratePixpriteV4, PIXPRITE_VERSION, validateDocumentIntegrity, validatePixpriteShape, type RawImage } from "./SpriteValidation";
+import { bakeCel, createCelInstance, createImage, hasCelTransform, imageOf, isCelInstance, layerFXOpacity, type Image } from './DocumentModel';
 
 // Serialization
 
@@ -15,6 +16,8 @@ export function savedLayers(this: SpriteContext): Layer[] {
 }
 
 export function toJSON(this: SpriteContext) {
+  const images: RawImage[] = [];
+  const resources = new Map<string, Image>();
   const b64 = (data: Uint32Array) => {
     const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     let s = '';
@@ -25,11 +28,23 @@ export function toJSON(this: SpriteContext) {
   const encode = (cel: Cel) => {
     if (!cel) return null;
     const t = cel.tiles;
-    return { x: cel.x, y: cel.y, w: cel.w, h: cel.h, d: b64(cel.data), ...(t ? { tc: t.cols, tr: t.rows, t: b64(t.refs) } : {}), ...(cel.ext ? { ext: cel.ext } : {}) };
+    const image = imageOf(cel);
+    const known = resources.get(image.id);
+    if (known && known !== image) throw new Error('Conflicting image resource ID');
+    if (!known) {
+      resources.set(image.id, image);
+      images.push({ id: image.id, w: image.w, h: image.h, d: b64(image.data) });
+    }
+    const transform = isCelInstance(cel) ? cel.transform : null;
+    return { x: cel.x, y: cel.y, image: { kind: 'image' as const, id: image.id },
+      ...(transform?.flipX ? { flipX: true } : {}), ...(transform?.flipY ? { flipY: true } : {}),
+      ...(transform?.rotation ? { rotation: transform.rotation } : {}), ...(transform && transform.opacity !== 1 ? { opacity: transform.opacity } : {}),
+      ...(t ? { tc: t.cols, tr: t.rows, t: b64(t.refs) } : {}), ...(cel.ext ? { ext: cel.ext } : {}) };
   };
   return {
     format: 'pixprite',
     version: PIXPRITE_VERSION,
+    images,
     colorMode: this.colorMode,
     transparentIndex: this.transparentIndex,
     name: this.name,
@@ -66,23 +81,21 @@ export function load(this: SpriteContext, data: unknown): void {
     data = migratePixpriteV3(data);
     validatePixpriteShape(data);
   }
+  if (data.version === 4) {
+    data = migratePixpriteV4(data);
+    validatePixpriteShape(data);
+  }
   const bytes = (s: string) => {
     const bin = atob(s);
     const out = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
     return new Uint32Array(out.buffer);
   };
-  // v3 stored full-canvas buffers as plain strings, v4 stores placed cel images
-  const decode = (c: string | { x: number; y: number; w: number; h: number; d: string; } | null): Cel => {
+  const images = new Map((data.images ?? []).map(image => [image.id, createImage(image.w, image.h, bytes(image.d), image.id)]));
+  const decode = (c: any): Cel => {
     if (!c) return null;
-    if (typeof c === 'string') {
-      const pixels = bytes(c);
-      if (pixels.length !== data.width * data.height) throw new Error('Invalid cel pixel buffer length');
-      return trimCel({ x: 0, y: 0, w: data.width, h: data.height, data: pixels });
-    }
-    const pixels = bytes(c.d);
-    if (pixels.length !== c.w * c.h) throw new Error('Invalid cel pixel buffer length');
-    const cel: CelImage = { x: c.x, y: c.y, w: c.w, h: c.h, data: pixels };
+    const image = images.get(c.image.id)!;
+    const cel: CelImage = createCelInstance(image, { x: c.x, y: c.y, flipX: c.flipX, flipY: c.flipY, rotation: c.rotation, opacity: c.opacity });
     const t = (c as { t?: string; tc?: number; tr?: number; });
     if (t.t) {
       const refs = bytes(t.t);
@@ -103,7 +116,7 @@ export function load(this: SpriteContext, data: unknown): void {
   const layers = data.layers.map(l => {
     const cels: Cel[] = [];
     l.cels.forEach((c: any, i: number) => cels[i] = c && typeof c === 'object' && 'link' in c ? cels[c.link] ?? null : decode(c));
-    return { ...newLayer(l.name, count), ...l, cels, celOpacity: l.celOpacity ?? Array(count).fill(1) };
+    return { ...newLayer(l.name, count), ...l, cels, ...(l.effects ? { effects: l.effects.map(effect => ({ ...effect })) } : {}), celOpacity: l.celOpacity ?? Array(count).fill(1) };
   });
   const tags = data.tags ?? [], loop = data.loop ?? null;
   validateDocumentIntegrity({ layers, frames, tags, loop, tilesets });
@@ -131,6 +144,11 @@ export function load(this: SpriteContext, data: unknown): void {
 }
 
 export function toDocument(this: SpriteContext): AseDocument {
+  const layers = this.savedLayers().filter(layer => !layer.reference);
+  // Indexed pixel payloads cannot retain arbitrary baked alpha through palette lookup.
+  const trueColor = this.colorMode === 'indexed' && layers.some(layer => !layer.group && (
+    layerFXOpacity(layer.effects) !== 1 || layer.cels.some(cel => cel && isCelInstance(cel) && cel.transform.opacity !== 1)
+  ));
   return {
     width: this.width,
     height: this.height,
@@ -138,17 +156,28 @@ export function toDocument(this: SpriteContext): AseDocument {
     tags: this.tags.map(t => ({ ...t })),
     palette: this.framePalettes[0]?.colors ?? [],
     slices: this.slices,
-    colorMode: this.colorMode,
+    colorMode: trueColor ? 'rgb' : this.colorMode,
     framePalettes: this.framePalettes,
     tilesets: this.tilesets,
-    transparentIndex: this.colorMode === 'indexed' ? this.transparentIndex : -1,
+    transparentIndex: this.colorMode === 'indexed' && !trueColor ? this.transparentIndex : -1,
     // Reference layers belong to the editor only
-    layers: this.savedLayers().filter(l => !l.reference).map(l => ({
-      name: l.name, visible: l.visible, locked: l.locked, background: l.background, continuous: l.continuous,
-      opacity: l.opacity, blend: l.blend, cels: l.cels, celOpacity: l.celOpacity,
-      group: l.group, depth: l.depth, collapsed: l.collapsed, tileset: l.tileset,
-      clip: l.clip, userData: l.userData,
-    })),
+    layers: layers.map(l => {
+      const baked = new Map<CelImage, Cel>();
+      const cels = l.cels.map(cel => {
+        if (!cel) return null;
+        if (!baked.has(cel)) baked.set(cel, bakeCel(cel, l.effects));
+        return baked.get(cel)!;
+      });
+      const flattenTiles = l.tileset >= 0 && (layerFXOpacity(l.effects) !== 1 || l.cels.some(cel => cel && hasCelTransform(cel)));
+      return {
+        name: l.name, visible: l.visible, locked: l.locked, background: l.background, continuous: l.continuous,
+        opacity: l.group ? l.opacity * layerFXOpacity(l.effects) : l.opacity, blend: l.blend,
+        cels: flattenTiles ? cels.map(cel => cel && ({ x: cel.x, y: cel.y, w: cel.w, h: cel.h, data: cel.data, ...(cel.ext ? { ext: cel.ext } : {}) })) : cels,
+        celOpacity: l.celOpacity,
+        group: l.group, depth: l.depth, collapsed: l.collapsed, tileset: flattenTiles ? -1 : l.tileset,
+        clip: l.clip, userData: l.userData,
+      };
+    }),
   };
 }
 

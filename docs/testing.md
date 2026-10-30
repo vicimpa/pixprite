@@ -40,3 +40,5 @@ Budgets in `scripts/bundle-budgets.json` are measured in bytes:
 Missing build manifests/chunks and exceeded budgets fail the command. Unit tests exercise passing builds, oversized static imports, oversized workers, and missing files. To review a budget change, rebuild, inspect the measured growth and chunk split, then update the limits in the JSON file with the reason in the PR. The checker never updates limits automatically.
 
 CI builds once, then runs `PIXPRITE_E2E_PREBUILT=1 bun run test:e2e:smoke` against that exact `dist` directory. Without this variable, browser tests retain their normal build-first behavior. To inspect another build/budget fixture, use `bun scripts/bundle-check.ts <build-directory> <budget-json>`.
+
+The v5 model scenario imports a shared-image fixture through the file picker, checks exact transformed/effected PNG pixels in Chromium, then saves and reloads while verifying the original Image payload remains unchanged. Unit tests additionally cover copy-on-write bitmap mutations, resource references, migrations, tilemap rasterization, floating previews and undo.

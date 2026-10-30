@@ -4,6 +4,9 @@ import { opaqueBounds, type Bitmap, type Rect } from "~/core/Image";
 import type { UserData } from "~/core/Tilemap";
 import type { TileRefs } from "~/core/Tilemap";
 import type { Placement } from "~/core/Transform";
+import { createCelInstance, isCelInstance, transformCel, type LayerFX } from './DocumentModel';
+
+export { createImage, createCelInstance, imageOf, transformCel, bakeCel, type Image, type AssetRef, type CelInstance, type CelTransform, type LayerFX } from './DocumentModel';
 
 /** Data that extensions attach to a document part, one JSON value per extension id */
 export type ExtData = Record<string, unknown>;
@@ -65,6 +68,11 @@ export function trimCel(cel: CelImage | null): Cel {
 }
 
 export function cloneCel(cel: Cel): Cel {
+  if (cel && isCelInstance(cel)) {
+    const copy = createCelInstance(cel.image, { ...cel.transform, x: cel.x, y: cel.y, ext: cel.ext });
+    if (cel.tiles) copy.tiles = cel.tiles;
+    return copy;
+  }
   return cel && { ...cel, data: cel.data.slice() };
 }
 
@@ -114,6 +122,8 @@ export type Layer = {
   /** Reference layer: an outside image shown in the editor only, never exported or sampled */
   reference?: RefImage | null;
   ext?: ExtData;
+  /** Ordered nondestructive processors; an absent stack is equivalent to an empty stack. */
+  effects?: LayerFX[];
 };
 
 /** Image of a reference layer placed in sprite coordinates; `src` is a data URL */
@@ -227,11 +237,12 @@ export const TAG_COLORS = ['#e0a33a', '#5aa9d6', '#9bd35a', '#d65a8f', '#a07be0'
 
 /** `next` with the extension data of the cel it replaces */
 export function keepExt(prev: CelImage, next: Cel): Cel {
-  return next && prev.ext && !next.ext ? { ...next, ext: prev.ext } : next;
+  if (!next || !prev.ext || next.ext) return next;
+  return isCelInstance(next) ? Object.assign(transformCel(next, {}), { ext: prev.ext }) : { ...next, ext: prev.ext };
 }
 
 export function copyLayers(layers: Layer[]) {
-  return layers.map(l => ({ ...l, cels: l.cels.slice(), celOpacity: l.celOpacity.slice() }));
+  return layers.map(l => ({ ...l, cels: l.cels.slice(), celOpacity: l.celOpacity.slice(), ...(l.effects ? { effects: l.effects.map(effect => ({ ...effect })) } : {}) }));
 }
 
 export function newLayer(name: string, frames: number): Layer {

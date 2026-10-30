@@ -21,9 +21,11 @@ import {
 import * as SpriteRenderer from "./SpriteRenderer";
 import * as SpriteSerialization from "./SpriteSerialization";
 import * as TileOperations from "./TileOperations";
+import { isCelInstance, moveCel, transformCel, validateCelTransform, validateLayerFX, type CelTransform, type LayerFX } from './DocumentModel';
 
 export { packRgba, unpackRgba } from '~/core/Image';
 export { historyLimits } from "./SpriteHistory";
+export { createImage, createCelInstance, imageOf, transformCel, bakeCel, type Image, type AssetRef, type CelInstance, type CelTransform, type LayerFX } from './DocumentModel';
 export {
   celRect, reframeCel, tagsByName, trimCel, cloneCel, celPixel, BLEND_MODES, cleanInfo, sliceKey,
   lockedNotice, lockOwners, subtreeStart, parentOf, childrenOf, rootsOf,
@@ -31,7 +33,7 @@ export {
   type ProjectInfo, type Range, type Frame, type TagDirection, type Tag, type SliceKey, type Slice,
   type Floating, type RangeClip, type FramePalette, type LockKind, type LockOp,
 } from "./SpriteModel";
-export { migratePixpriteV3, PIXPRITE_VERSION, SUPPORTED_PIXPRITE_VERSIONS, type PixpriteData } from "./SpriteValidation";
+export { migratePixpriteV3, migratePixpriteV4, PIXPRITE_VERSION, SUPPORTED_PIXPRITE_VERSIONS, type PixpriteData } from "./SpriteValidation";
 
 @reactive()
 export class Sprite {
@@ -574,7 +576,33 @@ export class Sprite {
   offsetCel(dx: number, dy: number, layer = this.layer, frame = this.frame) {
     const cel = this.getCel(layer, frame);
     if (!cel) return;
-    this.setCel({ ...cel, x: cel.x + dx, y: cel.y + dy }, layer, frame);
+    const next = moveCel(cel, cel.x + dx, cel.y + dy);
+    if (isCelInstance(cel)) {
+      this.replaceCel(this.layers[layer], frame, next);
+      this.touch();
+    } else this.setCel(next, layer, frame);
+  }
+
+  /** Nondestructive placement changes preserve continuous links and shared source pixels. */
+  setCelTransform(transform: Partial<CelTransform>, layer = this.layer, frame = this.frame): boolean {
+    validateCelTransform(transform);
+    const cel = this.getCel(layer, frame), target = this.layers[layer];
+    if (!cel || !target || target.background || target.reference || this.lockedDeep(layer)) return false;
+    const next = transformCel(cel, transform);
+    this.checkpoint('Cel transform');
+    this.replaceCel(target, frame, next);
+    this.touch();
+    return true;
+  }
+
+  setLayerEffects(effects: LayerFX[], layer = this.layer): boolean {
+    validateLayerFX(effects);
+    const target = this.layers[layer];
+    if (!target || target.reference || this.lockedDeep(layer)) return false;
+    this.checkpoint('Layer effects');
+    this.layers = this.layers.map((item, i) => i === layer ? { ...item, effects: effects.map(effect => ({ ...effect })) } : item);
+    this.touch();
+    return true;
   }
 
   /** Frames of `layer` sharing the cel at `frame` (including itself) */

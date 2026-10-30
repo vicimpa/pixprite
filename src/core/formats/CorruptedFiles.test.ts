@@ -35,6 +35,21 @@ const truncations = (bytes: Uint8Array) => [
   bytes.subarray(0, bytes.length - 1),
 ];
 
+/** Keep malformed-inline fixtures explicitly on v4, whose validation remains supported. */
+function legacyV4(sprite: SpriteModel): any {
+  const json = JSON.parse(JSON.stringify(sprite.toJSON()));
+  const images = new Map<string, any>(json.images.map((image: any) => [image.id, image]));
+  json.version = 4;
+  json.layers.forEach((layer: any) => layer.cels = layer.cels.map((cel: any) => {
+    if (!cel || 'link' in cel) return cel;
+    const source = images.get(cel.image.id)!;
+    const { image: _image, ...position } = cel;
+    return { ...position, w: source.w, h: source.h, d: source.d };
+  }));
+  delete json.images;
+  return json;
+}
+
 describe('Corrupted files', () => {
   test('Aseprite rejects truncated headers, chunks and compressed data', async () => {
     const bytes = await encodeAseprite(aseDocument());
@@ -57,7 +72,7 @@ describe('Corrupted files', () => {
   test('.pixprite rejects a cel whose pixel buffer is shorter than its dimensions', () => {
     const sprite = new Sprite(1, 1);
     sprite.setCel({ x: 0, y: 0, w: 1, h: 1, data: new Uint32Array([RED]) });
-    const json = sprite.toJSON();
+    const json = legacyV4(sprite);
     const cel = json.layers[0].cels[0] as { w: number; h: number; d: string; };
     cel.w = 2;
     cel.h = 1;
@@ -69,7 +84,7 @@ describe('Corrupted files', () => {
   test('.pixprite rejects a tile reference buffer with the wrong length', () => {
     const sprite = new Sprite(1, 1);
     sprite.setCel({ x: 0, y: 0, w: 1, h: 1, data: new Uint32Array([RED]) });
-    const json = sprite.toJSON();
+    const json = legacyV4(sprite);
     Object.assign(json.layers[0].cels[0] as object, {
       tc: 2,
       tr: 1,
@@ -81,7 +96,7 @@ describe('Corrupted files', () => {
 
   test('.pixprite rejects a legacy full-canvas buffer with the wrong length', () => {
     const sprite = new Sprite(2, 1) as SpriteModel;
-    const json = sprite.toJSON();
+    const json = legacyV4(sprite);
     json.layers[0].cels[0] = btoa(String.fromCharCode(1, 0, 0, 0)) as never;
 
     expect(() => new Sprite().load(json)).toThrow('Invalid cel pixel buffer length');
@@ -90,7 +105,7 @@ describe('Corrupted files', () => {
   const validPixprite = () => {
     const sprite = new Sprite(1, 1);
     sprite.setCel({ x: 0, y: 0, w: 1, h: 1, data: new Uint32Array([RED]) });
-    return sprite.toJSON();
+    return legacyV4(sprite);
   };
 
   const u32 = (...values: number[]) => btoa(String.fromCharCode(...values.flatMap(v => [
@@ -290,8 +305,8 @@ describe('Corrupted files', () => {
   });
 
   test('.pixprite declares and accepts every supported format version', () => {
-    expect(PIXPRITE_VERSION).toBe(4);
-    expect([...SUPPORTED_PIXPRITE_VERSIONS]).toEqual([3, 4]);
+    expect(PIXPRITE_VERSION).toBe(5);
+    expect([...SUPPORTED_PIXPRITE_VERSIONS]).toEqual([3, 4, 5]);
     expect(() => new Sprite().load(validPixprite())).not.toThrow();
 
     const legacy = validPixprite();
@@ -308,7 +323,7 @@ describe('Corrupted files', () => {
     }
 
     const newer = validPixprite();
-    Object.assign(newer, { version: 5 });
+    Object.assign(newer, { version: PIXPRITE_VERSION + 1 });
     expect(() => new Sprite().load(newer)).toThrow('Newer pixprite version');
   });
 

@@ -2,6 +2,7 @@ import type { LocksRecord } from "@pixprite/api";
 import type { ColorMode } from "~/core/ColorMode";
 import { tileOf, type Tileset } from "~/core/Tilemap";
 import { BLEND_MODES, parentOf, type ExtData, type Frame, type FramePalette, type Guide, type Layer, type Slice, type Tag } from "./SpriteModel";
+import { validateCelTransform, validateLayerFX } from './DocumentModel';
 
 export function isExtData(v: unknown): v is ExtData {
   return !!v && typeof v === 'object' && !Array.isArray(v);
@@ -11,11 +12,12 @@ export function isLocksRecord(v: unknown): v is LocksRecord {
   return isExtData(v) && typeof v.owner === 'string';
 }
 
-export const PIXPRITE_VERSION = 4;
-export const SUPPORTED_PIXPRITE_VERSIONS = [3, 4] as const;
+export const PIXPRITE_VERSION = 5;
+export const SUPPORTED_PIXPRITE_VERSIONS = [3, 4, 5] as const;
 
 type RawTileset = Omit<Tileset, 'tiles'> & { count: number; d: string; };
 type RawLayer = Partial<Omit<Layer, 'name' | 'cels'>> & { name: string; cels: any[]; };
+export type RawImage = { id: string; w: number; h: number; d: string };
 export type PixpriteData = {
   format: 'pixprite';
   version: number;
@@ -25,6 +27,7 @@ export type PixpriteData = {
   info?: unknown;
   frames: Frame[];
   layers: RawLayer[];
+  images?: RawImage[];
   tags?: Tag[];
   slices?: Slice[];
   guides?: Guide[];
@@ -46,6 +49,24 @@ export function migratePixpriteV3(data: PixpriteData) {
       cels: layer.cels.map(cel => typeof cel === 'string'
         ? { x: 0, y: 0, w: data.width, h: data.height, d: cel }
         : cel),
+    })),
+  };
+}
+
+/** v4 positions and linked-cel aliases remain unchanged; image payloads move into a resource table. */
+export function migratePixpriteV4(data: PixpriteData): PixpriteData {
+  const images: RawImage[] = [];
+  return {
+    ...data, version: 5, images,
+    layers: data.layers.map(layer => ({
+      ...layer, cels: layer.cels.map(cel => {
+        if (!cel || typeof cel === 'object' && 'link' in cel) return cel;
+        const source = typeof cel === 'string' ? { x: 0, y: 0, w: data.width, h: data.height, d: cel } : cel;
+        const id = `migrated-image-${images.length + 1}`;
+        images.push({ id, w: source.w, h: source.h, d: source.d });
+        const { w: _w, h: _h, d: _d, ...instance } = source;
+        return { ...instance, image: { kind: 'image', id } };
+      }),
     })),
   };
 }
@@ -112,7 +133,7 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
   if (candidate.format !== 'pixprite') throw new Error('Unknown file format');
   if (typeof candidate.version !== 'number' || !Number.isInteger(candidate.version)) throw new Error('Unsupported pixprite version');
   if (candidate.version > PIXPRITE_VERSION) throw new Error(`Newer pixprite version: ${candidate.version}; supported up to ${PIXPRITE_VERSION}`);
-  if (!SUPPORTED_PIXPRITE_VERSIONS.includes(candidate.version as 3 | 4)) throw new Error(`Unsupported pixprite version: ${candidate.version}`);
+  if (!SUPPORTED_PIXPRITE_VERSIONS.includes(candidate.version as 3 | 4 | 5)) throw new Error(`Unsupported pixprite version: ${candidate.version}`);
   if (!Array.isArray(candidate.frames) || !candidate.frames.length) throw new Error('Document has no frames');
   if (!Array.isArray(candidate.layers) || !candidate.layers.length) throw new Error('Document has no layers');
   for (const key of ['tags', 'slices', 'guides', 'framePalettes', 'tilesets'] as const)
@@ -170,6 +191,18 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
     buffer(ts.d, ts.count * tilePixels, 'tileset pixel');
     pixelsLeft -= ts.count * tilePixels;
   }
+  const images = new Map<string, RawImage>();
+  if (data.version === 5) {
+    if (!Array.isArray(data.images) || data.images.length > MAX_DOCUMENT_CELS) throw new Error('Invalid image resources');
+    for (const image of data.images) {
+      if (!image || typeof image.id !== 'string' || !image.id || image.id.length > 256 || images.has(image.id)) throw new Error('Invalid or duplicate image resource ID');
+      const pixels = size(image.w, image.h, 'image');
+      if (pixels > pixelsLeft) throw new Error('Document pixel data is too large');
+      pixelsLeft -= pixels;
+      buffer(image.d, pixels, 'image pixel');
+      images.set(image.id, image);
+    }
+  }
 
   for (const layer of data.layers) {
     if (!layer || typeof layer.name !== 'string' || !Array.isArray(layer.cels) || layer.cels.length !== data.frames.length)
@@ -177,6 +210,7 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
     if (layer.depth !== undefined && (!Number.isInteger(layer.depth) || layer.depth < 0)) throw new Error('Invalid layer depth');
     if (layer.opacity !== undefined && (!Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1)) throw new Error('Invalid layer opacity');
     if (layer.blend !== undefined && !BLEND_MODES.includes(layer.blend)) throw new Error('Invalid layer blend mode');
+    if (layer.effects !== undefined) validateLayerFX(layer.effects);
     if (layer.celOpacity !== undefined && (!Array.isArray(layer.celOpacity) || layer.celOpacity.length !== data.frames.length
       || layer.celOpacity.some(v => !Number.isFinite(v) || v < 0 || v > 1))) throw new Error('Invalid cel opacity');
     for (const key of ['visible', 'locked', 'background', 'continuous', 'group', 'collapsed', 'clip'] as const)
@@ -199,6 +233,18 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
         return;
       }
       if (!Number.isInteger(cel.x) || !Number.isInteger(cel.y)) throw new Error('Invalid cel coordinates');
+      if (data.version === 5) {
+        if (!cel.image || cel.image.kind !== 'image' || typeof cel.image.id !== 'string' || !images.has(cel.image.id))
+          throw new Error('Invalid image resource reference');
+        validateCelTransform(cel);
+        if (cel.t !== undefined) {
+          const refs = size(cel.tc, cel.tr, 'tilemap');
+          if (refs > pixelsLeft) throw new Error('Document tile reference data is too large');
+          pixelsLeft -= refs;
+          buffer(cel.t, refs, 'tile reference');
+        }
+        return;
+      }
       if (typeof cel.d !== 'string') throw new Error('Invalid cel pixel data');
       const pixels = size(cel.w, cel.h, 'cel');
       if (pixels > pixelsLeft) throw new Error('Document pixel data is too large');

@@ -6,6 +6,7 @@ import {
 } from "~/core/Tilemap";
 import type { SpriteContext } from "./SpriteContext";
 import { celRect, reframeCel, trimCel, type Cel, type CelImage, type Layer } from "./SpriteModel";
+import { bakeCel, createCelInstance, createImage, hasCelTransform, isCelInstance, sourcePoint } from './DocumentModel';
 
 export function getTileset(this: SpriteContext): Tileset | null {
   return this.tilesets[this.current?.tileset ?? -1] ?? null;
@@ -35,7 +36,10 @@ export function commitTileset(this: SpriteContext, t: number, ts: Tileset, remap
       let next = done.get(c);
       if (next === undefined) {
         const tiles = remap ? { ...c.tiles, refs: c.tiles.refs.map(remap) } : c.tiles;
-        next = { ...c, tiles, data: renderTiles(ts, tiles) };
+        const data = renderTiles(ts, tiles);
+        next = isCelInstance(c)
+          ? Object.assign(createCelInstance(createImage(tiles.cols * ts.tw, tiles.rows * ts.th, data), { ...c.transform, x: c.x, y: c.y, ext: c.ext }), { tiles })
+          : { ...c, tiles, data };
         done.set(c, next);
       }
       return next;
@@ -61,7 +65,19 @@ export function trimTiles(this: SpriteContext, ts: Tileset, x: number, y: number
  * pixels are turned into tiles following the tileset mode:
  * manual edits existing tiles in place, auto reuses / edits unshared / adds and drops orphans, stack only adds.
  */
+/** Painting bakes only this placed instance into its own tile references, leaving sibling sources unchanged. */
+function prepareTileEdit(this: SpriteContext, layer: number, frame: number) {
+  const target = this.layers[layer], old = target?.cels[frame], ts = this.tilesets[target?.tileset ?? -1];
+  if (!old || !ts || !hasCelTransform(old)) return;
+  const tiles = ts.tiles.slice();
+  const next = this.tilesFromPixels(ts, tiles, bakeCel(old)!);
+  this.replaceCel(target, frame, next);
+  this.tilesets = this.tilesets.map((item, index) => index === target.tileset ? { ...item, tiles } : item);
+}
+
 export function setTilemapCel(this: SpriteContext, cel: Cel, layer: number, frame: number): void {
+  if (cel && hasCelTransform(cel)) cel = bakeCel(cel);
+  prepareTileEdit.call(this, layer, frame);
   const l = this.layers[layer], t = l.tileset, ts = this.tilesets[t];
   const old = l.cels[frame];
   if (!cel) { this.replaceCel(l, frame, null); return this.touch(); }
@@ -314,6 +330,7 @@ export function convertToPixels(this: SpriteContext, index = this.layer): void {
 
 /** Tiles mode: puts tile `ref` at grid cell (gx, gy) of the active tilemap cel */
 export function setTileAt(this: SpriteContext, gx: number, gy: number, ref: number, layer = this.layer, frame = this.frame): void {
+  prepareTileEdit.call(this, layer, frame);
   const l = this.layers[layer], ts = this.tilesets[l?.tileset ?? -1];
   if (!ts) return;
   const old = l.cels[frame];
@@ -332,7 +349,9 @@ export function setTileAt(this: SpriteContext, gx: number, gy: number, ref: numb
 export function tileAt(this: SpriteContext, x: number, y: number, layer = this.layer, frame = this.frame): number {
   const l = this.layers[layer], ts = this.tilesets[l?.tileset ?? -1], c = l?.cels[frame];
   if (!ts || !c?.tiles) return 0;
-  const gc = Math.floor((x - c.x) / ts.tw), gr = Math.floor((y - c.y) / ts.th);
+  const point = sourcePoint(c, x - c.x, y - c.y);
+  if (!point) return 0;
+  const gc = Math.floor(point.x / ts.tw), gr = Math.floor(point.y / ts.th);
   return gc >= 0 && gr >= 0 && gc < c.tiles.cols && gr < c.tiles.rows ? c.tiles.refs[gr * c.tiles.cols + gc] : 0;
 }
 

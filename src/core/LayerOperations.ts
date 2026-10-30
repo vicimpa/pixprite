@@ -1,5 +1,6 @@
 import { unionRect, type Rect } from "~/core/Image";
 import type { SpriteContext } from "./SpriteContext";
+import { validateLayerFX } from './DocumentModel';
 import {
   celRect, cloneCel, newLayer, normalizeDepths, parentOf, rootsOf, span, subtreeStart, trimCel, type Cel,
   type CelImage, type Layer, type RefImage,
@@ -209,6 +210,10 @@ export function toggleCollapsed(this: SpriteContext, i: number): void {
 
 export function updateLayer(this: SpriteContext, index: number, patch: Partial<Omit<Layer, 'cels' | 'celOpacity'>>, label = 'Layer properties'): boolean {
   if (!this.layers[index]) return false;
+  if (patch.effects !== undefined) {
+    validateLayerFX(patch.effects);
+    patch = { ...patch, effects: patch.effects.map(effect => ({ ...effect })) };
+  }
   if (patch.name !== undefined && patch.name !== this.layers[index].name && this.refuse('layers', 'rename')) return false;
   this.checkpoint(label);
   this.layers = this.layers.map((l, i) => i === index ? { ...l, ...patch } : l);
@@ -268,7 +273,7 @@ export function layerToBackground(this: SpriteContext): void {
     this.drawLayer(ctx, this.layer, f, true);
     return { ...this.canvasRect, data: new Uint32Array(ctx.getImageData(0, 0, this.width, this.height).data.buffer) };
   });
-  const bg: Layer = { ...l, name: 'Background', background: true, opacity: 1, blend: 'source-over', cels, celOpacity: cels.map(() => 1) };
+  const bg: Layer = { ...l, name: 'Background', background: true, opacity: 1, blend: 'source-over', cels, celOpacity: cels.map(() => 1), ...(l.effects ? { effects: [] } : {}) };
   this.layers = [bg, ...this.layers.filter((_, i) => i !== this.layer)];
   this.layer = 0;
   this.touch();
@@ -304,7 +309,7 @@ export function mergeDown(this: SpriteContext): void {
   // Opacity is baked in; the blend mode stays, it still applies against what is under the result
   this.layers = this.layers
     .filter((_, i) => i !== top)
-    .map((l, i) => i === bottom ? { ...below, visible: shown, opacity: 1, cels, celOpacity: cels.map(() => 1) } : l);
+    .map((l, i) => i === bottom ? { ...below, visible: shown, opacity: 1, cels, celOpacity: cels.map(() => 1), ...(below.effects ? { effects: [] } : {}) } : l);
   this.layer = bottom;
   this.range = null;
   this.touch();

@@ -1,6 +1,7 @@
 import { bitmapToCanvas, unionRect } from "~/core/Image";
 import type { SpriteContext } from "./SpriteContext";
 import { celRect, childrenOf, rootsOf, type Cel } from "./SpriteModel";
+import { bakeCel, layerFXOpacity } from './DocumentModel';
 
 // Rendering
 
@@ -27,7 +28,11 @@ export function drawLayer(this: SpriteContext, ctx: OffscreenCanvasRenderingCont
     c.drawImage(bitmapToCanvas(f.result.bmp), f.result.x - r.x, f.result.y - r.y);
     sx = r.x;
     sy = r.y;
-  } else src = bitmapToCanvas(cel!);
+    if (layer.effects?.length) {
+      const data = new Uint32Array(c.getImageData(0, 0, r.w, r.h).data.buffer);
+      src = bitmapToCanvas(bakeCel({ x: 0, y: 0, w: r.w, h: r.h, data }, layer.effects)!);
+    }
+  } else src = bitmapToCanvas(bakeCel(cel, layer.effects)!);
   ctx.globalAlpha = layer.opacity * (layer.celOpacity[frame] ?? 1);
   ctx.globalCompositeOperation = layer.blend;
   ctx.drawImage(src, sx - ox, sy - oy);
@@ -43,7 +48,7 @@ export function drawNode(this: SpriteContext, ctx: OffscreenCanvasRenderingConte
   const can = new OffscreenCanvas(ctx.canvas.width, ctx.canvas.height);
   const c = can.getContext('2d')!;
   this.drawSiblings(c, childrenOf(this.layers, i), frame, override, ox, oy);
-  ctx.globalAlpha = l.opacity;
+  ctx.globalAlpha = l.opacity * layerFXOpacity(l.effects);
   ctx.globalCompositeOperation = l.blend;
   ctx.drawImage(can, 0, 0);
   ctx.globalAlpha = 1;

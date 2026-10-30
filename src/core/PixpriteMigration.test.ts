@@ -28,16 +28,17 @@ const legacyDocument = (): any => {
 };
 
 describe('.pixprite migrations', () => {
-  test('v3 full-canvas cels migrate to placed v4 cels and save stably', () => {
+  test('v3 full-canvas cels migrate to v5 image resources and save stably', () => {
     const legacy = legacyDocument();
     const loaded = new Sprite();
 
     loaded.load(legacy);
     const saved = loaded.toJSON();
 
-    expect(PIXPRITE_VERSION).toBe(4);
-    expect(saved.version).toBe(4);
-    expect(saved.layers[0].cels[0]).toMatchObject({ x: 0, y: 0, w: 2, h: 1 });
+    expect(PIXPRITE_VERSION).toBe(5);
+    expect(saved.version).toBe(5);
+    expect(saved.layers[0].cels[0]).toMatchObject({ x: 0, y: 0, image: { kind: 'image' } });
+    expect(saved.images[0]).toMatchObject({ w: 2, h: 1 });
     expect([...loaded.layers[0].cels[0]!.data]).toEqual([RED, GREEN]);
     expect(saved.layers[0].cels[0]).not.toEqual(legacy.layers[0].cels[0]);
 
@@ -66,7 +67,7 @@ describe('.pixprite migrations', () => {
     const before = current.toJSON();
     const newer = { ...before, version: PIXPRITE_VERSION + 1 };
 
-    expect(() => current.load(newer)).toThrow('Newer pixprite version: 5; supported up to 4');
+    expect(() => current.load(newer)).toThrow('Newer pixprite version: 6; supported up to 5');
     expect(current.toJSON()).toEqual(before);
     expect(current.layers[0].cels[0]!.data[0]).toBe(BLUE);
   });

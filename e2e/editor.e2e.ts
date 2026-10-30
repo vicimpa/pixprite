@@ -57,9 +57,35 @@ async function draw(page: Page, offset = 0) {
   await page.mouse.move(box.x + box.width / 2 + offset, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2 + offset + 40, box.y + box.height / 2 + 20, { steps: 8 });
-  const writes = await page.evaluate(() => window.sessionWrites);
   await page.mouse.up();
-  await expect.poll(() => page.evaluate(() => window.sessionWrites)).toBeGreaterThan(writes);
+  // Match the completed live frame, not an intermediate autosave or an extra pointer-up write.
+  const title = await page.locator('[draggable=true][data-active=true]').getAttribute('title');
+  const name = title!.replace(/ · \d+×\d+$/, '');
+  const frame = Number(await page.locator('[data-hit=frame][data-current=true]').getAttribute('data-f'));
+  const expected = await pngPixels(page, await download(page, 'file.exportPng'));
+  await expect.poll(async () => {
+    const document = await documentNamed(page, name);
+    if (!document) return null;
+    // These drawing fixtures are plain pixel layers; decode persisted payloads independently of the editor.
+    return page.evaluate(({ document, frame }: { document: any; frame: number }) => {
+      const canvas = new OffscreenCanvas(document.width, document.height), ctx = canvas.getContext('2d')!;
+      for (const layer of document.layers) {
+        if (layer.visible === false) continue;
+        let cel = layer.cels[frame];
+        while (cel && 'link' in cel) cel = layer.cels[cel.link];
+        if (!cel) continue;
+        if (cel.flipX || cel.flipY || cel.rotation || cel.opacity !== undefined || layer.effects?.length || layer.group || layer.clip)
+          throw new Error('Draw helper requires plain layer fixtures');
+        const image = document.images.find((image: { id: string }) => image.id === cel.image.id);
+        const bytes = Uint8ClampedArray.from(atob(image.d), value => value.charCodeAt(0));
+        const source = new OffscreenCanvas(image.w, image.h);
+        source.getContext('2d')!.putImageData(new ImageData(bytes, image.w, image.h), 0, 0);
+        ctx.globalAlpha = (layer.opacity ?? 1) * (layer.celOpacity?.[frame] ?? 1);
+        ctx.drawImage(source, cel.x, cel.y);
+      }
+      return { width: canvas.width, height: canvas.height, data: Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data) };
+    }, { document, frame });
+  }).toEqual(expected);
 }
 
 async function documentNamed(page: Page, name: string): Promise<DocumentData | null> {
@@ -506,4 +532,31 @@ test('one damaged session and malformed preferences do not prevent restoring hea
     try { return await new Promise<number>(resolve => { const r = db.transaction('meta').objectStore('meta').getAll(); r.onsuccess = () => resolve(r.result.filter(p => p.name === 'Legacy').length); }); }
     finally { db.close(); }
   })).toBe(1);
+});
+
+test('v5 shared image instances and layer effects retain source pixels across import, PNG export and reload', async ({ page }) => {
+  const source = Buffer.from([255, 0, 0, 255, 0, 255, 0, 255]).toString('base64');
+  const fixture = {
+    format: 'pixprite', version: 5, name: 'Placed model', width: 3, height: 3,
+    frames: [{ duration: 100 }], images: [{ id: 'shared-source', w: 2, h: 1, d: source }],
+    layers: [{ name: 'Placed', cels: [{ x: 1, y: 0, image: { kind: 'image', id: 'shared-source' }, flipX: true, rotation: 90, opacity: 0.5 }],
+      effects: [{ id: 'alpha', type: 'opacity', enabled: true, amount: 0.5 }] }],
+  };
+  const chooser = page.waitForEvent('filechooser');
+  await command(page, 'file.open');
+  await (await chooser).setFiles({ name: 'Placed model.pixprite', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) });
+  await page.locator('[data-key^="p:"]', { hasText: 'Placed model' }).dblclick();
+  await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  const expected = Array(3 * 3 * 4).fill(0);
+  expected.splice(4, 4, 0, 255, 0, 64);
+  expected.splice(16, 4, 255, 0, 0, 64);
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual({ width: 3, height: 3, data: expected });
+  await command(page, 'file.save');
+  await expect(page.getByText('Saved: Placed model', { exact: true })).toBeVisible();
+  const saved = await documentNamed(page, 'Placed model');
+  expect(saved).toMatchObject({ images: [{ id: 'shared-source', d: source }], layers: [{ effects: fixture.layers[0].effects }] });
+  await page.reload();
+  await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual({ width: 3, height: 3, data: expected });
+  await expect.poll(() => documentNamed(page, 'Placed model')).toEqual(saved);
 });
