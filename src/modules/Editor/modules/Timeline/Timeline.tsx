@@ -402,6 +402,7 @@ export const Timeline: FC = () => {
         <Button $square title={t('timeline.duplicateLayer')} onClick={() => runCommand('layer.duplicate')}><Icon name="duplicate" scale="glyph" /></Button>
         <Button $square title={t('timeline.deleteLayer')} disabled={sprite.layers.length < 2} onClick={() => runCommand('layer.delete')}><Icon name="trash" scale="glyph" /></Button>
         <Button title={t('common.layerProperties')} onClick={() => dialogs.layerProperties()}>{t('timeline.props')}</Button>
+        <Button title={t('dialog.layerFX.title')} disabled={!!sprite.current?.reference} onClick={() => dialogs.layerEffects()}>FX{sprite.current?.effects?.length ? ` (${sprite.current.effects.length})` : ''}</Button>
         <span style={{ flexGrow: 1 }} />
         <Muted>
           {sprite.frames.length} frames · {(total / 1000).toFixed(2)}s

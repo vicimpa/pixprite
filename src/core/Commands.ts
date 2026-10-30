@@ -261,6 +261,7 @@ const list: Command[] = [
   { id: 'layer.reference', group: 'menu.layer', run: () => void openReference() },
   { id: 'layer.clip', group: 'menu.layer', run: changed(() => s().updateLayer(s().layer, { clip: !s().current.clip }, 'Clipping')), checked: () => !!s().current?.clip, enabled: () => !!s().current && !s().current.background && !s().current.reference },
   { id: 'layer.solo', group: 'menu.layer', run: changed(() => s().soloLayer(s().layer)) },
+  { id: 'layer.effects', group: 'menu.layer', run: () => dialogs.layerEffects(), enabled: () => !!s().current && !s().current.reference },
   { id: 'layer.properties', group: 'menu.layer', keys: ['Ctrl+Shift+L'], run: () => dialogs.layerProperties() },
   { id: 'layer.visible', group: 'menu.layer', run: changed(() => s().updateLayer(s().layer, { visible: !s().current.visible }, 'Toggle visibility')), checked: () => !!s().current?.visible },
   { id: 'layer.lock', group: 'menu.layer', run: changed(() => s().updateLayer(s().layer, { locked: !s().current.locked }, 'Toggle lock')), checked: () => !!s().current?.locked },

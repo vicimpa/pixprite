@@ -1,8 +1,9 @@
+import * as rendering from './SpriteRenderer';
 import type { AseDocument } from "~/core/formats/Aseprite";
 import type { SpriteContext } from "./SpriteContext";
-import { cleanInfo, lockOwners, newLayer, TAG_COLORS, tagsByName, trimCel, type Cel, type CelImage, type Frame, type Layer } from "./SpriteModel";
-import { isExtData, isLocksRecord, migratePixpriteV3, migratePixpriteV4, PIXPRITE_VERSION, validateDocumentIntegrity, validatePixpriteShape, type PixpriteData } from "./SpriteValidation";
-import { bakeCel, createCelInstance, createImage, hasCelTransform, imageOf, isCelInstance, layerFXOpacity, type Image } from './DocumentModel';
+import { cleanInfo, lockOwners, subtreeStart, newLayer, TAG_COLORS, tagsByName, trimCel, type Cel, type CelImage, type Frame, type Layer } from "./SpriteModel";
+import { isExtData, isLocksRecord, migratePixpriteV3, migratePixpriteV4, migratePixpriteV5, PIXPRITE_VERSION, validateDocumentIntegrity, validatePixpriteShape, type PixpriteData } from "./SpriteValidation";
+import { bakeCel, copyEffectScope, effectsForFrame, createCelInstance, createImage, hasCelTransform, imageOf, isCelInstance, layerFXOpacity, type Image } from './DocumentModel';
 
 // Serialization
 
@@ -112,6 +113,10 @@ export function load(this: SpriteContext, data: unknown): void {
     data = migratePixpriteV4(data);
     validatePixpriteShape(data);
   }
+  if (data.version === 5) {
+    data = migratePixpriteV5(data);
+    validatePixpriteShape(data);
+  }
   const bytes = (s: string) => {
     const bin = atob(s);
     const out = new Uint8Array(bin.length);
@@ -143,7 +148,7 @@ export function load(this: SpriteContext, data: unknown): void {
   const layers = data.layers.map(l => {
     const cels: Cel[] = [];
     l.cels.forEach((c: any, i: number) => cels[i] = c && typeof c === 'object' && 'link' in c ? cels[c.link] ?? null : decode(c));
-    return { ...newLayer(l.name, count), ...l, cels, ...(l.effects ? { effects: l.effects.map(effect => ({ ...effect })) } : {}), celOpacity: l.celOpacity ?? Array(count).fill(1) };
+    return { ...newLayer(l.name, count), ...l, cels, ...(l.effects ? { effects: l.effects.map(effect => ({ ...effect })) } : {}), ...(l.bakedEffects ? { bakedEffects: copyEffectScope(l) } : {}), celOpacity: l.celOpacity ?? Array(count).fill(1) };
   });
   const tags = data.tags ?? [], loop = data.loop ?? null;
   validateDocumentIntegrity({ layers, frames, tags, loop, tilesets });
@@ -174,11 +179,26 @@ export type DocumentExportContext = Pick<SpriteContext,
   'width' | 'height' | 'frames' | 'tags' | 'framePalettes' | 'slices' | 'colorMode' | 'tilesets' | 'transparentIndex' | 'savedLayers'>;
 
 export function toDocument(this: DocumentExportContext): AseDocument {
-  const layers = this.savedLayers().filter(layer => !layer.reference);
+  const saved = this.savedLayers().filter(layer => !layer.reference);
+  // Aseprite cannot encode arbitrary per-frame group FX. Export isolated pixels with
+  // the group's outer blend/opacity/clip still attached; the editable source stays intact.
+  const layers: Layer[] = [];
+  const flattened = new Map<number, Layer>();
+  const context = { ...this, ...rendering, layers: saved, floating: null, effectsPreview: null, canvasRect: { x: 0, y: 0, w: this.width, h: this.height } } satisfies rendering.DrawingContext;
+  for (let i = saved.length - 1; i >= 0; i--) {
+    const layer = saved[i];
+    if (layer.group && layer.effects?.some(effect => effect.enabled && effect.amount !== 1)) {
+      const start = subtreeStart(saved, i);
+      flattened.set(start, { ...layer, group: false, collapsed: false, tileset: -1, effects: [], bakedEffects: undefined,
+        celOpacity: this.frames.map(() => 1), cels: this.frames.map((_, f) => rendering.groupCel.call(context, i, f)) });
+      i = start;
+    } else flattened.set(i, layer);
+  }
+  for (const [, layer] of [...flattened].sort(([a], [b]) => a - b)) layers.push(layer);
   // Indexed pixel payloads cannot retain arbitrary baked alpha through palette lookup.
-  const trueColor = this.colorMode === 'indexed' && layers.some(layer => !layer.group && (
-    layerFXOpacity(layer.effects) !== 1 || layer.cels.some(cel => cel && isCelInstance(cel) && cel.transform.opacity !== 1)
-  ));
+  const trueColor = this.colorMode === 'indexed' && (saved.some(layer => layer.group && layer.effects?.some(effect => effect.enabled && effect.amount !== 1)) || layers.some(layer => !layer.group && (
+    layer.cels.some((_, f) => layerFXOpacity(effectsForFrame(layer, f)) !== 1) || layer.cels.some(cel => cel && isCelInstance(cel) && cel.transform.opacity !== 1)
+  )));
   return {
     width: this.width,
     height: this.height,
@@ -192,13 +212,17 @@ export function toDocument(this: DocumentExportContext): AseDocument {
     transparentIndex: this.colorMode === 'indexed' && !trueColor ? this.transparentIndex : -1,
     // Reference layers belong to the editor only
     layers: layers.map(l => {
-      const baked = new Map<CelImage, Cel>();
-      const cels = l.cels.map(cel => {
+      const baked = new Map<CelImage, Map<string, Cel>>();
+      const cels = l.cels.map((cel, frame) => {
         if (!cel) return null;
-        if (!baked.has(cel)) baked.set(cel, bakeCel(cel, l.effects));
-        return baked.get(cel)!;
+        const effects = effectsForFrame(l, frame);
+        const key = JSON.stringify(effects.map(effect => effect.id));
+        const variants = baked.get(cel) ?? new Map<string, Cel>();
+        baked.set(cel, variants);
+        if (!variants.has(key)) variants.set(key, bakeCel(cel, effects));
+        return variants.get(key)!;
       });
-      const flattenTiles = l.tileset >= 0 && (layerFXOpacity(l.effects) !== 1 || l.cels.some(cel => cel && hasCelTransform(cel)));
+      const flattenTiles = l.tileset >= 0 && (l.cels.some((_, f) => layerFXOpacity(effectsForFrame(l, f)) !== 1) || l.cels.some(cel => cel && hasCelTransform(cel)));
       return {
         name: l.name, visible: l.visible, locked: l.locked, background: l.background, continuous: l.continuous,
         opacity: l.group ? l.opacity * layerFXOpacity(l.effects) : l.opacity, blend: l.blend,

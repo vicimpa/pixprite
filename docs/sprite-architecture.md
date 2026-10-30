@@ -17,7 +17,7 @@ and core pixel/canvas operations. Its operation methods delegate to these module
 `SpriteModel` contains shared types and pure model helpers. Existing imports from
 `~/core/Sprite` remain valid through re-exports. `DocumentModel` adds shared Image resources,
 placed CelInstance values, AssetRef descriptors and the common bake pipeline.
-The current `.pixprite` writer uses v5; readers migrate v3/v4 explicitly.
+The current `.pixprite` writer uses v6; readers migrate v3/v4/v5 explicitly. v6 adds the per-frame residual Layer FX scope; v5 shared-image resources retain their schema.
 
 Operations receive the same `Sprite` instance as their typed `this` value. The
 internal `SpriteContext` describes its public interface and the private state that
@@ -45,7 +45,7 @@ writes cannot alter a sibling/source; before serialization or source reuse, an
 exact comparison detects those writes and detaches that instance to a new Image.
 Callers still use Sprite mutation/checkpoint methods for undo and invalidation.
 `imageOf` also accepts old plain cel objects, preserving their existing identities
-and data-buffer semantics. Loading v5 constructs canonical instances, sharing one
+and data-buffer semantics. Loading v5/v6 constructs canonical instances, sharing one
 Image object for each stable ID. Shared sources do not imply linked timeline cels.
 
 `Sprite.setCelTransform` and `setLayerEffects` create undoable immutable updates.

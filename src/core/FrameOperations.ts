@@ -4,6 +4,16 @@ import {
   type Layer, type Range, type RangeClip, type Tag, type TagDirection,
 } from "./SpriteModel";
 
+import { copyEffectScope } from './DocumentModel';
+
+const effectScope = (layer: Layer, frame: number) => layer.bakedEffects?.[frame]?.slice();
+function setEffectScope(layer: Layer, frame: number, ids: string[] | undefined, count: number) {
+  const own = ids?.filter(id => layer.effects?.some(effect => effect.id === id)) ?? [];
+  if (!own.length && !layer.bakedEffects) return;
+  layer.bakedEffects ??= Array.from({ length: count }, () => []);
+  layer.bakedEffects[frame] = own;
+}
+
 // Frames
 
 /** Inserts frames at `at` (before it) with the given cel source per layer */
@@ -14,6 +24,7 @@ export function insertFrames(this: SpriteContext, at: number, count: number, mak
     const cels = Array.from({ length: count }, (_, k) => make(l, li, k) ?? (l.background ? this.filledCel() : null));
     l.cels.splice(at, 0, ...cels);
     l.celOpacity.splice(at, 0, ...cels.map(() => 1));
+    l.bakedEffects?.splice(at, 0, ...cels.map(() => []));
   });
   this.shiftTags(at, count);
   this.frames = frames;
@@ -61,7 +72,7 @@ export function addFrame(this: SpriteContext, mode: 'empty' | 'duplicate' = 'dup
     // Continuous layers link the new cel to the previous one
     return cel && (l.continuous ? cel : cloneCel(cel));
   }, this.frames[src].duration);
-  this.layers.forEach(l => { if (mode === 'duplicate') l.celOpacity[at] = l.celOpacity[src]; });
+  this.layers.forEach(l => { if (mode === 'duplicate') { l.celOpacity[at] = l.celOpacity[src]; setEffectScope(l, at, effectScope(l, src), this.frames.length); } });
   this.frame = at;
   this.range = null;
   this.touch();
@@ -78,6 +89,7 @@ export function removeFrames(this: SpriteContext): boolean {
     for (const l of this.layers) {
       l.cels.splice(f, 1);
       l.celOpacity.splice(f, 1);
+      l.bakedEffects?.splice(f, 1);
     }
     this.shiftTags(f + 1, -1);
   }
@@ -128,11 +140,12 @@ export function moveFrames(this: SpriteContext, [a, b]: [number, number], before
   const blocks = this.layers.map(l => ({
     cels: pick(l.cels).map(c => c && (copy && !l.continuous ? copies.get(c) ?? copies.set(c, cloneCel(c)).get(c)! : c)),
     op: pick(l.celOpacity),
+    fx: l.bakedEffects && pick(l.bakedEffects).map(ids => ids.slice()),
   }));
   let at = before;
   if (!copy) {
     this.frames = this.frames.filter((_, i) => i < a || i > b);
-    this.layers.forEach(l => { l.cels.splice(a, count); l.celOpacity.splice(a, count); });
+    this.layers.forEach(l => { l.cels.splice(a, count); l.celOpacity.splice(a, count); l.bakedEffects?.splice(a, count); });
     if (before > b) at -= count;
   }
   const all = this.frames.slice();
@@ -140,6 +153,7 @@ export function moveFrames(this: SpriteContext, [a, b]: [number, number], before
   this.layers.forEach((l, i) => {
     l.cels.splice(at, 0, ...blocks[i].cels);
     l.celOpacity.splice(at, 0, ...blocks[i].op);
+    if (blocks[i].fx) l.bakedEffects!.splice(at, 0, ...blocks[i].fx!);
   });
   this.frames = all;
   this.frame = at + (this.frame >= a && this.frame <= b ? this.frame - a : 0);
@@ -157,20 +171,22 @@ export function moveCels(this: SpriteContext, r: Range, dl: number, df: number, 
   const need = f1 + df + 1 - this.frames.length;
   if (need > 0) this.insertFrames(this.frames.length, need, () => null, this.frames[this.frames.length - 1].duration);
   const src = span(r.layers).map(l => span(r.frames).map(f => ({
-    cel: this.layers[l].cels[f], op: this.layers[l].celOpacity[f],
+    cel: this.layers[l].cels[f], op: this.layers[l].celOpacity[f], fx: effectScope(this.layers[l], f),
   })));
   if (!copy) span(r.layers).forEach(l => span(r.frames).forEach(f => {
     const layer = this.layers[l];
     layer.cels[f] = layer.background ? this.filledCel() : null;
+    setEffectScope(layer, f, undefined, this.frames.length);
   }));
   const copies = new Map<CelImage, Cel>();
-  src.forEach((row, i) => row.forEach(({ cel, op }, k) => {
+  src.forEach((row, i) => row.forEach(({ cel, op, fx }, k) => {
     const l = l0 + i + dl, f = f0 + k + df;
     const layer = this.layers[l];
     const sameLayer = dl === 0;
     // Copies within a continuous layer become links
     layer.cels[f] = cel && (copy && !(sameLayer && layer.continuous) ? copies.get(cel) ?? copies.set(cel, cloneCel(cel)).get(cel)! : cel);
     layer.celOpacity[f] = op;
+    setEffectScope(layer, f, fx, this.frames.length);
   }));
   this.layer = Math.min(this.layers.length - 1, this.layer + dl);
   this.frame = this.frame + df;
@@ -198,6 +214,7 @@ export function duplicateCels(this: SpriteContext, linked?: boolean): void {
       // Plain copies keep links between themselves, not with the originals
       l.cels[f1 + 1 + k] = c && (link ? c : copies.get(c) ?? copies.set(c, cloneCel(c)).get(c)!);
       l.celOpacity[f1 + 1 + k] = l.celOpacity[f0 + k];
+      setEffectScope(l, f1 + 1 + k, effectScope(l, f0 + k), this.frames.length);
     }
   }
   this.frame += count;
@@ -214,14 +231,14 @@ export function copyRange(this: SpriteContext): RangeClip | null {
     // Whole layers, groups with their contents
     const idx = new Set(span(r.layers).flatMap(i => span([subtreeStart(this.layers, i), i])));
     const layers = this.layers.filter((_, i) => idx.has(i))
-      .map(l => ({ ...l, background: false, cels: l.cels.slice(), celOpacity: l.celOpacity.slice() }));
+      .map(l => ({ ...l, background: false, cels: l.cels.slice(), celOpacity: l.celOpacity.slice(), bakedEffects: copyEffectScope(l) }));
     return { type: 'layers', layers };
   }
   if (r.type === 'frames') return {
     type: 'frames',
     frames: span(r.frames).map(f => ({
       duration: this.frames[f].duration,
-      cels: this.layers.map(l => ({ cel: l.cels[f], op: l.celOpacity[f] })),
+      cels: this.layers.map(l => ({ cel: l.cels[f], op: l.celOpacity[f], fx: effectScope(l, f) })),
     })),
   };
   // Rows top to bottom, so pasting fills from the active layer downward
@@ -229,7 +246,7 @@ export function copyRange(this: SpriteContext): RangeClip | null {
     type: 'cels',
     rows: span(r.layers).reverse().map(l => ({
       layer: l,
-      cels: span(r.frames).map(f => ({ cel: this.layers[l].cels[f], op: this.layers[l].celOpacity[f] })),
+      cels: span(r.frames).map(f => ({ cel: this.layers[l].cels[f], op: this.layers[l].celOpacity[f], fx: effectScope(this.layers[l], f) })),
     })),
   };
 }
@@ -242,7 +259,7 @@ export function pasteRange(this: SpriteContext, clip: RangeClip): void {
   if (clip.type === 'layers') {
     // On top of everything, as independent copies
     const copies = new Map<CelImage, Cel>();
-    const added = clip.layers.map(l => ({ ...l, cels: l.cels.map(c => c && (copies.get(c) ?? copies.set(c, cloneCel(c)).get(c)!)) }));
+    const added = clip.layers.map(l => ({ ...l, bakedEffects: copyEffectScope(l), celOpacity: l.celOpacity.slice(), cels: l.cels.map(c => c && (copies.get(c) ?? copies.set(c, cloneCel(c)).get(c)!)) }));
     this.layers = normalizeDepths([...this.layers, ...added]);
     this.layer = this.layers.length - 1;
     this.range = { type: 'layers', layers: [this.layers.length - added.length, this.layers.length - 1], frames: [0, this.frames.length - 1] };
@@ -255,7 +272,7 @@ export function pasteRange(this: SpriteContext, clip: RangeClip): void {
         const c = fr.cels[li]?.cel ?? null;
         return c && (l.continuous ? c : copies.get(c) ?? copies.set(c, cloneCel(c)).get(c)!);
       }, fr.duration);
-      this.layers.forEach((l, li) => { l.celOpacity[at + k] = fr.cels[li]?.op ?? 1; });
+      this.layers.forEach((l, li) => { l.celOpacity[at + k] = fr.cels[li]?.op ?? 1; setEffectScope(l, at + k, fr.cels[li]?.fx, this.frames.length); });
     });
     this.range = { type: 'frames', layers: [0, this.layers.length - 1], frames: [at, at + clip.frames.length - 1] };
   } else {
@@ -269,11 +286,12 @@ export function pasteRange(this: SpriteContext, clip: RangeClip): void {
       while (l >= 0 && this.layers[l].group) l--;
       if (l < 0) break;
       const layer = this.layers[l];
-      row.cels.forEach(({ cel, op }, k) => {
+      row.cels.forEach(({ cel, op, fx }, k) => {
         // Links survive only when pasting back into the same continuous layer
         const keep = l === row.layer && layer.continuous;
         layer.cels[f0 + k] = layer.background ? reframeCel(cel, this.canvasRect, this.backgroundFill) : cel && (keep ? cel : copies.get(cel) ?? copies.set(cel, cloneCel(cel)).get(cel)!);
         layer.celOpacity[f0 + k] = op;
+        setEffectScope(layer, f0 + k, fx, this.frames.length);
       });
       bottom = l;
       l--;
@@ -295,7 +313,7 @@ export function linkCels(this: SpriteContext): void {
     if (l.locked) continue;
     const first = span(r.frames).find(f => l.cels[f]);
     if (first === undefined) continue;
-    for (const f of span(r.frames)) if (f > first) l.cels[f] = l.cels[first];
+    for (const f of span(r.frames)) if (f > first) { l.cels[f] = l.cels[first]; setEffectScope(l, f, effectScope(l, first), this.frames.length); }
   }
   this.layers = this.layers.slice();
   this.touch();
@@ -319,6 +337,7 @@ export function clearCels(this: SpriteContext): void {
     const l = this.layers[li];
     if (l.locked) continue;
     l.cels[f] = l.background ? this.filledCel() : null;
+    setEffectScope(l, f, undefined, this.frames.length);
   }
   this.layers = this.layers.slice();
   this.touch();
@@ -352,6 +371,7 @@ export function reverseFrames(this: SpriteContext): void {
   for (const li of layers) {
     rev(this.layers[li].cels);
     rev(this.layers[li].celOpacity);
+    if (this.layers[li].bakedEffects) rev(this.layers[li].bakedEffects!);
   }
   this.layers = this.layers.slice();
   this.touch();
@@ -407,6 +427,7 @@ export function tweenFrames(this: SpriteContext, count: number, ease = false): b
   if (!l || b <= a || b >= this.frames.length || count < 1) return false;
   const k0 = l.cels[a], k1 = l.cels[b];
   if (!k0 && !k1) return false;
+  const fx0 = effectScope(l, a), fx1 = effectScope(l, b);
   const o0 = l.celOpacity[a] ?? 1, o1 = l.celOpacity[b] ?? 1;
   if (this.refuse('frames', 'create') || this.refuseFrameShift(b, count)) return false;
   this.dropFloating();
@@ -422,8 +443,10 @@ export function tweenFrames(this: SpriteContext, count: number, ease = false): b
     return { ...src, x: Math.round(k0.x + (k1.x - k0.x) * t), y: Math.round(k0.y + (k1.y - k0.y) * t) };
   }, this.frames[a].duration);
   this.layers.forEach((layer, i) => {
-    for (let k = 0; k < count; k++)
+    for (let k = 0; k < count; k++) {
       layer.celOpacity[at + k] = i === li ? o0 + (o1 - o0) * ts[k] : layer.celOpacity[a] ?? 1;
+      setEffectScope(layer, at + k, i === li ? ts[k] < 0.5 ? fx0 : fx1 : effectScope(layer, a), this.frames.length);
+    }
   });
   this.layers = this.layers.slice();
   this.range = { type: 'frames', layers: [0, this.layers.length - 1], frames: [a, b + count] };

@@ -563,7 +563,7 @@ test('v5 shared image instances and layer effects retain source pixels across im
   await command(page, 'file.save');
   await expect(page.getByText('Saved: Placed model', { exact: true })).toBeVisible();
   const saved = await documentNamed(page, 'Placed model');
-  expect(saved).toMatchObject({ images: [{ id: 'shared-source', d: source }], layers: [{ effects: fixture.layers[0].effects }] });
+  expect(saved).toMatchObject({ version: 6, images: [{ id: 'shared-source', d: source }], layers: [{ effects: fixture.layers[0].effects }] });
   await page.reload();
   await expect(page.getByTestId('sprite-canvas')).toBeVisible();
   expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual({ width: 3, height: 3, data: expected });
@@ -872,4 +872,82 @@ test('closing a pending preparation disposes its watch and disabled autosave sta
   const stored = await documentNamed(page, 'Manual quiet');
   expect(await documentPixels(page, stored!)).toEqual(expected);
   await expect(page.getByText(/Could not save/)).toHaveCount(0);
+});
+
+test('Layer FX controls preview/cancel/reorder/play, persist editable stacks, and bake one frame with one undo', async ({ page }) => {
+  const source = Buffer.from(Array.from({ length: 4 }, () => [255, 0, 0, 255]).flat()).toString('base64');
+  const fixture = {
+    format: 'pixprite', version: 5, name: 'Layer FX controls', width: 2, height: 2,
+    frames: [{ duration: 400 }, { duration: 400 }], images: [{ id: 'red-source', w: 2, h: 2, d: source }],
+    layers: [{ name: 'Paint', cels: [{ x: 0, y: 0, image: { kind: 'image', id: 'red-source' } }, { link: 0 }] }],
+  };
+  const chooser = page.waitForEvent('filechooser');
+  await command(page, 'file.open');
+  await (await chooser).setFiles({ name: 'Layer FX controls.pixprite', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) });
+  await page.locator('[data-key^="p:"]', { hasText: fixture.name }).dblclick();
+  await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  const sample = () => page.getByTestId('sprite-canvas').locator('canvas').evaluate(canvas => {
+    const c = canvas as HTMLCanvasElement;
+    return Array.from(c.getContext('2d')!.getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 1, 1).data);
+  });
+  const original = await sample();
+  await command(page, 'layer.effects');
+  let dialog = page.getByRole('dialog', { name: 'Layer FX', exact: true });
+  await dialog.getByRole('button', { name: 'Add opacity', exact: true }).click();
+  await dialog.getByRole('spinbutton', { name: 'Effect opacity' }).fill('0');
+  await expect.poll(sample).not.toEqual(original);
+  await dialog.getByRole('checkbox', { name: 'Preview', exact: true }).uncheck();
+  await expect.poll(sample).toEqual(original);
+  await dialog.getByRole('checkbox', { name: 'Preview', exact: true }).check();
+  await expect.poll(sample).not.toEqual(original);
+  await dialog.getByRole('button', { name: 'Play preview', exact: true }).click();
+  await expect(dialog.getByText('Frame 2', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Stop preview', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect.poll(sample).toEqual(original);
+  expect(await documentNamed(page, fixture.name)).toMatchObject({ images: [{ id: 'red-source', d: source }] });
+
+  await command(page, 'layer.effects');
+  dialog = page.getByRole('dialog', { name: 'Layer FX', exact: true });
+  await dialog.getByRole('button', { name: 'Add opacity', exact: true }).click();
+  await dialog.getByRole('spinbutton', { name: 'Effect opacity' }).nth(0).fill('50');
+  await dialog.getByRole('button', { name: 'Add opacity', exact: true }).click();
+  await dialog.getByRole('spinbutton', { name: 'Effect opacity' }).nth(1).fill('80');
+  await dialog.getByRole('button', { name: 'Move effect up', exact: true }).nth(1).click();
+  await expect(dialog.getByRole('spinbutton', { name: 'Effect opacity' }).nth(0)).toHaveValue('80');
+  await dialog.getByRole('checkbox', { name: 'Effect enabled' }).nth(0).uncheck();
+  await dialog.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.layers[0].effects?.map((fx: any) => [fx.amount, fx.enabled]))
+    .toEqual([[.8, false], [.5, true]]);
+  const expected = { width: 2, height: 2, data: Array.from({ length: 4 }, () => [255, 0, 0, 128]).flat() };
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(expected);
+  const before = await documentNamed(page, fixture.name) as any;
+  expect(before.images).toEqual([{ id: 'red-source', w: 2, h: 2, d: source }]);
+
+  await command(page, 'layer.effects');
+  dialog = page.getByRole('dialog', { name: 'Layer FX', exact: true });
+  await dialog.getByRole('button', { name: 'Entire layer', exact: true }).click();
+  await page.getByText('Current frame (1)', { exact: true }).click();
+  await dialog.getByRole('button', { name: 'Bake effects', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.layers[0].bakedEffects?.map((ids: string[]) => ids.length))
+    .toEqual([2, 0]);
+  const baked = await documentNamed(page, fixture.name) as any;
+  expect(baked.version).toBe(6);
+  expect(baked.layers[0].cels[1]).toMatchObject({ image: { id: 'red-source' } });
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(expected);
+  await command(page, 'edit.undo');
+  await expect.poll(() => documentNamed(page, fixture.name)).toEqual(before);
+  await command(page, 'edit.redo');
+  await expect.poll(() => documentNamed(page, fixture.name)).toEqual(baked);
+  await page.reload();
+  await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(expected);
+  await command(page, 'layer.effects');
+  dialog = page.getByRole('dialog', { name: 'Layer FX', exact: true });
+  await expect(dialog.getByRole('spinbutton', { name: 'Effect opacity' }).nth(0)).toHaveValue('80');
+  await expect(dialog.getByRole('checkbox', { name: 'Effect enabled' }).nth(0)).not.toBeChecked();
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 });

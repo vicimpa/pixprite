@@ -88,7 +88,7 @@ test('index, set and ArrayBuffer writes detach only the private instance bitmap 
   }
 });
 
-test('v5 round-trip preserves resource sharing, per-instance transforms, continuous aliases and extension data', () => {
+test('v6 round-trip preserves resource sharing, per-instance transforms, continuous aliases and extension data', () => {
   const { sprite, image, first, second } = sharedDocument();
   first.ext = { unavailable: { version: 7, values: [null, true] } };
   sprite.layers[0].cels = [first, first, transformCel(second, { flipY: true, rotation: 270 })];
@@ -203,7 +203,7 @@ test('resource references, payload lengths and transform/effect ranges are valid
   broken(data => { data.layers[0].effects = [{ id: 'bad', type: 'opacity', enabled: true, amount: -1 }]; }, 'Invalid layer effect');
 });
 
-test('v4 placed images explicitly migrate into v5 resources and retain links and extension fields', () => {
+test('v4 placed images explicitly migrate through v5 resources into v6 and retain links and extension fields', () => {
   const data = { format: 'pixprite', version: 4, width: 2, height: 1, frames: [{ duration: 80 }, { duration: 120 }], layers: [{
     name: 'Legacy', cels: [{ x: -1, y: 0, w: 2, h: 1, d: btoa(String.fromCharCode(...new Uint8Array(new Uint32Array([RED, GREEN]).buffer))), ext: { absent: { note: 'preserved' } } }, { link: 0 }],
   }], ext: { document: [1, null] } };
@@ -211,7 +211,7 @@ test('v4 placed images explicitly migrate into v5 resources and retain links and
   expect(sprite.getCel()).toBe(sprite.getCel(0, 1));
   expect([...sprite.getCel()!.data]).toEqual([RED, GREEN]);
   const saved = sprite.toJSON();
-  expect(saved.version).toBe(5); expect(saved.images).toHaveLength(1);
+  expect(saved.version).toBe(6); expect(saved.images).toHaveLength(1);
   expect(saved.layers[0].cels[0]).toMatchObject({ x: -1, y: 0, image: { kind: 'image' }, ext: data.layers[0].cels[0]!.ext });
   expect(saved.ext).toEqual(data.ext);
 });

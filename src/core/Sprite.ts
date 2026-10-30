@@ -35,7 +35,7 @@ export {
   type ProjectInfo, type Range, type Frame, type TagDirection, type Tag, type SliceKey, type Slice,
   type Floating, type RangeClip, type FramePalette, type LockKind, type LockOp,
 } from "./SpriteModel";
-export { migratePixpriteV3, migratePixpriteV4, PIXPRITE_VERSION, SUPPORTED_PIXPRITE_VERSIONS, type PixpriteData } from "./SpriteValidation";
+export { migratePixpriteV3, migratePixpriteV4, migratePixpriteV5, PIXPRITE_VERSION, SUPPORTED_PIXPRITE_VERSIONS, type PixpriteData } from "./SpriteValidation";
 
 @reactive()
 export class Sprite {
@@ -47,6 +47,8 @@ export class Sprite {
   @prop width = 32;
   @prop height = 32;
   @prop layers: Layer[] = [];
+  /** Editor-only FX draft, excluded from captures/history and document dirtiness. */
+  effectsPreview: { layer: number; effects: readonly LayerFX[] } | null = null;
   @prop frames: Frame[] = [];
   @prop tags: Tag[] = [];
   @prop slices: Slice[] = [];
@@ -245,6 +247,7 @@ export class Sprite {
     this.colorMode = 'rgb';
     this.width = width;
     this.height = height;
+    this.effectsPreview = null;
     this.layers = [newLayer('Layer 1', 1)];
     this.frames = [{ duration: 100 }];
     this.tags = [];
@@ -653,6 +656,13 @@ export class Sprite {
     return true;
   }
 
+  previewLayerEffects(effects: readonly LayerFX[] | null, layer = this.layer) {
+    if (effects) validateLayerFX(effects);
+    this.effectsPreview = effects ? { layer, effects: effects.map(effect => ({ ...effect })) } : null;
+    this.cache.clear();
+    this.split = null;
+  }
+
   setLayerEffects(effects: LayerFX[], layer = this.layer): boolean {
     validateLayerFX(effects);
     const target = this.layers[layer];
@@ -661,6 +671,10 @@ export class Sprite {
     this.layers = this.layers.map((item, i) => i === layer ? { ...item, effects: effects.map(effect => ({ ...effect })) } : item);
     this.touch();
     return true;
+  }
+
+  bakeLayerEffects(scope: 'layer' | 'frame' | 'range' = 'layer', layer = this.layer, draft?: readonly LayerFX[]): boolean {
+    return LayerOperations.bakeLayerEffects.call(this.operationContext, scope, layer, draft);
   }
 
   /** Frames of `layer` sharing the cel at `frame` (including itself) */

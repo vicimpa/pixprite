@@ -1,5 +1,5 @@
 import type { Bitmap } from './Image';
-import type { Cel, CelImage, ExtData } from './SpriteModel';
+import type { Cel, CelImage, ExtData, Layer } from './SpriteModel';
 
 /** An immutable shared pixel resource. Its public data view is a defensive copy. */
 export type Image = Readonly<{ kind: 'image'; id: string; w: number; h: number; data: Uint32Array }>;
@@ -176,11 +176,21 @@ export function validateLayerFX(effects: unknown): asserts effects is LayerFX[] 
   if (!Array.isArray(effects) || effects.length > 64) throw new Error('Invalid layer effects');
   const ids = new Set<string>();
   for (const effect of effects) {
-    if (!effect || typeof effect.id !== 'string' || !effect.id || ids.has(effect.id) || effect.type !== 'opacity'
+    if (!effect || typeof effect.id !== 'string' || !effect.id || effect.id.length > 256 || ids.has(effect.id) || effect.type !== 'opacity'
       || typeof effect.enabled !== 'boolean' || !Number.isFinite(effect.amount) || effect.amount < 0 || effect.amount > 1)
       throw new Error('Invalid layer effect');
     ids.add(effect.id);
   }
+}
+
+/** Per-frame residual scope after baking. IDs follow timeline content, never source images. */
+export function effectsForFrame(layer: Pick<Layer, 'effects' | 'bakedEffects'>, frame: number): readonly LayerFX[] {
+  const baked = layer.bakedEffects?.[frame];
+  return baked?.length ? (layer.effects ?? []).filter(effect => !baked.includes(effect.id)) : layer.effects ?? [];
+}
+
+export function copyEffectScope(layer: Pick<Layer, 'bakedEffects'>) {
+  return layer.bakedEffects?.map(ids => ids.slice());
 }
 
 export const layerFXOpacity = (effects: readonly LayerFX[] = []) => effects.reduce((alpha, effect) => effect.enabled ? alpha * effect.amount : alpha, 1);

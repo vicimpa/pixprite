@@ -1,12 +1,41 @@
 import { bitmapToCanvas, unionRect } from "~/core/Image";
 import type { SpriteContext } from "./SpriteContext";
-import { celRect, childrenOf, rootsOf, type Cel } from "./SpriteModel";
-import { bakeCel, layerFXOpacity } from './DocumentModel';
+import { celRect, childrenOf, rootsOf, subtreeStart, type Cel } from "./SpriteModel";
+import { bakeCel, effectsForFrame, type LayerFX } from './DocumentModel';
 
-/** Only the model, cache and renderer collaborators used by these functions. */
-export type RenderContext = Pick<SpriteContext,
-  'layers' | 'width' | 'height' | 'frame' | 'canvasRect' | 'floating' | 'version' |
-  'cache' | 'cacheVersion' | 'focusLayer' | 'split' | 'drawLayer' | 'drawNode' | 'drawSiblings' | 'renderSplit'>;
+/** Drawing is independent of editor state, cache ownership and playback. */
+export type DrawingContext = Pick<SpriteContext, 'layers' | 'floating' | 'canvasRect' | 'drawLayer' | 'drawNode' | 'drawSiblings'> & {
+  effectsPreview?: { layer: number; effects: readonly LayerFX[] } | null;
+};
+export type RenderContext = DrawingContext & Pick<SpriteContext,
+  'width' | 'height' | 'frame' | 'canvasRect' | 'version' | 'cache' | 'cacheVersion' | 'focusLayer' | 'split' | 'renderSplit'>;
+
+const renderEffects = (context: DrawingContext, layer: number, frame: number) => effectsForFrame(
+  context.effectsPreview?.layer === layer ? { ...context.layers[layer], effects: [...context.effectsPreview.effects] } : context.layers[layer], frame);
+
+/** Validate before allocation or document mutation, including pending floating pixels. */
+export function groupBounds(this: Pick<DrawingContext, 'layers' | 'floating'>, index: number, frame: number) {
+  let rect = null as ReturnType<typeof unionRect>;
+  const start = subtreeStart(this.layers, index);
+  for (let i = start; i < index; i++) {
+    const cel = this.layers[i].cels[frame];
+    if (cel) rect = unionRect(rect, celRect(cel));
+  }
+  const f = this.floating;
+  if (f && f.frame === frame && f.layer >= start && f.layer < index)
+    rect = unionRect(rect, { x: f.result.x, y: f.result.y, w: f.result.bmp.w, h: f.result.bmp.h });
+  if (rect && (rect.w > 4096 || rect.h > 4096 || rect.w * rect.h > 16_777_216)) throw new RangeError('Layer FX bounds exceed 4096 × 4096 pixels');
+  return rect;
+}
+
+/** Isolated group pixels, retaining off-canvas content. Outer opacity/blend/clip are applied by its parent. */
+export function groupCel(this: DrawingContext, index: number, frame: number): Cel {
+  const rect = groupBounds.call(this, index, frame);
+  if (!rect) return null;
+  const canvas = new OffscreenCanvas(rect.w, rect.h), ctx = canvas.getContext('2d')!;
+  this.drawSiblings(ctx, childrenOf(this.layers, index), frame, undefined, rect.x, rect.y);
+  return bakeCel({ ...rect, data: new Uint32Array(ctx.getImageData(0, 0, rect.w, rect.h).data.buffer) }, renderEffects(this, index, frame));
+}
 
 // Rendering
 
@@ -14,10 +43,11 @@ export type RenderContext = Pick<SpriteContext,
  * Draws a layer at its cels' positions; (ox, oy) is the sprite point at the context's origin.
  * `override` is a canvas-sized buffer shown instead of the cel (previews).
  */
-export function drawLayer(this: RenderContext, ctx: OffscreenCanvasRenderingContext2D, index: number, frame: number, force = false, override?: Uint32Array, ox = 0, oy = 0): void {
+export function drawLayer(this: DrawingContext, ctx: OffscreenCanvasRenderingContext2D, index: number, frame: number, force = false, override?: Uint32Array, ox = 0, oy = 0): void {
   const layer = this.layers[index];
   if (!layer || (!force && !layer.visible)) return;
   const cel: Cel = override ? { ...this.canvasRect, data: override } : layer.cels[frame];
+  const effects = renderEffects(this, index, frame);
   const f = this.floating;
   const hasFloating = f && f.layer === index && f.frame === frame;
   if (!cel && !hasFloating) return;
@@ -33,11 +63,11 @@ export function drawLayer(this: RenderContext, ctx: OffscreenCanvasRenderingCont
     c.drawImage(bitmapToCanvas(f.result.bmp), f.result.x - r.x, f.result.y - r.y);
     sx = r.x;
     sy = r.y;
-    if (layer.effects?.length) {
+    if (effects.length) {
       const data = new Uint32Array(c.getImageData(0, 0, r.w, r.h).data.buffer);
-      src = bitmapToCanvas(bakeCel({ x: 0, y: 0, w: r.w, h: r.h, data }, layer.effects)!);
+      src = bitmapToCanvas(bakeCel({ x: 0, y: 0, w: r.w, h: r.h, data }, effects)!);
     }
-  } else src = bitmapToCanvas(bakeCel(cel, layer.effects)!);
+  } else src = bitmapToCanvas(bakeCel(cel, effects)!);
   ctx.globalAlpha = layer.opacity * (layer.celOpacity[frame] ?? 1);
   ctx.globalCompositeOperation = layer.blend;
   ctx.drawImage(src, sx - ox, sy - oy);
@@ -46,16 +76,19 @@ export function drawLayer(this: RenderContext, ctx: OffscreenCanvasRenderingCont
 }
 
 /** Draws a layer, or a group composited from its children with the group's opacity and blend */
-export function drawNode(this: RenderContext, ctx: OffscreenCanvasRenderingContext2D, i: number, frame: number, force: boolean, override?: (i: number) => Uint32Array | undefined, ox = 0, oy = 0): void {
+export function drawNode(this: DrawingContext, ctx: OffscreenCanvasRenderingContext2D, i: number, frame: number, force: boolean, override?: (i: number) => Uint32Array | undefined, ox = 0, oy = 0): void {
   const l = this.layers[i];
   if (!l || (!force && !l.visible)) return;
   if (!l.group) return this.drawLayer(ctx, i, frame, true, override?.(i), ox, oy);
   const can = new OffscreenCanvas(ctx.canvas.width, ctx.canvas.height);
   const c = can.getContext('2d')!;
   this.drawSiblings(c, childrenOf(this.layers, i), frame, override, ox, oy);
-  ctx.globalAlpha = l.opacity * layerFXOpacity(l.effects);
+  const effects = renderEffects(this, i, frame);
+  const pixels = effects.some(effect => effect.enabled && effect.amount !== 1)
+    ? bitmapToCanvas(bakeCel({ x: 0, y: 0, w: can.width, h: can.height, data: new Uint32Array(c.getImageData(0, 0, can.width, can.height).data.buffer) }, effects)!) : can;
+  ctx.globalAlpha = l.opacity;
   ctx.globalCompositeOperation = l.blend;
-  ctx.drawImage(can, 0, 0);
+  ctx.drawImage(pixels, 0, 0);
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = 'source-over';
 }
@@ -64,7 +97,7 @@ export function drawNode(this: RenderContext, ctx: OffscreenCanvasRenderingConte
  * Draws sibling nodes bottom to top. A run of clipping layers is drawn on a copy of the
  * layer under it, masked by that layer's alpha, then the result goes down with its blend.
  */
-export function drawSiblings(this: RenderContext, ctx: OffscreenCanvasRenderingContext2D, list: number[], frame: number, override?: (i: number) => Uint32Array | undefined, ox = 0, oy = 0, vis = (i: number) => this.layers[i].visible): void {
+export function drawSiblings(this: DrawingContext, ctx: OffscreenCanvasRenderingContext2D, list: number[], frame: number, override?: (i: number) => Uint32Array | undefined, ox = 0, oy = 0, vis = (i: number) => this.layers[i].visible): void {
   const L = this.layers;
   for (let n = 0; n < list.length; n++) {
     const i = list[n];

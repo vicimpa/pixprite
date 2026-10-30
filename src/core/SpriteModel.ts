@@ -4,7 +4,7 @@ import { opaqueBounds, type Bitmap, type Rect } from "~/core/Image";
 import type { UserData } from "~/core/Tilemap";
 import type { TileRefs } from "~/core/Tilemap";
 import type { Placement } from "~/core/Transform";
-import { createCelInstance, isCelInstance, transformCel, type LayerFX } from './DocumentModel';
+import { copyEffectScope, createCelInstance, isCelInstance, transformCel, type LayerFX } from './DocumentModel';
 
 export { createImage, createCelInstance, imageOf, transformCel, bakeCel, type Image, type AssetRef, type CelInstance, type CelTransform, type LayerFX } from './DocumentModel';
 
@@ -124,6 +124,8 @@ export type Layer = {
   ext?: ExtData;
   /** Ordered nondestructive processors; an absent stack is equivalent to an empty stack. */
   effects?: LayerFX[];
+  /** IDs already baked into each frame; later edits to those effects leave baked frames alone. */
+  bakedEffects?: string[][];
 };
 
 /** Image of a reference layer placed in sprite coordinates; `src` is a data URL */
@@ -214,8 +216,8 @@ export type Floating = {
 /** Timeline content copied for pasting back into the timeline */
 export type RangeClip =
   | { type: 'layers'; layers: Layer[]; }
-  | { type: 'frames'; frames: { duration: number; cels: { cel: Cel; op: number; }[]; }[]; }
-  | { type: 'cels'; rows: { layer: number; cels: { cel: Cel; op: number; }[]; }[]; };
+  | { type: 'frames'; frames: { duration: number; cels: { cel: Cel; op: number; fx?: string[]; }[]; }[]; }
+  | { type: 'cels'; rows: { layer: number; cels: { cel: Cel; op: number; fx?: string[]; }[]; }[]; };
 
 /** A palette that applies from `frame` until the next one */
 export type FramePalette = { frame: number; colors: string[]; };
@@ -242,7 +244,7 @@ export function keepExt(prev: CelImage, next: Cel): Cel {
 }
 
 export function copyLayers(layers: Layer[]) {
-  return layers.map(l => ({ ...l, cels: l.cels.slice(), celOpacity: l.celOpacity.slice(), ...(l.effects ? { effects: l.effects.map(effect => ({ ...effect })) } : {}) }));
+  return layers.map(l => ({ ...l, cels: l.cels.slice(), celOpacity: l.celOpacity.slice(), ...(l.effects ? { effects: l.effects.map(effect => ({ ...effect })) } : {}), ...(l.bakedEffects ? { bakedEffects: copyEffectScope(l) } : {}) }));
 }
 
 export function newLayer(name: string, frames: number): Layer {
