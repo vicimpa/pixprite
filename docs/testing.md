@@ -3,6 +3,7 @@
 Install dependencies with `bun install --frozen-lockfile`.
 
 - `bun test` / `bun run test`: document model, migration, malformed file and format round-trip tests. The network-dependent upstream Aseprite case is skipped by default.
+- `bun run test:formats` and `bun run test:migrations`: the format and migration subsets, also run explicitly in CI.
 - `bun run test:aseprite`: pinned original Aseprite fixtures; see [the compatibility notes](aseprite-compatibility.md).
 - `bun run typecheck`: all TypeScript projects, including unit and browser tests.
 - `bun run i18n:check` and `bun run ext:check`: translations and extension packages.
@@ -20,3 +21,20 @@ The suite performs real pointer drawing, command palette actions, file selection
 Additional scenarios cover a renderer crash via Chromium CDP, session/snapshot restoration, offline reload, replacement of an active Service Worker, GIF export/reimport, extension installation/removal and permission denial, and storage failure/retry. Snapshot timing advances `Date` while leaving browser timers running normally. Quota tests inject an aborted IndexedDB write transaction with a `QuotaExceededError`; they do not fill the host disk. The Service Worker deployment fixture changes the worker revision while preserving application assets; mixed-version HTML/assets are a separate Service Worker test concern in the plan.
 
 `e2e/server.ts` is only a test server. Its loopback-only endpoints serve a tiny extension with per-file SHA-256 hashes and simulate a new Service Worker deployment. They are never included in the production build or deployed site. Browser tests use that local registry and require no external extension service.
+
+## CI and bundle budgets
+
+Every pull request runs the main CI workflow, including documentation and extension changes. It installs dependencies with a frozen lockfile and Bun 1.4.2, then runs typecheck, unit tests, format round-trips, migrations, translations, extension checks, production build, bundle budgets, and Chromium smoke tests. PR checks use a read-only repository token. Successful pushes to `main` deploy the checked build artifact to `gh-pages` in a separate job with write permission. Browser failures retain traces/screenshots for seven days.
+
+`bun run build && bun run bundle:check` checks the production JavaScript using gzip level 9. The Vite manifest identifies entry points and their static imports; each file is counted once. The total also includes lazy chunks, workers, and other emitted JavaScript. CSS, fonts, images and JSON are outside these JavaScript budgets.
+
+Budgets in `scripts/bundle-budgets.json` are measured in bytes:
+
+| Metric | Baseline | Limit |
+| --- | ---: | ---: |
+| Initial JavaScript gzip | 266,405 | 307,200 (300 KiB) |
+| Total JavaScript gzip | 356,072 | 409,600 (400 KiB) |
+
+Missing build manifests/chunks and exceeded budgets fail the command. Unit tests exercise passing builds, oversized static imports, oversized workers, and missing files. To review a budget change, rebuild, inspect the measured growth and chunk split, then update the limits in the JSON file with the reason in the PR. The checker never updates limits automatically.
+
+CI builds once, then runs `PIXPRITE_E2E_PREBUILT=1 bun run test:e2e:smoke` against that exact `dist` directory. Without this variable, browser tests retain their normal build-first behavior. To inspect another build/budget fixture, use `bun scripts/bundle-check.ts <build-directory> <budget-json>`.

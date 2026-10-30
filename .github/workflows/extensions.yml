@@ -1,5 +1,8 @@
 name: Extensions
 
+permissions:
+  contents: read
+
 # The editor's build has no extensions: they are published on their own, to the orphan branch
 # `extensions` (the public catalog, read through jsDelivr). Only `"public": false` ones stay out.
 on:

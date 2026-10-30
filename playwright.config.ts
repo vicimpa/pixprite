@@ -20,7 +20,8 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { browserName: 'chromium' } }],
   webServer: {
-    command: 'bun run build && bun e2e/server.ts',
+    command: process.env.PIXPRITE_E2E_PREBUILT === '1'
+      ? 'bun e2e/server.ts' : 'bun run build && bun e2e/server.ts',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: false,
     timeout: 120_000,

@@ -106,15 +106,15 @@
 
 ### CI
 
-- [ ] Запускать typecheck для каждого pull request.
-- [ ] Запускать unit-тесты для каждого pull request.
-- [ ] Запускать round-trip-тесты для каждого pull request.
-- [ ] Запускать E2E smoke-тесты для каждого pull request.
-- [ ] Запускать `i18n:check` для каждого pull request.
-- [ ] Запускать `ext:check` для каждого pull request.
-- [ ] Запускать production build для каждого pull request.
-- [ ] Проверять размер bundle.
-- [ ] Запускать тесты миграций форматов.
+- [x] Запускать typecheck для каждого pull request.
+- [x] Запускать unit-тесты для каждого pull request.
+- [x] Запускать round-trip-тесты для каждого pull request.
+- [x] Запускать E2E smoke-тесты для каждого pull request.
+- [x] Запускать `i18n:check` для каждого pull request.
+- [x] Запускать `ext:check` для каждого pull request.
+- [x] Запускать production build для каждого pull request.
+- [x] Проверять размер bundle.
+- [x] Запускать тесты миграций форматов.
 
 ### Постоянное хранилище и резервные копии
 

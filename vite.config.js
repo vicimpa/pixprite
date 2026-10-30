@@ -13,6 +13,7 @@ export default defineConfig({
   base: './',
   publicDir: '../public',
   build: {
+    manifest: true,
     emptyOutDir: true,
     outDir: '../dist',
   },
