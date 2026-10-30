@@ -1,15 +1,18 @@
 import 'fake-indexeddb/auto';
-import { afterEach, expect, test } from 'bun:test';
-import { allProjectsBackup, projectBackup } from '~/core/Backups';
-import { cleanOldSnapshots, deleteProject, listProjects, listSnapshots, loadSnapshot, saveProjectData, saveSnapshot, type ProjectMeta } from '~/core/Projects';
+import { afterEach, expect, mock, test } from 'bun:test';
+import type { ProjectMeta } from '~/core/Projects';
 import { serializedBytes } from '~/core/Storage';
+
+mock.module('@vicimpa/decorators', () => ({ prop: () => {}, reactive: () => <T,>(value: T) => value }));
+const { allProjectsBackup, projectBackup } = await import('~/core/Backups');
+const { cleanOldSnapshots, deleteProject, listProjects, listSnapshots, loadSnapshot, saveProjectData, saveSnapshot } = await import('~/core/Projects');
 
 const ids = new Set<string>();
 const meta = (id: string, name = id): ProjectMeta => {
   ids.add(id);
   return { id, name, created: 1, updated: 2, width: 1, height: 1, frames: 1, layers: 1, colorMode: 'rgb', thumb: '' };
 };
-const data = { format: 'pixprite', version: 4, name: 'ёж', pixels: 'AQIDBA==' };
+const data = { format: 'pixprite', version: 4, name: 'ёж', width: 1, height: 1, frames: [{ duration: 100 }], layers: [{ name: 'Layer', cels: [{ x: 0, y: 0, w: 1, h: 1, d: 'AQIDBA==' }] }] };
 afterEach(async () => { for (const id of ids) await deleteProject(id); ids.clear(); });
 
 async function rawDatabase() {

@@ -1,7 +1,9 @@
-import { expect, test } from 'bun:test';
-import { backupDue, backupHistory, recordBackup, snoozeBackup } from '~/core/Backups';
+import { expect, mock, test } from 'bun:test';
 import type { ProjectMeta } from '~/core/Projects';
 import { isQuotaError, persistentStorage, requestPersistentStorage, serializedBytes, storageNearlyFull } from '~/core/Storage';
+
+mock.module('@vicimpa/decorators', () => ({ prop: () => {}, reactive: () => <T,>(value: T) => value }));
+const { backupDue, backupHistory, recordBackup, snoozeBackup } = await import('~/core/Backups');
 
 test('storage APIs tolerate unsupported, denied and rejected persistence requests', async () => {
   expect(await persistentStorage({} as StorageManager)).toBeNull();

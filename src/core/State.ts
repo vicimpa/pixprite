@@ -4,7 +4,7 @@ import { PaletteMap } from "~/core/ColorMode";
 import { t } from "~/core/i18n";
 import { applyTheme } from "~/core/Themes";
 import {
-  deleteSession, getProjectMeta, homeFolder, loadProjectData, loadProjectState, loadSession, loadSnapshot, newProjectId, saveProjectData, saveProjectState, saveSession, saveSnapshot,
+  deleteSession, getProjectMeta, homeFolder, loadProjectData, loadProjectState, loadSession, loadSnapshot, listSnapshots, loadLastGoodProject, loadLastGoodSession, newProjectId, saveProjectData, saveSessionRecord, saveSnapshot,
   type SessionHead,
 } from "~/core/Projects";
 import type { Bitmap } from "~/core/Image";
@@ -666,6 +666,9 @@ export class State {
   // Persistence
 
   private saveTimer = 0;
+  private persistQueue: Promise<void> = Promise.resolve();
+  private documentSaves = new WeakMap<Sprite, Promise<void>>();
+  private failedSessions = new Set<string>();
 
   /** Autosave of the open editors (not the project files) shortly after the last change */
   save() {
@@ -689,62 +692,76 @@ export class State {
    * Writes the open editors: each tab's working copy and editor state, and which tabs are open.
    * Project files are not touched here; they change only on save.
    */
-  async persist() {
+  persist(): Promise<void> {
+    // Serialize flushes so an older completion cannot overwrite a newer working copy.
+    const next = this.persistQueue.then(() => this.persistEditors());
+    this.persistQueue = next.catch(() => {});
+    return next;
+  }
+
+  private async persistEditors() {
     for (const doc of this.docs) {
       try {
-        // Every open tab is kept, a brand-new empty one too (it is unsaved work)
         const sid = doc.sessionId ??= newProjectId();
         const editor = this.editorOf(doc);
         const json = JSON.stringify(editor);
-        if (editor && json !== doc.storedEditor) {
-          doc.editor = editor;
-          await saveSession(sid, 'editor', editor);
-          doc.storedEditor = json;
-        }
-        if (doc.version === doc.storedVersion) continue;
+        const changed = doc.version !== doc.storedVersion;
+        if (!changed && json === doc.storedEditor) continue;
         const version = doc.version;
-        await saveSession(sid, 'head', { projectId: doc.projectId, name: doc.name } satisfies SessionHead);
-        const data = JSON.parse(JSON.stringify(doc));
-        await saveSession(sid, 'data', data);
-        doc.storedVersion = version;
-        // A timed recovery copy now and then (at most every SNAPSHOT_MS per document)
+        const data = changed ? JSON.parse(JSON.stringify(doc)) : null;
+        await saveSessionRecord(sid, {
+          head: { projectId: doc.projectId, name: doc.name } satisfies SessionHead,
+          data, editor,
+        }, changed);
+        doc.editor = editor;
+        doc.storedEditor = json;
+        if (changed) doc.storedVersion = version;
         const now = Date.now();
-        if (now - (lastSnapshot.get(doc) ?? 0) >= SNAPSHOT_MS) {
-          lastSnapshot.set(doc, now);
-          void saveSnapshot({
-            owner: doc.projectId ?? sid, name: doc.name, width: doc.width, height: doc.height, frames: doc.frames.length, thumb: thumbnail(doc),
-          }, data).then(() => this.projectsVersion++, e => console.warn('Saving a snapshot failed', e));
+        if (changed && now - (lastSnapshot.get(doc) ?? 0) >= SNAPSHOT_MS) {
+          try {
+            await saveSnapshot({
+              owner: doc.projectId ?? sid, name: doc.name, width: doc.width, height: doc.height, frames: doc.frames.length, thumb: thumbnail(doc),
+            }, data);
+            lastSnapshot.set(doc, now);
+            this.projectsVersion++;
+          } catch (e) {
+            this.showTip(`${t('msg.couldNotSave')}: ${isQuotaError(e) ? t('storage.quotaExceeded') : (e as Error).message}`, 4000);
+          }
         }
       } catch (e) {
-        // Keep the version pending so a later autosave retries the same working copy.
         console.warn('Saving the working copy failed', e);
         this.showTip(`${t('msg.couldNotSave')}: ${isQuotaError(e) ? t('storage.quotaExceeded') : (e as Error).message}`, 4000);
       }
     }
     store('pixprite:session', {
-      tabs: this.docs.filter(d => d.sessionId).map(d => d.sessionId),
+      tabs: [...new Set([...this.docs.flatMap(d => d.sessionId ? [d.sessionId] : []), ...this.failedSessions])],
       active: this.home ? 'home' : this.sprite.sessionId,
     });
   }
 
-  /** Writes a document to its project file (creating the project the first time) */
-  async saveDocument(doc = this.sprite) {
-    const now = Date.now();
-    const id = doc.projectId ??= newProjectId();
-    const meta = await getProjectMeta(id).catch(() => null);
+  /** Writes of one document are serialized, including its first project ID assignment. */
+  saveDocument(doc = this.sprite): Promise<void> {
+    const next = (this.documentSaves.get(doc) ?? Promise.resolve()).catch(() => {}).then(() => this.writeDocument(doc));
+    this.documentSaves.set(doc, next);
+    return next;
+  }
+
+  private async writeDocument(doc: Sprite) {
+    const now = Date.now(), id = doc.projectId ?? newProjectId();
+    const meta = await getProjectMeta(id);
+    const version = doc.version;
+    const data = JSON.parse(JSON.stringify(doc));
+    const editor = this.editorOf(doc);
     await saveProjectData({
       id, name: doc.name, created: meta?.created ?? now, updated: now,
       width: doc.width, height: doc.height, frames: doc.frames.length, layers: doc.layers.length,
       colorMode: doc.colorMode, thumb: thumbnail(doc), info: Object.keys(doc.info).length ? doc.info : undefined,
-      // A new project goes into the folder open on the home page
       folderId: meta ? meta.folderId ?? null : homeFolder.value,
-    }, JSON.parse(JSON.stringify(doc)));
-    doc.markSaved();
-    // The editor setup is remembered next to the project, for the next time it is opened
-    const editor = this.editorOf(doc);
-    if (editor) await saveProjectState(id, { ...editor, doc: { ...(editor.doc as object), unsaved: false } });
+    }, data, editor ? { ...editor, doc: { ...(editor.doc as object), unsaved: false } } : undefined);
+    doc.projectId = id;
+    // Edits made while the transaction was in flight still count as unsaved.
+    doc.savedVersion = version;
     this.projectsVersion++;
-    // The working copy now matches the file
     doc.storedVersion = -1;
     doc.storedEditor = '';
     await this.persist();
@@ -787,16 +804,34 @@ export class State {
   async openProject(id: string) {
     const open = this.docs.find(d => d.projectId === id);
     if (open) return this.switchTo(open);
-    const data = await loadProjectData(id);
-    if (!data) return this.showTip(t('msg.theProjectCouldNot'));
-    const doc = new Sprite(32, 32);
-    doc.load(data);
-    doc.projectId = id;
-    doc.editor = await loadProjectState(id) ?? null;
-    doc.markSaved();
-    this.docs = [...this.docs, doc];
-    this.switchTo(doc);
-    this.save();
+    try {
+      const data = await loadProjectData(id);
+      if (!data) throw new Error(t('msg.theProjectCouldNot'));
+      const doc = new Sprite(32, 32);
+      doc.load(data);
+      doc.projectId = id;
+      doc.editor = await loadProjectState(id) ?? null;
+      doc.markSaved();
+      this.docs = [...this.docs, doc];
+      this.switchTo(doc);
+      this.save();
+    } catch (e) {
+      this.showTip(`${t('recovery.openFailed')}: ${(e as Error).message}`, 6000);
+    }
+  }
+
+  /** Recovery never replaces or removes the damaged stored project. */
+  async recoverProject(id: string) {
+    try {
+      const saved = await loadLastGoodProject(id);
+      if (!saved) return this.showTip(t('recovery.noPrevious'), 5000);
+      const doc = new Sprite(1, 1);
+      doc.load(saved.data);
+      doc.name = `${doc.name} (${t('recovery.copy')})`;
+      this.openDocument(doc);
+      this.save();
+      this.showNotice(t('recovery.openedCopy'));
+    } catch (e) { this.showTip(`${t('recovery.failed')}: ${(e as Error).message}`, 5000); }
   }
 
   /** Opens a recovery snapshot as a new unsaved document */
@@ -805,7 +840,7 @@ export class State {
     if (!data) return this.showTip(t('msg.theSnapshotCouldNot'));
     const doc = new Sprite(32, 32);
     doc.load(data);
-    const time = Number(id.slice(id.lastIndexOf(':') + 1));
+    const time = (await listSnapshots()).find(s => s.id === id)?.time ?? Date.now();
     doc.name = `${doc.name} (${new Date(time).toLocaleString()})`;
     doc.projectId = null;
     doc.storedVersion = -1;
@@ -980,48 +1015,79 @@ export class State {
   async restore() {
     try {
       const palette = localStorage.getItem('pixprite:palette');
-      if (palette) this.palette = JSON.parse(palette);
+      if (palette) { try { this.palette = JSON.parse(palette); } catch { /* ignore damaged preferences */ } }
       // Tools and view as they were last used (a project's own settings apply on top when it opens)
       const last = localStorage.getItem('pixprite:editor');
-      if (last) this.applyEditor(JSON.parse(last));
+      if (last) { try { this.applyEditor(JSON.parse(last)); } catch { /* ignore damaged preferences */ } }
+      const session = load('pixprite:session', { tabs: [] as string[], active: 'home' as string | null });
+      const tabs = Array.isArray(session.tabs) ? session.tabs.filter((id): id is string => typeof id === 'string') : [];
+      this.failedSessions = new Set(tabs);
       // One-time migration of documents kept in localStorage by earlier versions: they become projects
       const legacy = localStorage.getItem('pixprite:docs') ?? localStorage.getItem('pixprite:project');
       if (legacy) {
-        const parsed = JSON.parse(legacy);
-        for (const d of parsed?.docs ?? [parsed]) {
-          const s = new Sprite(32, 32);
-          s.load(d);
-          if (this.pristine(s)) continue;
-          this.docs = [...this.docs, s];
-          await this.saveDocument(s);
+        try {
+          const parsed = JSON.parse(legacy);
+          const failed: unknown[] = [];
+          for (const d of parsed?.docs ?? [parsed]) {
+            try {
+              const document = new Sprite(32, 32);
+              document.load(d);
+              if (!this.pristine(document)) await this.saveDocument(document);
+            } catch (e) { failed.push(d); console.warn('Legacy project migration failed', e); }
+          }
+          const key = localStorage.getItem('pixprite:docs') !== null ? 'pixprite:docs' : 'pixprite:project';
+          if (failed.length) {
+            // Keep only the records that were not migrated; successful ones must not duplicate next launch.
+            localStorage.setItem(key, JSON.stringify({ docs: failed }));
+            this.showTip(t('recovery.someFailed'), 6000);
+          } else localStorage.removeItem(key);
+        } catch (e) {
+          // Malformed legacy JSON remains intact and cannot block the current session.
+          console.warn('Legacy project migration failed', e);
+          this.showTip(t('recovery.someFailed'), 6000);
         }
-        localStorage.removeItem('pixprite:docs');
-        localStorage.removeItem('pixprite:project');
-        this.docs = [];
       }
       // Reopen the editors of the last visit, unsaved edits included
-      const session = load('pixprite:session', { tabs: [] as string[], active: 'home' as string | null });
-      for (const id of session.tabs) {
-        const saved = await loadSession(id);
-        const doc = new Sprite(32, 32);
-        if (saved) {
-          doc.load(saved.data);
-          doc.sessionId = id;
-          doc.projectId = saved.head?.projectId ?? null;
-          doc.editor = saved.editor;
-          doc.storedVersion = doc.version;
-          doc.storedEditor = JSON.stringify(saved.editor);
-        } else {
-          // Sessions from before open editors were kept separately listed project ids
-          const data = await loadProjectData(id);
-          if (!data) continue;
-          doc.load(data);
-          doc.projectId = id;
-          doc.editor = await loadProjectState(id);
+      let damaged = false;
+      for (const id of tabs) {
+        try {
+          const saved = await loadSession(id);
+          const doc = new Sprite(32, 32);
+          if (saved) {
+            doc.load(saved.data);
+            doc.sessionId = id;
+            doc.projectId = saved.head?.projectId ?? null;
+            doc.editor = saved.editor;
+            doc.storedVersion = doc.version;
+            doc.storedEditor = JSON.stringify(saved.editor);
+          } else {
+            const data = await loadProjectData(id);
+            if (!data) throw new Error('Missing session document');
+            doc.load(data);
+            doc.projectId = id;
+            doc.editor = await loadProjectState(id);
+          }
+          restoreSaved(doc);
+          this.docs = [...this.docs, doc];
+          this.failedSessions.delete(id);
+        } catch (e) {
+          damaged = true;
+          console.warn('Failed to restore document', id, e);
+          // Keep the original session reference, and open its previous working copy separately.
+          try {
+            const recoveryId = `recovery:${id}`;
+            const previous = tabs.includes(recoveryId) ? null : await loadLastGoodSession(id);
+            if (previous) {
+              const recovered = new Sprite(1, 1);
+              recovered.load(previous.data);
+              recovered.sessionId = recoveryId;
+              recovered.name = `${recovered.name} (${t('recovery.copy')})`;
+              this.docs = [...this.docs, recovered];
+            }
+          } catch { /* leave the unreadable record available for external recovery */ }
         }
-        restoreSaved(doc);
-        this.docs = [...this.docs, doc];
       }
+      if (damaged) this.showTip(t('recovery.someFailed'), 6000);
       const active = this.docs.find(d => d.sessionId === session.active || d.projectId === session.active);
       if (active) this.switchTo(active);
       else this.home = true;

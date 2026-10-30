@@ -416,3 +416,94 @@ test('storage controls show usage, request persistence, export backups and prese
   const individual = await individualDownload;
   expect(JSON.parse(await readFile((await individual.path())!, 'utf8'))).toMatchObject({ format: 'pixprite', name: 'Backup' });
 });
+
+test('damaged saved project recovers its previous version as a separate unsaved copy', async ({ page }) => {
+  await create(page, 'Recoverable');
+  await draw(page);
+  await assertPainted(page, 'Recoverable');
+  const previous = await pngPixels(page, await download(page, 'file.exportPng'));
+  await command(page, 'file.save');
+  await expect(page.getByText('Saved: Recoverable', { exact: true })).toBeVisible();
+  await command(page, 'layer.new');
+  await command(page, 'file.save');
+  const projectId = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('pixprite'); r.onsuccess = () => resolve(r.result); });
+    try { return await new Promise<string>(resolve => { const r = db.transaction('meta').objectStore('meta').getAll(); r.onsuccess = () => resolve(r.result[0].id); }); }
+    finally { db.close(); }
+  });
+  await expect.poll(() => page.evaluate(async id => {
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('pixprite'); r.onsuccess = () => resolve(r.result); });
+    try { return await new Promise<number>(resolve => { const r = db.transaction('data').objectStore('data').get(id); r.onsuccess = () => resolve(r.result.layers.length); }); }
+    finally { db.close(); }
+  }, projectId)).toBe(2);
+  await page.evaluate(async id => {
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('pixprite'); r.onsuccess = () => resolve(r.result); });
+    try {
+      const tx = db.transaction('data', 'readwrite');
+      tx.objectStore('data').put({ damaged: true }, id);
+      await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onabort = () => reject(tx.error); });
+    } finally { db.close(); }
+  }, projectId);
+  await page.locator('[data-home]').click();
+  await page.locator('[data-key^="p:"]', { hasText: 'Recoverable' }).click({ button: 'right' });
+  await page.getByText('Recover previous version', { exact: true }).click();
+  await expect(page.locator('[draggable=true][data-active=true]')).toHaveAttribute('title', 'Recoverable (recovered) · 32×32');
+  await expect(page.locator('[data-hit=layer]')).toHaveCount(1);
+  await expect(page.locator('[draggable=true][data-active=true] [data-modified=true]')).toHaveCount(1);
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(previous);
+  expect(await page.evaluate(async id => {
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('pixprite'); r.onsuccess = () => resolve(r.result); });
+    try { return await new Promise<unknown>(resolve => { const r = db.transaction('data').objectStore('data').get(id); r.onsuccess = () => resolve(r.result); }); }
+    finally { db.close(); }
+  }, projectId)).toEqual({ damaged: true });
+  await assertPainted(page, 'Recoverable (recovered)');
+  await page.reload();
+  await expect(page.locator('[draggable=true][data-active=true]')).toHaveAttribute('title', 'Recoverable (recovered) · 32×32');
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(previous);
+});
+
+test('one damaged session and malformed preferences do not prevent restoring healthy tabs', async ({ page }) => {
+  await create(page, 'Broken'); await draw(page); await assertPainted(page, 'Broken');
+  await create(page, 'Healthy'); await draw(page); await assertPainted(page, 'Healthy');
+  const healthy = await pngPixels(page, await download(page, 'file.exportPng'));
+  const damagedId = await page.evaluate(async () => {
+    const session = JSON.parse(localStorage.getItem('pixprite:session')!);
+    const id = session.tabs[0];
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('pixprite'); r.onsuccess = () => resolve(r.result); });
+    try {
+      const tx = db.transaction('sessions', 'readwrite');
+      tx.objectStore('sessions').put({ damaged: true }, `data:${id}`);
+      await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onabort = () => reject(tx.error); });
+    } finally { db.close(); }
+    localStorage.setItem('pixprite:editor', '{broken');
+    localStorage.setItem('pixprite:docs', '{broken legacy');
+    return id as string;
+  });
+  await page.reload();
+  await expect(page.locator('[draggable=true][title="Healthy · 32×32"]')).toBeVisible();
+  await page.locator('[draggable=true][title="Healthy · 32×32"]').click();
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(healthy);
+  expect(await page.evaluate(async id => {
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('pixprite'); r.onsuccess = () => resolve(r.result); });
+    try { return await new Promise<unknown>(resolve => { const r = db.transaction('sessions').objectStore('sessions').get(`data:${id}`); r.onsuccess = () => resolve(r.result); }); }
+    finally { db.close(); }
+  }, damagedId)).toEqual({ damaged: true });
+  await expect.poll(() => page.evaluate(id => JSON.parse(localStorage.getItem('pixprite:session')!).tabs.includes(id), damagedId)).toBe(true);
+  const count = await page.locator('[draggable=true]').count();
+  await page.reload();
+  await expect(page.locator('[draggable=true]')).toHaveCount(count);
+  await expect(page.locator('[draggable=true][title="Healthy · 32×32"]')).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem('pixprite:docs'))).toBe('{broken legacy');
+  const legacy = { ...(await documentNamed(page, 'Healthy')), name: 'Legacy' };
+  await page.evaluate(data => localStorage.setItem('pixprite:docs', JSON.stringify({ docs: [data, { damaged: true }] })), legacy);
+  await page.reload();
+  await expect(page.locator('[draggable=true][title="Healthy · 32×32"]')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('[draggable=true][title="Healthy · 32×32"]')).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pixprite:docs')!))).toEqual({ docs: [{ damaged: true }] });
+  expect(await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('pixprite'); r.onsuccess = () => resolve(r.result); });
+    try { return await new Promise<number>(resolve => { const r = db.transaction('meta').objectStore('meta').getAll(); r.onsuccess = () => resolve(r.result.filter(p => p.name === 'Legacy').length); }); }
+    finally { db.close(); }
+  })).toBe(1);
+});

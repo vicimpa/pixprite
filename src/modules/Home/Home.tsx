@@ -784,6 +784,7 @@ export const Home: FC = () => {
                     { label: t('home.open'), run: () => void state.openProject(p.id) },
                     { label: t('common.preview'), run: () => preview(p) },
                     { label: t('home.snapshots'), run: () => openSnapshots(p.id, p.name) },
+                    { label: t('recovery.previous'), run: () => void state.recoverProject(p.id) },
                     { label: t('home.downloadPixprite'), run: () => void downloadProject(p.id, 'pixprite') },
                     { label: t('home.downloadAseprite'), run: () => void downloadProject(p.id, 'aseprite') },
                     { label: t('common.duplicate'), run: () => void duplicate(item) },
