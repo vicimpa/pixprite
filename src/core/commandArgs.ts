@@ -12,8 +12,8 @@ import {
 import { BLEND_MODES, type BlendMode } from "~/core/Sprite";
 import { state } from "~/core/State";
 import { t } from "~/core/i18n";
-import { applyFilter, toColor, type Scope } from "~/modules/Dialogs/Filters";
-import { convertSpriteColorMode } from "~/modules/Dialogs/ColorMode";
+import { applyFilter, toColor, type Scope } from "~/core/FilterOperations";
+import { convertSpriteColorMode } from "~/core/ColorModeOperations";
 import type { ColorMode, Dither } from "~/core/ColorMode";
 
 export type Parametric = { params: FormSchema; apply: (args: FormValues) => unknown; };

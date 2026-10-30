@@ -1,3 +1,4 @@
+import { loadFile } from "~/core/Files";
 /**
  * sprite.*, documents.*, meta.* and locks.*: the active document as plain data,
  * every change going through Sprite's own methods so undo and locks keep working.
@@ -349,7 +350,6 @@ export const spriteHandlers: Handlers = {
   'documents.active': () => { const d = activeDoc(); return d && docInfo(d); },
   'documents.open': async (_c, file) => {
     if (!isObject(file) || typeof file.name !== 'string' || !(file.data instanceof ArrayBuffer)) fail('invalid', 'file must be {name, data: ArrayBuffer}');
-    const { loadFile } = await import("~/core/Files");
     await loadFile(new File([file.data as ArrayBuffer], file.name as string));
     return docId(state.sprite);
   },

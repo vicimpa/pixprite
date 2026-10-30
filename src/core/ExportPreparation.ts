@@ -4,9 +4,6 @@ import type { DocumentCapture } from './SpriteSerialization';
 import { documentContext } from './BackgroundDocument';
 import { opaqueBounds, type Rect } from './Image';
 import { buildSheet, sheetData, type SheetOptions, type SheetContext } from './SpriteSheet';
-import { encodeApng } from './formats/Apng';
-import { encodeGif } from './Gif';
-import { encodeIco } from './formats/Ico';
 
 export type Output = { name: string; blob: Blob };
 export type VideoExport = { name: string; width: number; height: number; frames: { data: Uint8ClampedArray; delay: number }[] };
@@ -112,7 +109,7 @@ export async function prepareExport(args: ExportRequest): Promise<PreparedExport
       ctx.drawImage(src, (s - w) >> 1, (s - h) >> 1, w, h);
       return { width: s, height: s, png: new Uint8Array(await (await png(can)).arrayBuffer()) };
     }));
-    const bytes = encodeIco(images, opts.kind === 'cur' ? { x: 0, y: 0 } : undefined);
+    const bytes = (await import('./formats/Ico')).encodeIco(images, opts.kind === 'cur' ? { x: 0, y: 0 } : undefined);
     return [{ name: `${base}.${opts.kind}`, blob: new Blob([bytes as BlobPart], { type: 'image/x-icon' }) }];
   }
 
@@ -134,7 +131,7 @@ export async function prepareExport(args: ExportRequest): Promise<PreparedExport
   const delays = shown.map(f => sprite.frames[f].duration);
 
   if (opts.kind === 'apng') {
-    const bytes = await encodeApng(w, h, canvases.map((c, i) => ({ data: c.getContext('2d')!.getImageData(0, 0, w, h).data, delay: delays[i] })), opts.loop ?? true ? 0 : 1);
+    const bytes = await (await import('./formats/Apng')).encodeApng(w, h, canvases.map((c, i) => ({ data: c.getContext('2d')!.getImageData(0, 0, w, h).data, delay: delays[i] })), opts.loop ?? true ? 0 : 1);
     return [{ name: `${base}.png`, blob: new Blob([bytes as BlobPart], { type: 'image/apng' }) }];
   }
 
@@ -143,5 +140,5 @@ export async function prepareExport(args: ExportRequest): Promise<PreparedExport
   }
 
   const gifFrames = canvases.map((c, i) => ({ data: c.getContext('2d')!.getImageData(0, 0, w, h).data, delay: delays[i] }));
-  return [{ name: `${base}.gif`, blob: new Blob([encodeGif(w, h, gifFrames, opts.loop ?? true) as BlobPart], { type: 'image/gif' }) }];
+  return [{ name: `${base}.gif`, blob: new Blob([(await import('./Gif')).encodeGif(w, h, gifFrames, opts.loop ?? true) as BlobPart], { type: 'image/gif' }) }];
 }

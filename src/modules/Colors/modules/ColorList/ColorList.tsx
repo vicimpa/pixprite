@@ -7,7 +7,7 @@ import { openContextMenu, type MenuItems } from "~/ui/Menu";
 import { Icon } from "~/ui/Icon";
 import { Button } from "~/ui/Button";
 import { Panel } from "~/ui/Panel";
-import { paletteDialogs } from "~/modules/Dialogs/Palette";
+import { paletteDialogs } from "~/modules/Dialogs";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useRef, useState, type FC, type PointerEvent } from "react";
 import * as styled from "./styled";

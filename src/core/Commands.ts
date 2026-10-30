@@ -11,7 +11,8 @@ import { DEFAULT_LAYOUT, state } from "~/core/State";
 import { addGuide, clearGuides, openReference } from "~/core/Reference";
 import { dialogs } from "~/modules/Dialogs";
 import { askText } from "~/ui/Dialog";
-import { strokeSelectionDialog } from "~/modules/Dialogs/Stroke";
+import { strokeSelectionDialog } from "~/modules/Dialogs";
+import { openExtensions } from "~/modules/Extensions/open";
 import { paintSelection } from "~/core/Tools";
 import { saveCurrentToLibrary } from "~/core/Brushes";
 import { commandArgs, commandParams, PARAMETRIC } from "~/core/commandArgs";
@@ -408,8 +409,8 @@ const list: Command[] = [
   { id: 'view.hints', group: 'menu.view', run: () => state.setPrefs({ showHints: !state.prefs.showHints }), checked: () => state.prefs.showHints },
   { id: 'view.commandPalette', group: 'menu.view', keys: ['Ctrl+K'], run: () => { state.commandPalette = true; } },
   // Loaded on demand: the extensions window pulls in the whole extension host
-  { id: 'extensions.openStore', group: 'menu.extensions', home: true, run: () => void import("~/modules/Extensions").then(m => m.openExtensions('store')) },
-  { id: 'extensions.openInstalled', group: 'menu.extensions', home: true, run: () => void import("~/modules/Extensions").then(m => m.openExtensions('installed')) },
+  { id: 'extensions.openStore', group: 'menu.extensions', home: true, run: () => openExtensions('store') },
+  { id: 'extensions.openInstalled', group: 'menu.extensions', home: true, run: () => openExtensions('installed') },
   { id: 'help.shortcuts', group: 'menu.help', keys: ['F1'], run: () => dialogs.shortcuts() },
   { id: 'help.about', group: 'menu.help', run: () => dialogs.about() },
   { id: 'help.github', group: 'menu.help', run: () => void open('https://github.com/vicimpa/pixprite', '_blank', 'noopener') },

@@ -30,10 +30,11 @@
     "i18n:check": "bun scripts/i18n-check.ts",
     "ext:dev": "bun scripts/build-extensions.ts --dev",
     "ext:check": "bun scripts/build-extensions.ts",
-    "bundle:check": "bun scripts/bundle-check.ts",
+    "bundle:check": "bun scripts/bundle-check.ts && bun scripts/bundle-graph.ts --check",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test --grep @smoke",
-    "benchmark": "bun benchmarks/runner.ts"
+    "benchmark": "bun benchmarks/runner.ts",
+    "bundle:graph": "bun scripts/bundle-graph.ts"
   },
   "dependencies": {
     "@fontsource/pixelify-sans": "^5.3.0",

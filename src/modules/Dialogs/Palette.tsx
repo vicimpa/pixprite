@@ -1,4 +1,4 @@
-import { PRESET_PALETTES } from "~/core/formats/Palette";
+import { PRESET_PALETTES } from "~/core/formats/PalettePresets";
 import { isCancelled } from "~/core/Work";
 import { imageFilePixels, insertRamp, paletteFromImage, paletteFromSpriteAsync, setPaletteSize, type RampSpace } from "~/core/PaletteOps";
 import { state } from "~/core/State";

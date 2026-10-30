@@ -21,25 +21,8 @@ const DEV_KEY = 'pixprite.extensions.dev';
 const recall = (key: string, fallback: string) => { try { return localStorage.getItem(key) || fallback; } catch { return fallback; } };
 const remember = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { } };
 
-export function permissionText(p: string) {
-  if (p.startsWith('network:')) {
-    const host = p.slice(8);
-    return host === '*' ? t('extensions.perm.networkAny') : t('extensions.perm.network', { host });
-  }
-  const key = ({
-    'sprite:read': 'spriteRead', 'sprite:write': 'spriteWrite', 'tags:lock': 'tagsLock',
-    'ui:panel': 'uiPanel', 'storage': 'storage', 'clipboard': 'clipboard',
-  } as Record<string, string>)[p];
-  return key ? t(`extensions.perm.${key}`) : p;
-}
-
-/** Asks before installing; resolves true when the user agrees */
-export function confirmInstall(name: string, permissions: string[]) {
-  const list = permissions.length
-    ? `${t('extensions.permissionsAsked')}\n${permissions.map(p => `• ${permissionText(p)}`).join('\n')}`
-    : t('extensions.noPermissions');
-  return askConfirm(`${t('extensions.installQuestion', { name })}\n\n${list}`, { title: t('extensions.install'), ok: t('extensions.install') });
-}
+import { confirmInstall } from "./permissions";
+export { confirmInstall, permissionText } from "./permissions";
 
 const List = styled.div`
   display: flex;
@@ -253,5 +236,5 @@ const ExtensionsWindow: FC<{ close: () => void; tab: Tab; }> = ({ close, tab: in
 };
 
 export function openExtensions(tab: Tab = 'installed') {
-  openDialog(close => <ExtensionsWindow close={close} tab={tab} />);
+  return openDialog(close => <ExtensionsWindow close={close} tab={tab} />);
 }

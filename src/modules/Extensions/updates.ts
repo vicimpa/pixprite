@@ -9,7 +9,7 @@ import { t } from "~/core/i18n";
 import { DEFAULT_PREFS, LOCAL_CATALOG, PUBLIC_CATALOG, state } from "~/core/State";
 import { signal } from "@preact/signals-react";
 import { extensionsHost } from "./bridge";
-import { confirmInstall } from "./Extensions";
+import { confirmInstall } from "./permissions";
 import type { Registry, RegistryEntryLike } from "./types";
 
 export const DEFAULT_REGISTRY = DEFAULT_PREFS.extensionCatalogs[0];

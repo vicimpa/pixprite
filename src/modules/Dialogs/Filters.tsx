@@ -6,57 +6,14 @@ import {
   brightnessContrast, noise, offsetWrap, pixelate, posterize,
   type Channels, type FilterTarget,
 } from "~/core/Filters";
-import { packRgba } from "~/core/Image";
 import { state } from "~/core/State";
 import { Button, Check, Input, Label, Muted, Range, Select } from "~/ui/Button";
 import { Dialog, FieldLabel, openDialog, Row, Section } from "~/ui/Dialog";
 import { useEffect, useMemo, useRef, useState, type FC, type ReactNode } from "react";
 import styled from "styled-components";
 
-export type Scope = 'cel' | 'layer' | 'frame' | 'all' | 'range';
-
-export const SCOPES: [Scope, string][] = [
-  ['cel', 'Current cel'],
-  ['layer', 'All frames of this layer'],
-  ['frame', 'All layers of this frame'],
-  ['all', 'Everything'],
-  ['range', 'Timeline selection'],
-];
-
-function scopeCels(scope: Scope): [number, number][] {
-  const { sprite } = state;
-  const layers = sprite.layers.map((_, i) => i), frames = sprite.frames.map((_, i) => i);
-  switch (scope) {
-    case 'layer': return frames.map(f => [sprite.layer, f]);
-    case 'frame': return layers.map(l => [l, sprite.frame]);
-    case 'all': return layers.flatMap(l => frames.map(f => [l, f] as [number, number]));
-    case 'range': return sprite.selectedCels;
-    default: return [[sprite.layer, sprite.frame]];
-  }
-}
-
-export const toColor = (c: Color) => {
-  const [r, g, b, a] = c.rgba;
-  return packRgba(r, g, b, Math.round(a * 255));
-};
-
-/** What a filter works on: one cel's pixels, limited to the selection */
-function filterTarget(data: Uint32Array, layer: number): FilterTarget {
-  const { sprite } = state;
-  return {
-    w: sprite.width, h: sprite.height, data, mask: sprite.mask,
-    tiledX: state.tiledX, tiledY: state.tiledY,
-    lockAlpha: sprite.layers[layer]?.background,
-  };
-}
-
-/** Applies a filter to the cels of `scope` as one undo step; used by the dialogs and by commands run with arguments */
-export function applyFilter(title: string, run: (t: FilterTarget, ch: Channels) => Uint32Array, scope: Scope = 'cel', ch: Channels = ALL_CHANNELS) {
-  const { sprite } = state;
-  if (scope === 'range' && !sprite.range) scope = 'cel';
-  sprite.applyFilter(title, data => run(filterTarget(data, sprite.layer), ch), scopeCels(scope));
-  state.save();
-}
+import { applyFilter, toColor, filterTarget, SCOPES, type Scope } from "~/core/FilterOperations";
+export { applyFilter, toColor, SCOPES, type Scope } from "~/core/FilterOperations";
 
 const ChannelRow: FC<{ value: Channels; onChange: (c: Channels) => void; }> = ({ value, onChange }) => (
   <Row>

@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import paths from "vite-tsconfig-paths";
 import glsl from "vite-plugin-glsl";
 import { fileURLToPath } from "url";
+import { bundleGraph } from "./scripts/vite-bundle-graph.js";
 import { extensionsCatalog } from "./scripts/vite-extensions.js";
 
 // The extension API package (also in tsconfig paths; spelled out here so the dev server never misses it)
@@ -14,6 +15,14 @@ export default defineConfig({
   publicDir: '../public',
   build: {
     manifest: true,
+    rollupOptions: {
+      output: {
+        onlyExplicitManualChunks: true,
+        manualChunks(id) {
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'react';
+        },
+      },
+    },
     emptyOutDir: true,
     outDir: '../dist',
   },
@@ -27,7 +36,7 @@ export default defineConfig({
   // Workers (src/core/compute.worker.ts) resolve the same `~/core/…` paths
   worker: {
     format: 'es',
-    plugins: () => [paths({ root: '..' })],
+    plugins: () => [paths({ root: '..' }), bundleGraph('worker')],
   },
   plugins: [
     paths({ root: '..' }),
@@ -37,5 +46,6 @@ export default defineConfig({
     }),
     glsl({ minify: process.argv.includes('build') }),
     extensionsCatalog(),
+    bundleGraph(),
   ],
 });

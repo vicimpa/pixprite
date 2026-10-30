@@ -1,7 +1,5 @@
 import { projectBackup, recordBackup } from "~/core/Backups";
-import { decodeAseprite } from "~/core/formats/Aseprite";
-import { decodeGif } from "~/core/formats/GifDecode";
-import { parsePalette, serializePalette, type PaletteFormat } from "~/core/formats/Palette";
+import type { PaletteFormat } from "~/core/formats/Palette";
 import { runTask, withProgress, isCancelled } from "~/core/Work";
 import { bitmapToCanvas, type Bitmap, type Rect } from "~/core/Image";
 import { sliceKey } from "~/core/Sprite";
@@ -80,37 +78,6 @@ export function areaRect(opts: ExportOptions, f: number): Rect | null {
   return { x: 0, y: 0, w: sprite.width, h: sprite.height };
 }
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-/** WebM video recorded from a canvas in real time (the browser's own encoder) */
-async function encodeWebm(frames: OffscreenCanvas[], delays: number[], loops: number) {
-  const type = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(t => MediaRecorder.isTypeSupported(t));
-  if (!type) throw new Error('WebM recording is not supported');
-  const can = document.createElement('canvas');
-  // Video encoders want even sizes
-  can.width = frames[0].width + (frames[0].width & 1);
-  can.height = frames[0].height + (frames[0].height & 1);
-  const ctx = can.getContext('2d')!;
-  const stream = can.captureStream(0);
-  const track = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
-  const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 8_000_000 });
-  const chunks: Blob[] = [];
-  rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
-  const stopped = new Promise(r => { rec.onstop = r; });
-  rec.start();
-  for (let n = 0; n < loops; n++)
-    for (let i = 0; i < frames.length; i++) {
-      ctx.clearRect(0, 0, can.width, can.height);
-      ctx.drawImage(frames[i], 0, 0);
-      track.requestFrame();
-      await sleep(Math.max(10, delays[i]));
-    }
-  rec.stop();
-  await stopped;
-  stream.getTracks().forEach(t => t.stop());
-  return new Blob(chunks, { type: 'video/webm' });
-}
-
 type Output = { name: string; blob: Blob };
 
 const safeName = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_').trim() || '_';
@@ -169,7 +136,7 @@ export async function exportFile(opts: ExportOptions) {
           canvas.getContext('2d')!.putImageData(new ImageData(frame.data as Uint8ClampedArray<ArrayBuffer>, prepared.width, prepared.height), 0, 0);
           return canvas;
         });
-        outs.push({ name: prepared.name, blob: await encodeWebm(canvases, prepared.frames.map(frame => frame.delay), 1) });
+        outs.push({ name: prepared.name, blob: await (await import('./formats/Webm')).encodeWebm(canvases, prepared.frames.map(frame => frame.delay), 1) });
       }
     }
     if (!outs.length) return state.showTip(t('msg.theSliceIsHidden'));
@@ -279,12 +246,12 @@ async function readDocument(file: File): Promise<Sprite> {
   const e = ext(file.name), name = stripExt(file.name);
   const doc = new Sprite(32, 32);
   if (e === 'aseprite' || e === 'ase') {
-    const ase = await decodeAseprite(new Uint8Array(await file.arrayBuffer()));
+    const ase = await (await import('./formats/Aseprite')).decodeAseprite(new Uint8Array(await file.arrayBuffer()));
     doc.fromDocument(ase, name);
     // The file's palette travels with the document (it becomes the palette when the tab is shown)
     if (ase.palette.length) doc.editor = { palette: ase.palette.map(c => c.slice(0, 7)) };
   } else if (e === 'gif') {
-    const gif = decodeGif(new Uint8Array(await file.arrayBuffer()));
+    const gif = (await import('./formats/GifDecode')).decodeGif(new Uint8Array(await file.arrayBuffer()));
     doc.loadFrames(gif.width, gif.height, gif.frames, name);
   } else if (file.type.startsWith('image/')) {
     doc.loadImage(await createImageBitmap(file), name);
@@ -328,7 +295,7 @@ export async function loadFiles(files: File[]) {
   // Palettes replace the palette, whatever else comes along
   for (const file of files.filter(f => PALETTE_EXTS.includes(ext(f.name)))) {
     try {
-      state.palette = parsePalette(file.name, new Uint8Array(await file.arrayBuffer()));
+      state.palette = (await import('./formats/Palette')).parsePalette(file.name, new Uint8Array(await file.arrayBuffer()));
       state.showTip(`Palette loaded: ${state.palette.length} colors`);
     } catch { failed.push(file.name); }
   }
@@ -375,7 +342,7 @@ async function readImages(files: File[]) {
   const sorted = files.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
   for (const f of sorted) {
     if (ext(f.name) === 'gif') {
-      const gif = decodeGif(new Uint8Array(await f.arrayBuffer()));
+      const gif = (await import('./formats/GifDecode')).decodeGif(new Uint8Array(await f.arrayBuffer()));
       for (const fr of gif.frames) out.push({ w: gif.width, h: gif.height, data: fr.data, delay: fr.delay });
     } else out.push({ ...await imageBuffer(f), delay: 100 });
   }
@@ -416,8 +383,14 @@ export async function openFile() {
 }
 
 export async function savePalette(format: Exclude<PaletteFormat, 'png'>) {
-  const bytes = serializePalette(format, state.palette, state.sprite.name);
-  download(new Blob([bytes as BlobPart]), `${state.sprite.name}.${format}`);
+  const palette = state.palette.slice(), name = state.sprite.name;
+  try {
+    const { serializePalette } = await import('./formats/Palette');
+    const bytes = serializePalette(format, palette, name);
+    download(new Blob([bytes as BlobPart]), `${name}.${format}`);
+  } catch (error) {
+    state.showTip(`${t('msg.exportFailed')}: ${error instanceof Error ? error.message : error}`, 4000);
+  }
 }
 
 export async function copyToSystemClipboard(bmp: Bitmap | null) {

@@ -1,5 +1,5 @@
 /** Worker task transport, independent of UI state and translations. */
-import { compute, type OpName, type Ops } from './compute';
+import type { OpName, Ops } from './compute';
 
 export class Cancelled extends Error {
   constructor() { super('Cancelled'); this.name = 'Cancelled'; }
@@ -45,8 +45,12 @@ function runInWorker<K extends OpName>(op: K, args: Ops[K]['args'], opts: TaskOp
 
 /** Same work on the main thread, pausing between items so the page stays responsive and can cancel */
 async function runHere<K extends OpName>(op: K, args: Ops[K]['args'], opts: TaskOptions) {
+  // Capture before the import yields: callers may keep editing their buffers meanwhile.
+  const captured = structuredClone(args);
+  const { compute } = await import('./compute');
+  if (opts.signal?.aborted) throw new Cancelled();
   let last = performance.now();
-  const result = await compute(op, structuredClone(args), p => opts.onProgress?.(p), async () => {
+  const result = await compute(op, captured, p => opts.onProgress?.(p), async () => {
     if (opts.signal?.aborted) throw new Cancelled();
     if (performance.now() - last > 30) {
       await new Promise(r => setTimeout(r, 0));

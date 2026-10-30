@@ -4,15 +4,12 @@
  */
 
 import { convertPixels, PaletteMap, type ColorMode, type Dither } from "~/core/ColorMode";
-import { encodeGif } from "~/core/Gif";
 import { paletteFromPixels, remapToPalette } from "~/core/Quantize";
 
 import { hydrateDocument, splitDocument, type Resource, type StoredDocument } from './DocumentResources';
 import { asepriteDocument, decodeCapture, inspectDocument, prepareDocument } from './BackgroundDocument';
 import type { DocumentCapture, StorageCapture } from './SpriteSerialization';
-import { encodeAseprite } from './formats/Aseprite';
-import { encodeZip } from './formats/Zip';
-import { prepareExport, type ExportRequest, type PreparedExport } from './ExportPreparation';
+import type { ExportRequest, PreparedExport } from './ExportPreparation';
 import { bitmapToCanvas } from './Image';
 import { tilesetImage, mapGrid, mapJson, mapCsv, type Tileset, type TileRefs } from './Tilemap';
 
@@ -73,7 +70,7 @@ export async function compute<K extends OpName>(
       const map = m.format === 'csv' ? new Blob([mapCsv(grid)], { type: 'text/csv' }) : new Blob([mapJson(a.ts, grid, m.layer, m.image)], { type: 'application/json' });
       return { png, map } as Ops[K]['result'];
     }
-    case 'export': return await prepareExport(args as ExportRequest) as Ops[K]['result'];
+    case 'export': return await (await import('./ExportPreparation')).prepareExport(args as ExportRequest) as Ops[K]['result'];
     case 'splitStorageDocument': return await splitDocument((args as Ops['splitStorageDocument']['args']).data) as Ops[K]['result'];
     case 'hydrateStorageDocument': {
       const a = args as Ops['hydrateStorageDocument']['args'];
@@ -87,7 +84,7 @@ export async function compute<K extends OpName>(
     case 'inspectDocument': return inspectDocument((args as Ops['inspectDocument']['args']).data) as Ops[K]['result'];
     case 'jsonBytes': return new TextEncoder().encode(JSON.stringify((args as Ops['jsonBytes']['args']).data)) as Ops[K]['result'];
     case 'stringify': return JSON.stringify((args as Ops['stringify']['args']).data) as Ops[K]['result'];
-    case 'zip': return encodeZip((args as Ops['zip']['args']).entries) as Ops[K]['result'];
+    case 'zip': return (await import('./formats/Zip')).encodeZip((args as Ops['zip']['args']).entries) as Ops[K]['result'];
     case 'projectFile': {
       const a = args as Ops['projectFile']['args'];
       if (a.format === 'pixprite') {
@@ -96,7 +93,7 @@ export async function compute<K extends OpName>(
       }
       const doc = asepriteDocument(a.raw);
       if (!doc.palette.length) doc.palette = a.palette;
-      return new Blob([await encodeAseprite(doc) as BlobPart], { type: 'application/octet-stream' }) as Ops[K]['result'];
+      return new Blob([await (await import('./formats/Aseprite')).encodeAseprite(doc) as BlobPart], { type: 'application/octet-stream' }) as Ops[K]['result'];
     }
 
     case 'convert': {
@@ -123,7 +120,7 @@ export async function compute<K extends OpName>(
     }
     case 'gif': {
       const a = args as Ops['gif']['args'];
-      return encodeGif(a.width, a.height, a.frames, a.loop) as Ops[K]['result'];
+      return (await import('./Gif')).encodeGif(a.width, a.height, a.frames, a.loop) as Ops[K]['result'];
     }
   }
   throw new Error(`Unknown operation: ${String(op)}`);

@@ -1113,5 +1113,7 @@
   "recovery.copy": "recovered",
   "recovery.openedCopy": "Previous version opened as an unsaved copy. The original project is unchanged.",
   "recovery.failed": "Recovery failed",
-  "recovery.someFailed": "Some documents could not be restored. Other tabs were recovered; damaged records were kept."
+  "recovery.someFailed": "Some documents could not be restored. Other tabs were recovered; damaged records were kept.",
+  "common.loading": "Loading…",
+  "common.retry": "Retry"
 }

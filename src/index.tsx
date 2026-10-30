@@ -13,6 +13,9 @@ import { installI18n, t } from "~/core/i18n";
 import { installPwa, isDesktop } from "~/core/Pwa";
 import { MobileStub } from "~/modules/MobileStub";
 import { startExtensions } from "~/modules/Extensions";
+import * as tools from "~/core/Tools";
+import * as commands from "~/core/Commands";
+import { Color } from "~/core/Color";
 import { createRoot } from "react-dom/client";
 
 // Language packs from extensions must be registered before the saved language is checked
@@ -46,11 +49,8 @@ installPlayback();
 // Files opened with the installed app wait for the restored session, then open as tabs
 installPwa(Promise.all([restored, textsReady]));
 
-// Debug handle for poking at the editor from the devtools console
-if (import.meta.env.DEV) {
-  Promise.all([import("~/core/Tools"), import("~/core/Commands"), import("~/core/Color")])
-    .then(([tools, commands, color]) => Object.assign(window, { pixprite: { state, tools, commands, Color: color.Color } }));
-}
+// Devtools convenience uses the already loaded command/kernel modules.
+if (import.meta.env.DEV) Object.assign(window, { pixprite: { state, tools, commands, Color } });
 
 // The first paint waits for the interface texts and the theme, so nothing flashes
 // Phones and tablets get a notice first; going on anyway is remembered on that device
