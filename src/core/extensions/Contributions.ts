@@ -386,7 +386,7 @@ function pointerInfo(p: ToolPointer, name: string): PointerInfo {
 function toolSession(host: ExtensionHost, id: string, name: string, rawLabel: string, p: ToolPointer): Session | null {
   if (!host.callbacks.has(`tool:${id}`) || host.stroke) return null;
   const doc = state.sprite;
-  const stroke = host.stroke = { doc, depth: doc.undoDepth, label: host.label(rawLabel), started: false };
+  const stroke = host.stroke = { doc, guard: doc.protectHistory(), label: host.label(rawLabel), started: false };
   let chain: Promise<unknown> = Promise.resolve();
   let nextMove: PointerInfo | null = null;
   let pumping = false;
@@ -396,6 +396,7 @@ function toolSession(host: ExtensionHost, id: string, name: string, rawLabel: st
     if (host.stroke === stroke) host.stroke = null;
     if (toolOverlay.peek()?.ext === host.id) toolOverlay.value = null;
   };
+  stroke.guard.onRelease = end;
   send('down', pointerInfo(p, name));
   return {
     move(q) {
@@ -410,12 +411,12 @@ function toolSession(host: ExtensionHost, id: string, name: string, rawLabel: st
     up(q) {
       const info = pointerInfo(q, name);
       chain = chain.then(() => { nextMove = null; });
-      void send('up', info).then(() => { end(); if (stroke.started) state.save(); });
+      void send('up', info).then(() => { stroke.guard.commit(); if (stroke.started) state.save(); });
       return true;
     },
     cancel() {
       nextMove = null;
-      void send('cancel').then(() => { end(); doc.rollback(stroke.depth); });
+      void send('cancel').then(() => stroke.guard.cancel());
     },
   };
 }

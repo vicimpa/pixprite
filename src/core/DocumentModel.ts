@@ -106,12 +106,23 @@ export function retainedBufferIdentity(buffer: ArrayBufferLike): object {
 }
 
 /** Read-only diagnostics: count existing storage without materializing/reconciling a bitmap. */
-export function visitCelBuffers(cel: CelImage, visit: (identity: object, bytes: number) => void) {
+export function visitCelBuffers(cel: CelImage, visit: (identity: object, bytes: number) => void, metadata?: (identity: object, bytes: number) => void) {
   const state = instances.get(cel);
   if (!state) return;
   const source = sourcePixels.get(state.image);
   if (source) visit(retainedBufferIdentity(source.buffer), source.buffer.byteLength);
   if (state.bitmap) visit(retainedBufferIdentity(state.bitmap.data.buffer), state.bitmap.data.buffer.byteLength);
+  // Private fields retain these payloads even when the compatibility bitmap was never read.
+  // Opaque identities prevent callers from changing the private transform or source pixels.
+  if (metadata) {
+    for (const value of [state.image, state.transform, state.bitmap]) if (value) {
+      let identity = bufferIdentities.get(value);
+      if (!identity) bufferIdentities.set(value, identity = Object.freeze({}));
+      const bytes = value === state.image ? 29 + new TextEncoder().encode(state.image.id).length
+        : value === state.transform ? 43 : 22;
+      metadata(identity, bytes);
+    }
+  }
 }
 
 export function hasCelTransform(cel: CelImage) {

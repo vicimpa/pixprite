@@ -65,15 +65,14 @@ const Fill = styled.div`
 
 export const DocTabs: FC = () => {
   useSignals();
-  const [drag, setDrag] = useState<{ doc: Sprite; over: number; } | null>(null);
-  const docs = state.docs;
+  const [drag, setDrag] = useState<{ doc: WeakRef<Sprite>; over: number; } | null>(null);
 
   return (
     <Bar
       onWheel={e => {
         // The wheel steps through tabs (no wrap)
-        const i = (state.home ? -1 : docs.indexOf(state.sprite)) + (e.deltaY > 0 || e.deltaX > 0 ? 1 : -1);
-        if (docs[i]) state.switchTo(docs[i]);
+        const i = (state.home ? -1 : state.docs.indexOf(state.sprite)) + (e.deltaY > 0 || e.deltaX > 0 ? 1 : -1);
+        if (state.docs[i]) state.switchTo(state.docs[i]);
         else if (i < 0) state.showHome();
       }}
       onDoubleClick={e => { if (e.target === e.currentTarget) dialogs.newSprite(); }}
@@ -82,34 +81,41 @@ export const DocTabs: FC = () => {
         onPointerDown={e => { if (e.button === 0) state.showHome(); }}>
         <Icon name="home" scale="glyph" />
       </Tab>
-      {docs.map((doc, i) => (
-        <Tab
-          key={i}
-          data-active={!state.home && doc === state.sprite}
-          data-drop={!!drag && drag.over === i && drag.doc !== doc}
-          title={`${doc.name} · ${doc.width}×${doc.height}`}
-          draggable
-          onDragStart={() => setDrag({ doc, over: i })}
-          onDragOver={e => { e.preventDefault(); if (drag) setDrag({ ...drag, over: i }); }}
-          onDragEnd={() => setDrag(null)}
-          onDrop={() => { if (drag) state.moveDocument(drag.doc, i); setDrag(null); }}
-          onPointerDown={e => {
-            if (e.button === 1) { e.preventDefault(); state.closeDocument(doc); }
-            else if (e.button === 0) state.switchTo(doc);
-          }}
-          onContextMenu={e => {
-            e.preventDefault();
-            openContextMenu([
-              { label: t('common.close'), run: () => state.closeDocument(doc) },
-              { label: t('tabs.closeOthers'), run: () => { for (const d of state.docs.slice()) if (d !== doc) state.closeDocument(d); } },
-              { label: t('common.duplicate'), run: () => state.duplicateDocument(doc) },
-            ], e.clientX, e.clientY);
-          }}
-        >
-          <span>{doc.name}</span>
-          <Close data-modified={doc.modified} title={t('tabs.closeMiddleClick')} onPointerDown={e => e.stopPropagation()} onClick={() => state.closeDocument(doc)}><i>×</i></Close>
-        </Tab>
-      ))}
+      {state.docs.map((doc, i) => {
+        // React keeps the previous render in its alternate tree. Event props must not
+        // keep an entire closed document alive through that tree or a context menu.
+        const ref = new WeakRef(doc);
+        const resolve = () => { const current = ref.deref(); return current && state.docs.includes(current) ? current : null; };
+        return (
+          <Tab
+            key={i}
+            data-active={!state.home && doc === state.sprite}
+            data-drop={!!drag && drag.over === i && drag.doc.deref() !== doc}
+            title={`${doc.name} · ${doc.width}×${doc.height}`}
+            draggable
+            onDragStart={() => setDrag({ doc: ref, over: i })}
+            onDragOver={e => { e.preventDefault(); if (drag) setDrag({ ...drag, over: i }); }}
+            onDragEnd={() => setDrag(null)}
+            onDrop={() => { const source = drag?.doc.deref(); if (source && state.docs.includes(source)) state.moveDocument(source, i); setDrag(null); }}
+            onPointerDown={e => {
+              const current = resolve(); if (!current) return;
+              if (e.button === 1) { e.preventDefault(); state.closeDocument(current); }
+              else if (e.button === 0) state.switchTo(current);
+            }}
+            onContextMenu={e => {
+              e.preventDefault();
+              openContextMenu([
+                { label: t('common.close'), run: () => { const current = resolve(); if (current) state.closeDocument(current); } },
+                { label: t('tabs.closeOthers'), run: () => { const current = resolve(); if (current) for (const d of state.docs.slice()) if (d !== current) state.closeDocument(d); } },
+                { label: t('common.duplicate'), run: () => { const current = resolve(); if (current) state.duplicateDocument(current); } },
+              ], e.clientX, e.clientY);
+            }}
+          >
+            <span>{doc.name}</span>
+            <Close data-modified={doc.modified} title={t('tabs.closeMiddleClick')} onPointerDown={e => e.stopPropagation()} onClick={() => { const current = resolve(); if (current) state.closeDocument(current); }}><i>×</i></Close>
+          </Tab>
+        );
+      })}
       <Fill onDoubleClick={() => dialogs.newSprite()} title={t('tabs.doubleClickForA')} />
     </Bar>
   );

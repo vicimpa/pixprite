@@ -92,8 +92,9 @@ export function liftSelection(this: SpriteContext, copy = false): Floating | nul
   if (this.floating) return this.floating;
   if (!this.editable) return null;
   const { bmp, rect, shape } = this.selectedBitmap();
+  this.floatingGuard = this.protectHistory();
   this.checkpoint(copy ? 'Duplicate selection' : 'Transform');
-  this.floatingStart = this.undoDepth;
+  this.floatingStart = this.historyPosition;
   if (!copy) this.eraseSelection();
   this.setFloating(this.makeFloating(bmp, shape, {
     x: rect.x, y: rect.y, w: rect.w, h: rect.h, angle: 0,
@@ -157,10 +158,12 @@ export function mergeFloating(this: SpriteContext, f: Floating): Cel {
 export function dropFloating(this: SpriteContext): void {
   const f = this.floating;
   if (!f) return;
+  const guard = this.floatingGuard; this.floatingGuard = null;
   this.floating = null;
   this.floatingStart = -1;
   if (this.layers[f.layer]) this.setCel(this.mergeFloating(f), f.layer, f.frame);
   this.touch();
+  guard?.commit();
 }
 
 /** Throws away the transformation and restores the pixels from before the lift */
@@ -168,7 +171,8 @@ export function cancelFloating(this: SpriteContext): void {
   if (!this.floating || this.floatingStart < 0) return;
   const target = this.floatingStart - 1;
   this.floatingStart = -1;
-  this.goToStep(target);
+  const guard = this.floatingGuard; this.floatingGuard = null;
+  if (guard) guard.cancel(); else this.rollback(target);
   this.redoStack = [];
   this.syncHistory();
 }
@@ -252,11 +256,13 @@ export function applyFilter(this: SpriteContext, label: string, fn: (data: Uint3
 
 export function clearSelection(this: SpriteContext): void {
   if (this.floating) {
+    const guard = this.floatingGuard; this.floatingGuard = null;
     this.checkpoint('Clear');
     this.floating = null;
     this.floatingStart = -1;
     this.mask = null;
     this.touch();
+    guard?.commit();
     return;
   }
   if (!this.editable) return;
@@ -287,8 +293,9 @@ export function getSelectionOrigin(this: SpriteContext): { x: number; y: number;
 export function paste(this: SpriteContext, bmp: Bitmap, at?: { x: number; y: number; }, label = 'Paste'): void {
   if (!this.editable) return;
   this.dropFloating();
+  this.floatingGuard = this.protectHistory();
   this.checkpoint(label);
-  this.floatingStart = this.undoDepth;
+  this.floatingStart = this.historyPosition;
   // At least one pixel stays over the canvas; the rest may hang outside (the cel grows to keep it)
   const x = Math.max(1 - bmp.w, Math.min(this.width - 1, at?.x ?? Math.round((this.width - bmp.w) / 2)));
   const y = Math.max(1 - bmp.h, Math.min(this.height - 1, at?.y ?? Math.round((this.height - bmp.h) / 2)));

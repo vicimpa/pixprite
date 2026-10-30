@@ -755,7 +755,7 @@ const HistoryItem = styled.div`
 const History: FC<{ close: () => void; }> = ({ close }) => {
   useSignals();
   const { sprite } = state;
-  const steps = ['Opened', ...sprite.history];
+  const steps = [sprite.historyBoundary ? t('dialog.history.boundary') : 'Opened', ...sprite.history];
   const future = sprite.future;
   return (
     <Dialog title={t('dialog.history.title')} onClose={close} cancelLabel={t('common.close')}>
@@ -765,10 +765,15 @@ const History: FC<{ close: () => void; }> = ({ close }) => {
           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sprite.goToStep(i); state.save(); } }}
           onClick={() => { sprite.goToStep(i); state.save(); }}>{label}</HistoryItem>} />
       <Muted>{t('dialog.history.nSteps', { n: sprite.history.length + future.length })} · {t('dialog.history.memory')}: {(sprite.historyBytes() / (1 << 20)).toFixed(1)} MB</Muted>
+      <Muted>{t('dialog.history.accounting')}</Muted>
+      {sprite.historyLimitNotice && <Muted role="status">{t(sprite.historyLimitNotice === 'operation' ? 'dialog.history.operationExceeded' : 'dialog.history.memoryExceeded')}</Muted>}
       <NumberField label={t('dialog.history.keepSteps')} value={String(state.prefs.historySteps ?? 256)} min={1} max={10000}
         onChange={v => state.setPrefs({ historySteps: Math.max(1, Math.round(+v) || 1) })} />
       <NumberField label={t('dialog.history.memoryLimit')} suffix={t('dialog.history.mb0NoLimit')} value={String(state.prefs.historyMB ?? 0)} min={0} max={4096}
         onChange={v => state.setPrefs({ historyMB: Math.max(0, +v || 0) })} />
+      <NumberField label={t('dialog.history.operationLimit')} suffix={t('dialog.history.mb0NoLimit')} value={String(state.prefs.historyOperationMB ?? 0)} min={0} max={4096}
+        onChange={v => state.setPrefs({ historyOperationMB: Math.max(0, +v || 0) })} />
+      <Muted>{t('dialog.history.policy')}</Muted>
     </Dialog>
   );
 };

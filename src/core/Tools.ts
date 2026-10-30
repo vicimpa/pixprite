@@ -1297,12 +1297,20 @@ export function outlinePreview(tool: ToolName) {
 export function beginSession(tool: ToolName, p: ToolPointer): Session | null {
   const { sprite } = state;
   state.hint = '';
-  const depth = sprite.undoDepth;
+  const guard = sprite.protectHistory();
   const custom = TOOLS.find(t => t.name === tool)?.session;
-  const session = custom ? custom(p) : start(tool, p);
-  // Escape / the other mouse button roll a stroke back completely
-  if (session && !session.cancel)
-    session.cancel = () => sprite.rollback(depth);
+  let session: Session | null;
+  try { session = custom ? custom(p) : start(tool, p); }
+  catch (error) { guard.cancel(); throw error; }
+  if (!session) { guard.commit(); return null; }
+  const cancel = session.cancel, up = session.up, finish = session.finish;
+  session.cancel = () => {
+    if (cancel) { try { cancel(); } finally { guard.commit(); } }
+    else guard.cancel();
+  };
+  session.up = p => { const done = up(p); if (done) guard.commit(); return done; };
+  if (finish) session.finish = () => { try { finish(); } finally { guard.commit(); } };
+  else session.finish = () => guard.commit();
   return session;
 }
 

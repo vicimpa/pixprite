@@ -1,3 +1,4 @@
+import { clearTintCache, tinted } from "~/core/OnionTint";
 import { t } from "~/core/i18n";
 import { Color } from "~/core/Color";
 import { held, onModifiers } from "~/core/Hotkeys";
@@ -8,7 +9,7 @@ import {
   outlinePreview, previewDab, referenceCorners, trackPen, SELECT_TOOLS, selectGridCell, type Handle, type ToolPointer,
 } from "~/core/Tools";
 import { sliceKey } from "~/core/Sprite";
-import { referenceImage, setGuides } from "~/core/Reference";
+import { clearReferenceCache, referenceImage, setGuides } from "~/core/Reference";
 import { placementCorners } from "~/core/Transform";
 import { dialogs } from "~/modules/Dialogs";
 import { Canvas } from "~/ui/Canvas";
@@ -195,31 +196,6 @@ function onionFrames() {
   return out.filter(o => o.frame >= 0 && o.frame !== sprite.frame);
 }
 
-/** Frame tinted red (past) or blue (future) by luminance, cached per sprite version */
-const tintCache = new Map<string, OffscreenCanvas>();
-function tinted(frame: number, past: boolean) {
-  const { sprite } = state;
-  const key = `${sprite.version}:${frame}:${past}`;
-  const hit = tintCache.get(key);
-  if (hit) return hit;
-  if (tintCache.size > 32) tintCache.clear();
-  const src = sprite.render(frame);
-  const out = new OffscreenCanvas(src.width, src.height);
-  const ctx = out.getContext('2d')!;
-  ctx.drawImage(src, 0, 0);
-  const img = ctx.getImageData(0, 0, out.width, out.height);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const l = (d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11) / 2;
-    d[i] = past ? 128 + l : l;
-    d[i + 1] = l;
-    d[i + 2] = past ? l : 128 + l;
-  }
-  ctx.putImageData(img, 0, 0);
-  tintCache.set(key, out);
-  return out;
-}
-
 export const View: FC = () => {
   useSignals();
   const pan = useRef<Pan | null>(null);
@@ -257,7 +233,22 @@ export const View: FC = () => {
   }), []);
 
   // Cancel any half-done shape when the tool changes
-  useEffect(() => () => { active.session?.cancel?.(); active.session = null; }, [state.tool]);
+  useEffect(() => () => { active.session?.cancel?.(); active.session = null; }, [state.tool, state.sprite]);
+  useEffect(() => {
+    const sprite = state.sprite;
+    preview.current = { key: '', data: null };
+    return () => {
+      clearTintCache(sprite);
+      clearReferenceCache(sprite);
+      fittedSprite.current = null;
+      preview.current = { key: '', data: null };
+      if (pendingTouch.current) clearTimeout(pendingTouch.current.timer);
+      pendingTouch.current = null;
+      touches.current.clear();
+      pressed.current = null;
+      pan.current = null;
+    };
+  }, [state.sprite]);
 
   const toPointer = (sx: number, sy: number, mods: Mods): ToolPointer => {
     const fx = (sx - state.offsetX) / state.zoom, fy = (sy - state.offsetY) / state.zoom;
@@ -584,6 +575,7 @@ export const View: FC = () => {
 
   const onContextMenu = (e: React.MouseEvent) => {
     const { sprite } = state;
+
     if (state.activeTool === 'slice') {
       e.preventDefault();
       const { p } = pointer(e);
@@ -620,6 +612,8 @@ export const View: FC = () => {
     state.viewW = width;
     state.viewH = height;
     const { sprite } = state;
+
+    if (fittedSprite.current !== sprite) preview.current = { key: '', data: null };
 
     // The same document changing size (new sprite in place, canvas resize) re-enables fitting;
     // switching documents keeps each one's own camera
@@ -738,7 +732,7 @@ export const View: FC = () => {
         const alpha = Math.max(0, prefs.onionOpacity - prefs.onionStep * (o.k - 1));
         if (!alpha) continue;
         ctx.globalAlpha = alpha;
-        ctx.drawImage(prefs.onionMode === 'tint' ? tinted(o.frame, o.past) : sprite.render(o.frame), ox, oy, sw, sh);
+        ctx.drawImage(prefs.onionMode === 'tint' ? tinted(sprite, o.frame, o.past) : sprite.render(o.frame), ox, oy, sw, sh);
       }
       ctx.globalAlpha = 1;
     };

@@ -84,9 +84,9 @@ export class ExtensionHost {
   exports: string[] = [];
   /** Callbacks the worker registered, as `<kind>:<id>` */
   readonly callbacks = new Set<string>();
-  readonly transactions = new Map<number, { doc: Sprite; depth: number; }>();
+  readonly transactions = new Map<number, { doc: Sprite; guard: ReturnType<Sprite['protectHistory']>; }>();
   /** A tool stroke of this extension in progress: its writes join one undo step */
-  stroke: { doc: Sprite; depth: number; label: string; started: boolean; } | null = null;
+  stroke: { doc: Sprite; guard: ReturnType<Sprite['protectHistory']>; label: string; started: boolean; } | null = null;
 
   private worker: Endpoint | null = null;
   private frame: HTMLIFrameElement | null = null;
@@ -244,9 +244,11 @@ export class ExtensionHost {
     });
   }
 
-  beginTransaction(doc: Sprite, depth: number) {
+  beginTransaction(doc: Sprite) {
     const id = this.nextTx++;
-    this.transactions.set(id, { doc, depth });
+    const guard = doc.protectHistory();
+    guard.onRelease = () => { this.transactions.delete(id); };
+    this.transactions.set(id, { doc, guard });
     return id;
   }
 
@@ -315,8 +317,9 @@ export class ExtensionHost {
   /** Stops the worker, closes open transactions and undoes every registration */
   dispose(status: HostStatus = 'stopped') {
     if (this.status.peek() === 'stopped') return;
-    for (const t of this.transactions.values()) t.doc.rollback(t.depth);
+    for (const t of this.transactions.values()) t.guard.cancel();
     this.transactions.clear();
+    this.stroke?.guard.cancel();
     this.stroke = null;
     for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new HostError('cancelled', `${this.id} stopped`)); }
     this.pending.clear();

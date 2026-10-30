@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import type { Cel, CelImage } from '~/core/Sprite';
+import { retainedHistoryMemory } from './SpriteHistory';
+import type { SpriteContext } from './SpriteContext';
+import { Mask } from './Mask';
+import { visitCelBuffers } from './DocumentModel';
 
 mock.module('@vicimpa/decorators', () => ({
   prop: () => {},
   reactive: () => <T,>(value: T) => value,
 }));
 
-const { Sprite, historyLimits } = await import('~/core/Sprite');
+const { Sprite, historyLimits, createImage, createCelInstance } = await import('~/core/Sprite');
 
 const A = 0xff000001;
 const B = 0xff000002;
@@ -31,6 +35,7 @@ const edit = (sprite: ReturnType<typeof spriteWith>, value: number, label = 'Edi
 afterEach(() => {
   historyLimits.steps = 256;
   historyLimits.bytes = 0;
+  historyLimits.operationBytes = 0;
 });
 
 describe('Undo and redo', () => {
@@ -221,28 +226,253 @@ describe('Undo and redo', () => {
     expect(sprite.layers[0].cels[0]!.data[0]).toBe(B);
   });
 
-  test('historyBytes counts each non-live pixel buffer only once', () => {
+  test('historyBytes counts metadata and each non-live backing allocation only once', () => {
     const shared = cel(A);
     const sprite = spriteWith([shared, shared]);
     sprite.checkpoint('Edit');
-    expect(sprite.historyBytes()).toBe(0);
+    const memory = () => retainedHistoryMemory.call(sprite as unknown as SpriteContext);
+    expect(memory().uniqueBufferBytes).toBe(0);
+    expect(sprite.historyBytes()).toBe(memory().metadataPayloadBytes);
+    expect(sprite.historyBytes()).toBeGreaterThan(0);
 
     sprite.setCel(cel(B), 0, 0);
-    expect(sprite.historyBytes()).toBe(shared.data.byteLength);
+    expect(memory().uniqueBufferBytes).toBe(shared.data.byteLength);
+    expect(sprite.historyBytes()).toBe(memory().metadataPayloadBytes + shared.data.byteLength);
     sprite.undo();
-    expect(sprite.historyBytes()).toBe(shared.data.byteLength);
+    expect(memory().uniqueBufferBytes).toBe(shared.data.byteLength);
+    expect(sprite.historyBytes()).toBe(memory().metadataPayloadBytes + shared.data.byteLength);
   });
 
   test('byte limit retains only the newest affordable snapshots', () => {
-    historyLimits.bytes = 4;
+    const probe = spriteWith([cel(B)]);
+    edit(probe, C, 'Second');
+    const budget = probe.historyBytes();
     const sprite = spriteWith([cel(A)]);
     edit(sprite, B, 'First');
     edit(sprite, C, 'Second');
+    historyLimits.bytes = budget;
     sprite.trimHistory();
 
+    expect(sprite.historyBytes()).toBeLessThanOrEqual(budget);
     expect(sprite.history).toEqual(['Second']);
     sprite.undo();
     expect(sprite.layers[0].cels[0]!.data[0]).toBe(B);
     expect(sprite.canUndo).toBe(false);
   });
+});
+
+
+describe('History memory boundaries', () => {
+  const memory = (sprite: InstanceType<typeof Sprite>) => retainedHistoryMemory.call(sprite as unknown as SpriteContext);
+
+  test('counts full backing stores across subarrays, masks, tile refs, tilesets and floating pixels', () => {
+    const sprite = spriteWith([cel(A)]);
+    const allocation = new ArrayBuffer(128);
+    sprite.layers[0].cels[0]!.data = new Uint32Array(allocation, 0, 1);
+    sprite.layers[0].cels[0]!.tiles = { cols: 1, rows: 1, refs: new Uint32Array(allocation, 4, 1) };
+    sprite.tilesets = [{ name: 'shared', tw: 1, th: 1, baseIndex: 1, tiles: [new Uint32Array(allocation, 8, 1)] }];
+    sprite.mask = new Mask(1, 1, new Uint8Array(allocation, 12, 1));
+    const bmp = { w: 1, h: 1, data: new Uint32Array(allocation, 16, 1) };
+    const shape = new Uint8Array(allocation, 20, 1);
+    sprite.floating = { src: bmp, shape, layer: 0, frame: 0,
+      place: { x: 0, y: 0, w: 1, h: 1, angle: 0, px: 0, py: 0 },
+      result: { x: 0, y: 0, bmp, mask: shape } };
+    sprite.checkpoint('All buffers');
+    sprite.layers[0].cels = [cel(B)]; sprite.tilesets = []; sprite.mask = null; sprite.floating = null;
+    sprite.touch();
+    expect(memory(sprite).uniqueBufferBytes).toBe(128);
+    sprite.checkpoint('Share prior allocation');
+    sprite.touch();
+    expect(memory(sprite).uniqueBufferBytes).toBe(128);
+    sprite.tilesets = [{ name: 'live', tw: 1, th: 1, baseIndex: 1, tiles: [new Uint32Array(allocation, 24, 1)] }];
+    expect(memory(sprite).uniqueBufferBytes).toBe(0);
+  });
+
+  test('shared immutable source survives metadata/FX edits without materializing bitmap copies', () => {
+    historyLimits.operationBytes = 3000;
+    const source = createImage(128, 128, new Uint32Array(128 * 128));
+    const a = createCelInstance(source), b = createCelInstance(source, { flipX: true });
+    const sprite = spriteWith([a, b, a]);
+    for (let i = 0; i < 3; i++) {
+      sprite.checkpoint('FX');
+      sprite.layers[0].effects = [{ id: 'opacity', type: 'opacity', enabled: true, amount: (i + 1) / 4 }];
+      sprite.ext = { fixture: { text: 'данные', index: i } };
+      sprite.touch();
+    }
+    expect(sprite.history).toHaveLength(3);
+    expect(memory(sprite).uniqueBufferBytes).toBe(0);
+    let bytes = 0;
+    visitCelBuffers(a, (_, size) => { bytes += size; });
+    expect(bytes).toBe(128 * 128 * 4);
+    sprite.undo();
+    expect(sprite.layers[0].effects![0].amount).toBe(.5);
+    expect(sprite.layers[0].cels[0]).toBe(sprite.layers[0].cels[2]);
+    sprite.redo();
+    expect(sprite.layers[0].effects![0].amount).toBe(.75);
+  });
+
+  test('metadata payload, including UTF-8 extension strings, participates in total and operation budgets', () => {
+    const sprite = spriteWith([cel(A)]);
+    sprite.ext = { fixture: { large: 'я'.repeat(1000) } };
+    sprite.checkpoint('Remove metadata'); sprite.ext = {}; sprite.touch();
+    expect(memory(sprite).metadataPayloadBytes).toBeGreaterThan(2000);
+    historyLimits.operationBytes = 1000;
+    sprite.trimHistory();
+    expect(sprite.history).toEqual([]);
+    expect(sprite.ext).toEqual({});
+    expect(sprite.historyLimitNotice).toBe('operation');
+  });
+
+  test('an oversized new allocation is a barrier; later undo cannot skip it and destroy new work', () => {
+    const sprite = spriteWith([cel(A)]);
+    edit(sprite, B, 'Earlier');
+    historyLimits.operationBytes = 2000;
+    const large = { x: 0, y: 0, w: 1024, h: 1, data: new Uint32Array(1024).fill(C) };
+    sprite.checkpoint('Large edit'); sprite.setCel(large);
+    expect(sprite.history).toEqual([]);
+    expect(sprite.future).toEqual([]);
+    expect(sprite.historyBoundary).toBe(true);
+    expect(sprite.historyLimitNotice).toBe('operation');
+    sprite.undo();
+    expect(sprite.layers[0].cels[0]).toBe(large);
+    sprite.checkpoint('Metadata'); sprite.tags = [{ name: 'Later', from: 0, to: 0, color: '#ffffff', direction: 'forward', repeat: 0 }]; sprite.touch();
+    sprite.undo();
+    expect(sprite.tags).toEqual([]);
+    expect(sprite.layers[0].cels[0]).toBe(large);
+    sprite.undo();
+    expect(sprite.layers[0].cels[0]).toBe(large);
+    sprite.redo();
+    expect(sprite.tags[0].name).toBe('Later');
+  });
+
+  test('total budget has no minimum-one exception and preserves current pixels', () => {
+    const sprite = spriteWith([cel(A)]);
+    edit(sprite, B);
+    historyLimits.bytes = 1;
+    sprite.trimHistory();
+    expect(sprite.historyBytes()).toBe(0);
+    expect(sprite.canUndo).toBe(false);
+    expect(sprite.historyLimitNotice).toBe('memory');
+    sprite.undo(); expect(sprite.layers[0].cels[0]!.data[0]).toBe(B);
+  });
+
+  test('total and step limits include redo and remove the farthest redo before breaking reachability', () => {
+    const sprite = spriteWith([cel(A)]);
+    edit(sprite, B, 'First'); edit(sprite, C, 'Second'); edit(sprite, D, 'Third');
+    sprite.undo(); sprite.undo(); sprite.undo();
+    historyLimits.steps = 2;
+    sprite.trimHistory();
+    expect(sprite.future).toEqual(['First', 'Second']);
+    const probe = spriteWith([cel(A)]); edit(probe, B, 'First'); probe.undo();
+    historyLimits.bytes = probe.historyBytes();
+    sprite.trimHistory();
+    expect(sprite.future).toEqual(['First']);
+    expect(sprite.historyBytes()).toBeLessThanOrEqual(historyLimits.bytes);
+    sprite.redo(); expect(sprite.layers[0].cels[0]!.data[0]).toBe(B);
+    sprite.redo(); expect(sprite.layers[0].cels[0]!.data[0]).toBe(B);
+  });
+
+  test('operation budget applies to existing redo without jumping across an oversized boundary', () => {
+    const sprite = spriteWith([cel(A)]);
+    edit(sprite, B, 'First');
+    sprite.checkpoint('Large'); sprite.setCel({ x: 0, y: 0, w: 1024, h: 1, data: new Uint32Array(1024).fill(C) });
+    sprite.checkpoint('Small metadata'); sprite.ext = { fixture: { value: 'later' } }; sprite.touch();
+    sprite.undo(); sprite.undo(); sprite.undo();
+    historyLimits.operationBytes = 2000;
+    sprite.trimHistory();
+    expect(sprite.future).toEqual(['First']);
+    sprite.redo(); expect(sprite.layers[0].cels[0]!.data[0]).toBe(B);
+    sprite.redo(); expect(sprite.layers[0].cels[0]!.data[0]).toBe(B);
+  });
+
+  test('rollback markers stay valid when a stroke evicts older steps', () => {
+    historyLimits.steps = 2;
+    const sprite = spriteWith([cel(A)]);
+    edit(sprite, B); edit(sprite, C);
+    const beforeStroke = sprite.historyPosition;
+    edit(sprite, D);
+    expect(sprite.undoDepth).toBe(2);
+    sprite.rollback(beforeStroke);
+    expect(sprite.layers[0].cels[0]!.data[0]).toBe(C);
+    expect(sprite.canRedo).toBe(false);
+  });
+
+  test('closing editor ownership releases snapshots, renderer caches and palette closures', () => {
+    const sprite = spriteWith([cel(A)]);
+    edit(sprite, B); sprite.undo();
+    sprite.paletteHost = { get: () => ['#ffffff'], set: () => {} };
+    sprite.releaseEditorMemory();
+    expect(sprite.history).toEqual([]); expect(sprite.future).toEqual([]);
+    expect(sprite.historyBytes()).toBe(0);
+    expect(sprite.paletteHost).toBeNull(); expect(sprite.palette).toBeNull();
+    expect((sprite as unknown as SpriteContext).cache.size).toBe(0);
+    expect((sprite as unknown as SpriteContext).split).toBeNull();
+    expect(sprite.layers[0].cels[0]!.data[0]).toBe(A);
+  });
+});
+
+
+test('active guards preserve oversized cancellation, defer limits until commit and release all ownership', () => {
+  for (const budget of ['bytes', 'operationBytes'] as const) {
+    const sprite = spriteWith([cel(A)]);
+    edit(sprite, B, 'Earlier');
+    const guard = sprite.protectHistory();
+    historyLimits[budget] = 1;
+    edit(sprite, C, 'Oversized stroke');
+    expect(sprite.history).toEqual(['Earlier', 'Oversized stroke']);
+    expect(sprite.historyGuardCount).toBe(1);
+    guard.cancel();
+    expect(sprite.layers[0].cels[0]!.data[0]).toBe(B);
+    expect(sprite.historyGuardCount).toBe(0);
+    expect(sprite.historyBytes()).toBe(0);
+    guard.cancel(); // Released guard cannot restore obsolete work.
+    expect(sprite.layers[0].cels[0]!.data[0]).toBe(B);
+    const committed = sprite.protectHistory();
+    edit(sprite, D); committed.commit();
+    expect(sprite.layers[0].cels[0]!.data[0]).toBe(D);
+    expect(sprite.history).toEqual([]);
+    expect(sprite.historyGuardCount).toBe(0);
+    historyLimits[budget] = 0;
+  }
+});
+
+test('floating transforms remain cancellable across gesture completion with tiny budgets', () => {
+  const sprite = spriteWith([cel(A)]);
+  historyLimits.operationBytes = 1;
+  sprite.mask = Mask.rect(1, 1, { x: 0, y: 0, w: 1, h: 1 });
+  sprite.liftSelection();
+  expect(sprite.historyGuardCount).toBe(1);
+  sprite.moveFloating(2, 0);
+  sprite.cancelFloating();
+  expect(sprite.layers[0].cels[0]!.data[0]).toBe(A);
+  expect(sprite.floating).toBeNull();
+  expect(sprite.historyGuardCount).toBe(0);
+  sprite.liftSelection(); sprite.dropFloating();
+  expect(sprite.historyGuardCount).toBe(0);
+  expect(sprite.history).toEqual([]);
+});
+
+
+test('cached accounting refreshes mask edge allocations and keeps shared live storage excluded', () => {
+  const sprite = spriteWith([cel(A)]);
+  const mask = Mask.rect(1, 1, { x: 0, y: 0, w: 1, h: 1 });
+  sprite.mask = mask; sprite.checkpoint('Mask'); sprite.mask = null; sprite.touch();
+  const memory = () => retainedHistoryMemory.call(sprite as unknown as SpriteContext);
+  expect(memory().uniqueBufferBytes).toBe(1);
+  const edges = mask.edges;
+  expect(memory().uniqueBufferBytes).toBe(1 + edges.byteLength);
+  sprite.mask = mask;
+  expect(memory().uniqueBufferBytes).toBe(0);
+});
+
+test('undo restores a cancelled floating lifetime and its rollback guard without retaining it after cancel', () => {
+  const sprite = spriteWith([cel(A)]);
+  sprite.liftSelection(); sprite.clearSelection();
+  expect(sprite.historyGuardCount).toBe(0);
+  sprite.undo();
+  expect(sprite.floating).not.toBeNull(); expect(sprite.historyGuardCount).toBe(1);
+  historyLimits.bytes = 1;
+  sprite.cancelFloating();
+  expect(sprite.layers[0].cels[0]!.data[0]).toBe(A);
+  expect(sprite.floating).toBeNull(); expect(sprite.historyGuardCount).toBe(0);
 });

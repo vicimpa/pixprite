@@ -128,6 +128,7 @@ export type Prefs = {
   /** Undo history limits: steps, and memory in MB (0 = no limit) */
   historySteps: number;
   historyMB: number;
+  historyOperationMB: number;
 };
 
 export type Layout = {
@@ -197,6 +198,7 @@ export const DEFAULT_PREFS: Prefs = {
   autosave: true,
   historySteps: 256,
   historyMB: 0,
+  historyOperationMB: 0,
   extensionCatalogs: [import.meta.env.DEV ? LOCAL_CATALOG : PUBLIC_CATALOG],
 };
 
@@ -909,6 +911,7 @@ export class State {
   confirmClose: (doc: Sprite) => Promise<'save' | 'discard' | 'cancel'> = async () => 'discard';
 
   showHome() {
+    this.playing = false;
     this.sprite.dropFloating();
     this.home = true;
     void this.persist();
@@ -922,6 +925,7 @@ export class State {
     const wasHome = this.home;
     this.home = false;
     if (doc === this.sprite && !wasHome) return;
+    this.playing = false;
     if (doc !== this.sprite && this.docs.includes(this.sprite)) {
       this.sprite.dropFloating();
       this.sprite.editor = this.captureEditor();
@@ -1020,10 +1024,16 @@ export class State {
     if (doc.sessionId) void deleteSession(doc.sessionId);
     const i = this.docs.indexOf(doc);
     const rest = this.docs.filter(d => d !== doc);
+    if (this.clipSource?.sprite === doc) this.clipSource = null;
+    if (doc === this.sprite) this.playing = false;
+    this.preparations.get(doc)?.controller.abort();
     if (!rest.length) {
       // Last tab: back to the home page
       this.docs = [];
+      this.sprite = new Sprite(1, 1);
+      this.textAt = null;
       this.home = true;
+      doc.releaseEditorMemory();
       void this.persist();
       return true;
     }
@@ -1032,6 +1042,7 @@ export class State {
       this.switchTo(rest[Math.min(i, rest.length - 1)]);
     }
     this.docs = rest;
+    doc.releaseEditorMemory();
     void this.persist();
     return true;
   }
@@ -1212,7 +1223,9 @@ effect(() => store('pixprite:prefs', state.prefs));
 effect(() => {
   historyLimits.steps = state.prefs.historySteps ?? 256;
   historyLimits.bytes = (state.prefs.historyMB ?? 0) * (1 << 20);
-  for (const d of state.docs) d.trimHistory();
+  historyLimits.operationBytes = (state.prefs.historyOperationMB ?? 0) * (1 << 20);
+  const docs = state.docs;
+  untracked(() => { for (const d of docs) d.trimHistory(); });
 });
 effect(() => store('pixprite:layout', state.layout));
 effect(() => store('pixprite:layouts', state.savedLayouts));

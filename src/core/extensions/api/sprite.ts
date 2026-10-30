@@ -227,15 +227,16 @@ export const spriteHandlers: Handlers = {
   'sprite.transaction.begin': (c, label) => {
     const doc = target(c);
     // Nested requests already carry the outer tx (the client joins them), so this is always a new step
+    const tx = c.host.beginTransaction(doc);
     untracked(() => doc.checkpoint(String(label || 'Extension edit')));
-    return c.host.beginTransaction(doc, doc.undoDepth - 1);
+    return tx;
   },
   'sprite.transaction.end': (c, tx, commit) => {
     const t = c.host.transactions.get(int(tx, 'tx'));
     if (!t) return;
     c.host.transactions.delete(tx);
-    if (!commit) untracked(() => t.doc.rollback(t.depth));
-    else state.save();
+    if (!commit) untracked(() => t.guard.cancel());
+    else { untracked(() => t.guard.commit()); state.save(); }
   },
 
   'sprite.layers.add': (c, opts) => write(c, 'New layer', s => {

@@ -1,18 +1,25 @@
 import { pickFiles } from "~/core/Files";
 import { t } from "~/core/i18n";
-import type { Guide } from "~/core/Sprite";
+import type { Guide, Sprite } from "~/core/Sprite";
 import { state } from "~/core/State";
 
 /** Decoded reference images by data URL */
-const images = new Map<string, HTMLImageElement>();
+const images = new WeakMap<Sprite, Map<string, HTMLImageElement>>();
+function documentImages() {
+  let cache = images.get(state.sprite);
+  if (!cache) images.set(state.sprite, cache = new Map());
+  return cache;
+}
+export function clearReferenceCache(sprite: Sprite) { images.delete(sprite); }
 
 /** The image of a reference layer, or null while it is still decoding */
 export function referenceImage(src: string) {
-  let img = images.get(src);
+  const cache = documentImages();
+  let img = cache.get(src);
   if (!img) {
     img = new Image();
     img.src = src;
-    images.set(src, img);
+    cache.set(src, img);
   }
   return img.complete && img.naturalWidth ? img : null;
 }
@@ -35,7 +42,7 @@ export async function openReference() {
   img.src = src;
   await img.decode().catch(() => { });
   if (!img.naturalWidth) return state.showTip(t('msg.cantReadThisImage'));
-  images.set(src, img);
+  documentImages().set(src, img);
   state.sprite.addReferenceLayer(src, img.naturalWidth, img.naturalHeight, file.name.replace(/\.[^.]+$/, '') || 'Reference');
   state.save();
 }

@@ -10,6 +10,7 @@
     "runner.ts",
     "scenarios.ts",
     "compare.ts",
-    "virtualization-check.ts"
+    "virtualization-check.ts",
+    "history-check.ts"
   ]
 }

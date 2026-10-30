@@ -13,7 +13,7 @@ import * as LayerOperations from "./LayerOperations";
 import * as SelectionOperations from "./SelectionOperations";
 import type { SpriteContext } from "./SpriteContext";
 import * as SpriteHistory from "./SpriteHistory";
-import type { Snapshot } from "./SpriteHistory";
+import type { HistoryGuard, Snapshot } from "./SpriteHistory";
 import {
   celPixel, celRect, cleanInfo, keepExt, lockedNotice, lockOwners, newLayer, parentOf, reframeCel,
   sliceKey, span, trimCel, type Cel, type CelImage, type ExtData, type Floating, type Frame,
@@ -120,6 +120,7 @@ export class Sprite {
     this.lastPaletteStep = now;
     this.checkpoint('Palette');
     this.undoStack[this.undoStack.length - 1].palette = before;
+    this.trimHistory();
   }
 
   /** Extension data of the whole document */
@@ -140,6 +141,7 @@ export class Sprite {
   @prop transformAlgo: Algorithm = 'fast';
   /** History depth right after the floating pixels were lifted (for cancel), -1 when none */
   private floatingStart = -1;
+  private floatingGuard: HistoryGuard | null = null;
   private lastMask: Mask | null = null;
 
   /** Id of this open editor's working copy (survives reloads until the tab is closed) */
@@ -174,6 +176,11 @@ export class Sprite {
   @prop version = 0;
   @prop history: string[] = [];
   @prop future: string[] = [];
+  /** Earlier history was discarded; the first row is a boundary, not the opened document. */
+  @prop historyBoundary = false;
+  @prop historyLimitNotice: 'operation' | 'memory' | null = null;
+  private historyOffset = 0;
+  private historyGuards = new Set<HistoryGuard>();
 
   private undoStack: Snapshot[] = [];
   private redoStack: Snapshot[] = [];
@@ -186,6 +193,33 @@ export class Sprite {
 
   get size() { return this.width * this.height; }
   get undoDepth() { return this.undoStack.length; }
+  /** Stable rollback marker even when older snapshots are evicted. */
+  get historyPosition() { return this.historyOffset + this.undoStack.length; }
+  get historyGuardCount() { return this.historyGuards.size; }
+
+  /** Active strokes/transactions may temporarily exceed budgets so Escape/failure can roll back.
+   * Releasing the last guard immediately applies the configured limits. */
+  protectHistory(position = this.historyPosition): HistoryGuard {
+    const release = (trim: boolean) => {
+      if (!this.historyGuards.delete(guard)) return;
+      const callback = guard.onRelease;
+      delete guard.onRelease;
+      callback?.();
+      if (trim) this.trimHistory();
+    };
+    const guard: HistoryGuard = {
+      commit: () => release(true),
+      cancel: () => { if (this.historyGuards.has(guard)) { this.rollback(position); release(true); } },
+      abandon: () => release(false),
+    };
+    this.historyGuards.add(guard);
+    return guard;
+  }
+
+  private syncFloatingHistory() {
+    this.floatingGuard?.abandon();
+    this.floatingGuard = this.floating && this.floatingStart >= 0 ? this.protectHistory(this.floatingStart - 1) : null;
+  }
   get canUndo() { return this.history.length > 0; }
   get canRedo() { return this.future.length > 0; }
   get current() { return this.layers[this.layer]; }
@@ -203,6 +237,9 @@ export class Sprite {
   }
 
   reset(width: number, height: number, name = 'untitled') {
+    for (const guard of this.historyGuards) guard.abandon();
+    this.floatingGuard = null;
+    this.floatingStart = -1;
     this.name = name;
     this.info = {};
     this.colorMode = 'rgb';
@@ -229,6 +266,9 @@ export class Sprite {
     this.lastMask = null;
     this.undoStack = [];
     this.redoStack = [];
+    this.historyOffset = 0;
+    this.historyBoundary = false;
+    this.historyLimitNotice = null;
     this.syncHistory();
     this.touch();
     // A fresh document has nothing to save yet
@@ -237,6 +277,22 @@ export class Sprite {
 
   touch() {
     this.version++;
+    if (this.undoStack.length || this.redoStack.length) this.trimHistory();
+  }
+
+  /** Release editor-only ownership when a tab closes. Document pixels stay intact for pending saves. */
+  releaseEditorMemory() {
+    for (const guard of this.historyGuards) guard.abandon();
+    this.floatingGuard = null;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.syncHistory();
+    this.cache.clear();
+    this.split = null;
+    this.lastMask = null;
+    this.soloSaved = null;
+    this.paletteHost = null;
+    this.palette = null;
   }
 
   private snapshot(label: string): Snapshot {
@@ -264,7 +320,7 @@ export class Sprite {
     return SpriteHistory.redo.call(this.operationContext);
   }
 
-  /** Pixel memory kept only by history (cels the current document doesn't share) */
+  /** History-exclusive buffers and metadata payload; excludes engine/GPU overhead. */
   historyBytes(): number {
     return SpriteHistory.historyBytes.call(this.operationContext);
   }

@@ -4,14 +4,17 @@ import type { Mask } from "~/core/Mask";
 import type { TileRefs, Tileset } from "~/core/Tilemap";
 import type { Placement } from "~/core/Transform";
 import type { Sprite } from "./Sprite";
-import type { Snapshot } from "./SpriteHistory";
+import type { HistoryGuard, Snapshot } from "./SpriteHistory";
 import type { Cel, CelImage, ExtData, Floating, Layer, LockKind, SliceKey } from "./SpriteModel";
 
 /** The mapped public view excludes private members; operations add the internal members they share. */
 export type SpriteContext = Pick<Sprite, keyof Sprite> & {
   lastPaletteStep: number;
   floatingStart: number;
+  floatingGuard: HistoryGuard | null;
+  syncFloatingHistory(): void;
   lastMask: Mask | null;
+  historyOffset: number;
   undoStack: Snapshot[];
   redoStack: Snapshot[];
   cache: Map<string, OffscreenCanvas>;
