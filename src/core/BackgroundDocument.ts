@@ -1,5 +1,5 @@
 /** DOM-free document preparation shared by workers and the explicit unsupported-worker fallback. */
-import { createCelInstance, createImage } from './DocumentModel';
+import { createCelInstance, createImage, createLayerMask } from './DocumentModel';
 import { cleanInfo, newLayer, parentOf, type Cel } from './SpriteModel';
 import type { SpriteContext } from './SpriteContext';
 import { captureDocument, load, toDocument, type DocumentCapture, type StorageCapture } from './SpriteSerialization';
@@ -44,7 +44,7 @@ export function hydrateCapture(raw: DocumentCapture) {
         cels[i] = instance;
       }
     });
-    return { ...newLayer(layer.name, raw.frames.length), ...layer, cels };
+    return { ...newLayer(layer.name, raw.frames.length), ...layer, cels, mask: layer.mask && createLayerMask(images.get(layer.mask.image.id)!, layer.mask) };
   });
   return { ...raw, info: cleanInfo(raw.info), layers, tilesets: raw.tilesets.map(({ d, count: _count, ...ts }) => ({ ...ts, tiles: d })) };
 }

@@ -176,7 +176,7 @@ describe('.pixprite round-trip', () => {
     const first = sprite.toJSON();
 
     expect(first.format).toBe('pixprite');
-    expect(first.version).toBe(6);
+    expect(first.version).toBe(7);
 
     const loaded = new Sprite();
     loaded.load(jsonClone(first));

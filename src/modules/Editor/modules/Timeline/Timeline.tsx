@@ -26,7 +26,7 @@ type Drag =
 
 const LAYER_MENU = (): MenuItems => [
   item('layer.new'), item('layer.duplicate'), item('layer.delete'), '-',
-  item('layer.properties'), item('layer.continuous'), '-',
+  item('layer.mask'), item('layer.properties'), item('layer.continuous'), '-',
   item('layer.toBackground'), item('layer.fromBackground'), '-',
   item('layer.mergeDown'), item('layer.flatten'),
 ];
@@ -402,6 +402,14 @@ export const Timeline: FC = () => {
         <Button $square title={t('timeline.duplicateLayer')} onClick={() => runCommand('layer.duplicate')}><Icon name="duplicate" scale="glyph" /></Button>
         <Button $square title={t('timeline.deleteLayer')} disabled={sprite.layers.length < 2} onClick={() => runCommand('layer.delete')}><Icon name="trash" scale="glyph" /></Button>
         <Button title={t('common.layerProperties')} onClick={() => dialogs.layerProperties()}>{t('timeline.props')}</Button>
+        <Button title={t('mask.title')} disabled={!!sprite.current?.reference} onClick={() => dialogs.layerMask()}>{t('mask.button')}{sprite.current?.mask ? ' ●' : ''}</Button>
+        {(sprite.current?.mask || sprite.editingChannel === 'mask') && <>
+          <Button data-testid="mask-channel" data-active={sprite.editingMask} onClick={() => sprite.setEditingChannel(sprite.editingChannel === 'mask' ? 'color' : 'mask')}>
+            {t(sprite.editingMask ? 'mask.editing' : 'mask.colorChannel')}
+          </Button>
+          <Button data-testid="mask-view" data-active={sprite.maskView && sprite.editingMask} disabled={!sprite.editingMask}
+            onClick={() => { sprite.maskView = !sprite.maskView; }}>{t('mask.view')}</Button>
+        </>}
         <Button title={t('dialog.layerFX.title')} disabled={!!sprite.current?.reference} onClick={() => dialogs.layerEffects()}>FX{sprite.current?.effects?.length ? ` (${sprite.current.effects.length})` : ''}</Button>
         <span style={{ flexGrow: 1 }} />
         <Muted>

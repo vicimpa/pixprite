@@ -211,7 +211,7 @@ test('v4 placed images explicitly migrate through v5 resources into v6 and retai
   expect(sprite.getCel()).toBe(sprite.getCel(0, 1));
   expect([...sprite.getCel()!.data]).toEqual([RED, GREEN]);
   const saved = sprite.toJSON();
-  expect(saved.version).toBe(6); expect(saved.images).toHaveLength(1);
+  expect(saved.version).toBe(7); expect(saved.images).toHaveLength(1);
   expect(saved.layers[0].cels[0]).toMatchObject({ x: -1, y: 0, image: { kind: 'image' }, ext: data.layers[0].cels[0]!.ext });
   expect(saved.ext).toEqual(data.ext);
 });

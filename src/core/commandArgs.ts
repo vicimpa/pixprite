@@ -186,7 +186,7 @@ export const PARAMETRIC: Record<string, Parametric> = {
   },
   'image.spriteSize': {
     params: [],
-    apply: a => { s().scaleSprite(Number(a.width), Number(a.height)); state.fit(); state.save(); },
+    apply: a => { if (s().scaleSprite(Number(a.width), Number(a.height)) === false) return state.showTip(t('mask.resizeBounds')); state.fit(); state.save(); },
   },
   'image.colorMode': {
     params: [],

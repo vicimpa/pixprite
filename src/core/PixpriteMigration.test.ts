@@ -39,8 +39,8 @@ describe('.pixprite migrations', () => {
     loaded.load(legacy);
     const saved = loaded.toJSON();
 
-    expect(PIXPRITE_VERSION).toBe(6);
-    expect(saved.version).toBe(6);
+    expect(PIXPRITE_VERSION).toBe(7);
+    expect(saved.version).toBe(7);
     expect(saved.layers[0].cels[0]).toMatchObject({ x: 0, y: 0, image: { kind: 'image' } });
     expect(saved.images[0]).toMatchObject({ w: 2, h: 1 });
     expect([...loaded.layers[0].cels[0]!.data]).toEqual([RED, GREEN]);
@@ -70,7 +70,7 @@ describe('.pixprite migrations', () => {
     expect(canvasPixels(sprite.render(1))).toEqual(canvasPixels(sprite.render(0)));
     expect(sprite.layers[0].cels[0]).toBe(sprite.layers[0].cels[1]);
     const saved = sprite.toJSON();
-    expect(saved.version).toBe(6);
+    expect(saved.version).toBe(7);
     expect(saved.images).toEqual(legacy.images);
     expect(saved.layers[0].effects).toEqual(legacy.layers[0].effects);
     expect(saved.layers[0].bakedEffects).toBeUndefined();
@@ -99,7 +99,7 @@ describe('.pixprite migrations', () => {
     const before = current.toJSON();
     const newer = { ...before, version: PIXPRITE_VERSION + 1 };
 
-    expect(() => current.load(newer)).toThrow('Newer pixprite version: 7; supported up to 6');
+    expect(() => current.load(newer)).toThrow('Newer pixprite version: 8; supported up to 7');
     expect(current.toJSON()).toEqual(before);
     expect(current.layers[0].cels[0]!.data[0]).toBe(BLUE);
   });

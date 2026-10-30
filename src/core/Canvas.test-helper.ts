@@ -104,6 +104,17 @@ class SoftwareCanvasRenderingContext2D {
 
   constructor(readonly canvas: SoftwareCanvas) {}
 
+  fillStyle = '#000000';
+  fillRect(x: number, y: number, w: number, h: number) {
+    const color = parseInt(this.fillStyle.slice(1), 16);
+    const pixel = packRgba(color >>> 16 & 255, color >>> 8 & 255, color & 255, 255);
+    for (let py = Math.max(0, y); py < Math.min(this.canvas.height, y + h); py++)
+      for (let px = Math.max(0, x); px < Math.min(this.canvas.width, x + w); px++) {
+        const i = py * this.canvas.width + px;
+        this.canvas.data[i] = composite(this.canvas.data[i], pixel, this.globalCompositeOperation, this.globalAlpha);
+      }
+  }
+
   putImageData(image: SoftwareImageData, dx: number, dy: number) {
     const pixels = new Uint32Array(image.data.buffer, image.data.byteOffset, image.data.byteLength / 4);
     for (let y = 0; y < image.height; y++) {

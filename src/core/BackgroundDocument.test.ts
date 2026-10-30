@@ -102,13 +102,13 @@ test('worker reads v5 live FX into v6, preserves v6 baked scopes and rejects v7 
   const sync = new Sprite(); sync.load(legacy);
   const doc = new Sprite(); await doc.loadAsync(legacy);
   expect(doc.toJSON()).toEqual(sync.toJSON());
-  expect(doc.toJSON().version).toBe(6);
+  expect(doc.toJSON().version).toBe(7);
   doc.bakeLayerEffects('frame');
   const baked = doc.toJSON(), history = doc.history.slice();
   expect(baked.layers[0].bakedEffects).toEqual([['fx'], []]);
   const restored = new Sprite(); await restored.loadAsync(baked);
   expect(restored.toJSON()).toEqual(baked);
-  await expect(doc.loadAsync({ ...baked, version: 7 })).rejects.toThrow('Newer pixprite version: 7; supported up to 6');
+  await expect(doc.loadAsync({ ...baked, version: 8 })).rejects.toThrow('Newer pixprite version: 8; supported up to 7');
   expect(doc.toJSON()).toEqual(baked); expect(doc.history).toEqual(history);
 });
 

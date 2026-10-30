@@ -254,7 +254,7 @@ test('malformed residual scope is rejected atomically; unusual valid IDs do not 
   const { sprite } = fixture();
   sprite.bakeLayerEffects('frame');
   const before = sprite.toJSON();
-  expect(before.version).toBe(6);
+  expect(before.version).toBe(7);
   expect(() => sprite.load({ ...before, version: 5 })).toThrow('Layer baked effects require pixprite version 6');
   expect(sprite.toJSON()).toEqual(before);
   for (const bad of [[['alpha']], Array(4).fill(['alpha', 'alpha']), Array(4).fill([7]), Array(4).fill(['x'.repeat(257)])]) {

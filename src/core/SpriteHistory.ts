@@ -3,7 +3,7 @@ import type { ColorMode } from "~/core/ColorMode";
 import { Mask } from "~/core/Mask";
 import type { Tileset } from "~/core/Tilemap";
 import { copyLayers, type ExtData, type Floating, type Frame, type FramePalette, type Guide, type Layer, type Slice, type Tag } from "./SpriteModel";
-import { isCelInstance, retainedBufferIdentity, visitCelBuffers } from './DocumentModel';
+import { isCelInstance, isImage, retainedBufferIdentity, visitCelBuffers, visitImageBuffers } from './DocumentModel';
 export type Snapshot = {
   label: string;
   ext: ExtData;
@@ -110,6 +110,7 @@ function memoryIndex(root: unknown, dynamic?: object[]): MemoryIndex {
     if (value instanceof ArrayBuffer) { buffer(retainedBufferIdentity(value), value.byteLength); return; }
     metadata.set(value, 0);
     if (isCelInstance(value as any)) visitCelBuffers(value as any, buffer, (identity, bytes) => metadata.set(identity, bytes));
+    if (isImage(value)) visitImageBuffers(value, buffer);
     let bytes = 0;
     for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
       if (!('value' in descriptor) || typeof descriptor.value === 'function') continue;

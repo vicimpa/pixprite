@@ -4,6 +4,8 @@ import { applyColorEffect, applyOutline, effectBounds } from './LayerEffects';
 
 /** An immutable shared pixel resource. Its public data view is a defensive copy. */
 export type Image = Readonly<{ kind: 'image'; id: string; w: number; h: number; data: Uint32Array }>;
+/** One static transparency channel in sprite coordinates, shared by all frames. Only alpha is sampled. */
+export type LayerMask = Readonly<{ image: Image; x: number; y: number; outside: number; enabled: boolean; inverted: boolean }>;
 export type AssetRef<Kind extends string = 'image'> = Readonly<{ kind: Kind; id: string }>;
 export type CelTransform = { flipX: boolean; flipY: boolean; rotation: 0 | 90 | 180 | 270; opacity: number };
 export type CelInstance = CelImage & {
@@ -242,4 +244,36 @@ export function bakeCel(cel: Cel, effects: readonly LayerFX[] = []): Cel {
   flushOpacity();
   return { x: result.x, y: result.y, w: result.w, h: result.h, data: result.data,
     ...(cel.ext ? { ext: cel.ext } : {}), ...(!hasPixelEffects(effects) && cel.tiles && !hasCelTransform(cel) ? { tiles: cel.tiles } : {}) };
+}
+
+/** Image resources own a private source buffer even when no cel references them (layer masks). */
+export function isImage(value: object): value is Image { return sourcePixels.has(value as Image); }
+export function visitImageBuffers(image: Image, visit: (identity: object, bytes: number) => void) {
+  const pixels = sourcePixels.get(image);
+  if (pixels) visit(retainedBufferIdentity(pixels.buffer), pixels.buffer.byteLength);
+}
+
+export function createLayerMask(image: Image, options: Partial<Omit<LayerMask, 'image'>> = {}): LayerMask {
+  if (!sourcePixels.has(image)) throw new Error('Invalid mask image');
+  const mask = { x: 0, y: 0, outside: 255, enabled: true, inverted: false, ...options, image };
+  if (!Number.isInteger(mask.x) || !Number.isInteger(mask.y) || !Number.isInteger(mask.outside) || mask.outside < 0 || mask.outside > 255
+    || typeof mask.enabled !== 'boolean' || typeof mask.inverted !== 'boolean') throw new Error('Invalid layer mask');
+  return Object.freeze(mask);
+}
+
+export function layerMaskAlpha(mask: LayerMask, x: number, y: number): number {
+  const { image } = mask, sx = x - mask.x, sy = y - mask.y;
+  const value = sx >= 0 && sy >= 0 && sx < image.w && sy < image.h
+    ? (sourcePixels.get(image)![sy * image.w + sx] >>> 24) : mask.outside;
+  return mask.inverted ? 255 - value : value;
+}
+
+/** Mask follows the layer FX stack, before outer layer opacity/blend/clipping. */
+export function applyLayerMask(cel: Cel, mask?: LayerMask): Cel {
+  if (!cel || !mask?.enabled) return cel;
+  const data = cel.data.map((pixel, i) => {
+    const alpha = Math.round((pixel >>> 24) * layerMaskAlpha(mask, cel.x + i % cel.w, cel.y + Math.floor(i / cel.w)) / 255);
+    return alpha ? ((pixel & 0xffffff) | (alpha << 24)) >>> 0 : 0;
+  });
+  return { x: cel.x, y: cel.y, w: cel.w, h: cel.h, data, ...(cel.ext ? { ext: cel.ext } : {}) };
 }

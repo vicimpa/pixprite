@@ -37,6 +37,7 @@ const CanvasSize: FC<{ close: () => void; }> = ({ close }) => {
   const { sprite } = state;
   const W = sprite.width, H = sprite.height;
   const [m, setM] = useState({ l: 0, t: 0, r: 0, b: 0 });
+  const [error, setError] = useState('');
   const [anchor, setAnchor] = useState<[number, number]>([0.5, 0.5]);
   const w = W + m.l + m.r, h = H + m.t + m.b;
   const fromSize = (nw: number, nh: number, a = anchor) => {
@@ -46,10 +47,11 @@ const CanvasSize: FC<{ close: () => void; }> = ({ close }) => {
   };
   return (
     <Dialog title={t('dialog.canvasSize.title')} onClose={close} onSubmit={() => {
-      sprite.canvasSize(Math.max(1, w), Math.max(1, h), m.l, m.t);
+      if (sprite.canvasSize(Math.max(1, w), Math.max(1, h), m.l, m.t) === false) { setError(t('mask.resizeBounds')); return false; }
       state.fit();
       state.save();
     }}>
+      {error && <span role="alert">{error}</span>}
       <Muted>Current: {W}×{H}. Pixels are not scaled; negative margins crop.</Muted>
       <Row>
         <FieldLabel>{t('common.size')}</FieldLabel>
@@ -93,15 +95,17 @@ const SpriteSize: FC<{ close: () => void; }> = ({ close }) => {
   const [w, setW] = useState(sprite.width);
   const [h, setH] = useState(sprite.height);
   const [lock, setLock] = useState(true);
+  const [error, setError] = useState('');
   const ratio = sprite.width / sprite.height;
   const setWidth = (v: number) => { setW(v); if (lock) setH(Math.max(1, Math.round(v / ratio))); };
   const setHeight = (v: number) => { setH(v); if (lock) setW(Math.max(1, Math.round(v * ratio))); };
   return (
     <Dialog title={t('dialog.spriteSize.scaleImage')} onClose={close} onSubmit={() => {
-      sprite.scaleSprite(w, h);
+      if (sprite.scaleSprite(w, h) === false) { setError(t('mask.resizeBounds')); return false; }
       state.fit();
       state.save();
     }}>
+      {error && <span role="alert">{error}</span>}
       <Muted>{t('dialog.spriteSize.nearestNeighbourScalingKeeps')}</Muted>
       <Row>
         <FieldLabel>{t('common.width')}</FieldLabel>

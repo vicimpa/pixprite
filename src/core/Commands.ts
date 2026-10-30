@@ -98,15 +98,16 @@ const list: Command[] = [
   {
     id: 'edit.cut', group: 'menu.edit', keys: ['Ctrl+X'], run: changed(() => {
       // A timeline range without a pixel selection: copy it, then remove it
-      if (s().range && !s().mask && !s().floating) {
+      if (s().editingChannel !== 'mask' && s().range && !s().mask && !s().floating) {
         state.rangeClipboard = s().copyRange();
         state.clipSource = null;
         state.clipKind = 'range';
         return deleteRange();
       }
-      const origin = s().selectionOrigin ?? s().getCel() ?? undefined;
+      const origin = s().editingMask ? { x: 0, y: 0 } : s().selectionOrigin ?? s().getCel() ?? undefined;
       const bmp = s().copySelection();
       state.clipboard = bmp && { ...bmp, x: origin?.x, y: origin?.y };
+      state.clipKind = 'pixels';
       copyToSystemClipboard(state.clipboard);
       s().clearSelection();
     })
@@ -114,7 +115,7 @@ const list: Command[] = [
   {
     id: 'edit.copy', group: 'menu.edit', keys: ['Ctrl+C'], run: () => {
       // A timeline range without a pixel selection copies cels / frames / layers
-      if (s().range && !s().mask && !s().floating) {
+      if (s().editingChannel !== 'mask' && s().range && !s().mask && !s().floating) {
         state.rangeClipboard = s().copyRange();
         state.clipSource = { sprite: s(), range: { ...s().range! } };
         state.clipKind = 'range';
@@ -122,7 +123,7 @@ const list: Command[] = [
         return;
       }
       state.clipKind = 'pixels';
-      const origin = s().selectionOrigin ?? s().getCel() ?? undefined;
+      const origin = s().editingMask ? { x: 0, y: 0 } : s().selectionOrigin ?? s().getCel() ?? undefined;
       const bmp = s().copySelection();
       state.clipboard = bmp && { ...bmp, x: origin?.x, y: origin?.y };
       copyToSystemClipboard(state.clipboard);
@@ -138,6 +139,7 @@ const list: Command[] = [
   },
   {
     id: 'edit.paste', group: 'menu.edit', run: changed(async () => {
+      if (s().editingChannel === 'mask') return;
       if (state.clipKind === 'range' && state.rangeClipboard) { state.clipSource = null; return s().pasteRange(state.rangeClipboard); }
       const bmp = await readSystemClipboard() ?? state.clipboard;
       if (bmp) { s().paste(bmp, state.pastePosition(bmp)); state.tool = 'move'; }
@@ -145,6 +147,7 @@ const list: Command[] = [
   },
   {
     id: 'edit.pasteAsLayer', group: 'menu.edit', keys: ['Ctrl+Shift+V'], run: changed(async () => {
+      if (s().editingChannel === 'mask') return;
       const bmp = await readSystemClipboard() ?? state.clipboard;
       if (!bmp) return state.showTip(t('msg.theClipboardHasNo'));
       s().addLayer();
@@ -154,9 +157,10 @@ const list: Command[] = [
   },
   {
     id: 'edit.clear', group: 'menu.edit', keys: ['Delete', 'Backspace'], run: changed(() => {
+      if (s().editingChannel === 'mask') return s().clearSelection();
       // With the slice tool, Delete removes the picked slices
       if (state.activeTool === 'slice' && s().selectedSlices.length) return s().removeSlices();
-      if (s().range && !s().mask && !s().floating) return deleteRange();
+      if (s().editingChannel !== 'mask' && s().range && !s().mask && !s().floating) return deleteRange();
       s().clearSelection();
     })
   },
@@ -261,6 +265,7 @@ const list: Command[] = [
   { id: 'layer.reference', group: 'menu.layer', run: () => void openReference() },
   { id: 'layer.clip', group: 'menu.layer', run: changed(() => s().updateLayer(s().layer, { clip: !s().current.clip }, 'Clipping')), checked: () => !!s().current?.clip, enabled: () => !!s().current && !s().current.background && !s().current.reference },
   { id: 'layer.solo', group: 'menu.layer', run: changed(() => s().soloLayer(s().layer)) },
+  { id: 'layer.mask', group: 'menu.layer', run: () => dialogs.layerMask(), enabled: () => !!s().current && !s().current.reference },
   { id: 'layer.effects', group: 'menu.layer', run: () => dialogs.layerEffects(), enabled: () => !!s().current && !s().current.reference },
   { id: 'layer.properties', group: 'menu.layer', keys: ['Ctrl+Shift+L'], run: () => dialogs.layerProperties() },
   { id: 'layer.visible', group: 'menu.layer', run: changed(() => s().updateLayer(s().layer, { visible: !s().current.visible }, 'Toggle visibility')), checked: () => !!s().current?.visible },

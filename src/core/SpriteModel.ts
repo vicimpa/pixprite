@@ -4,9 +4,9 @@ import { opaqueBounds, type Bitmap, type Rect } from "~/core/Image";
 import type { UserData } from "~/core/Tilemap";
 import type { TileRefs } from "~/core/Tilemap";
 import type { Placement } from "~/core/Transform";
-import { copyEffectScope, createCelInstance, isCelInstance, transformCel, type LayerFX } from './DocumentModel';
+import { copyEffectScope, createCelInstance, isCelInstance, transformCel, type LayerFX, type LayerMask } from './DocumentModel';
 
-export { createImage, createCelInstance, imageOf, transformCel, bakeCel, type Image, type AssetRef, type CelInstance, type CelTransform, type LayerFX } from './DocumentModel';
+export { createImage, createCelInstance, imageOf, transformCel, bakeCel, type Image, type AssetRef, type CelInstance, type CelTransform, type LayerFX, type LayerMask } from './DocumentModel';
 
 /** Data that extensions attach to a document part, one JSON value per extension id */
 export type ExtData = Record<string, unknown>;
@@ -126,6 +126,8 @@ export type Layer = {
   ext?: ExtData;
   /** Ordered nondestructive processors; an absent stack is equivalent to an empty stack. */
   effects?: LayerFX[];
+  /** Immutable static transparency channel, applied after this node's FX. */
+  mask?: LayerMask;
   /** IDs already baked into each frame; later edits to those effects leave baked frames alone. */
   bakedEffects?: string[][];
 };

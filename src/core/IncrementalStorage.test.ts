@@ -264,3 +264,56 @@ test('collection conservatively retains actual image pointers when a manifest re
   expect(await storage.loadProjectData(owner)).toEqual(document(0xff080002));
   expect((await storage.loadLastGoodProject(owner))?.data).toEqual(document(0xff080001));
 });
+
+test('v7 mask resources reuse content addresses on invert/toggle, survive recovery/snapshots and actual-reference GC, and release with their last owner', async () => {
+  const owner = id(), session = id(), snapshotOwner = id(), sprite = new Sprite(1, 1);
+  sprite.setCel(createCelInstance(createImage(1, 1, new Uint32Array([0xff0000fa])))); sprite.createLayerMask();
+  const first = sprite.toJSON(), firstMask = first.images.find(image => image.id === first.layers[0].mask!.image.id)!;
+  expect((await writes(() => storage.saveProjectData(meta(owner), first))).resources).toBe(2);
+  sprite.updateLayerMask({ inverted: true, enabled: false });
+  expect((await writes(() => storage.saveProjectData(meta(owner), sprite.toJSON()))).resources ?? 0).toBe(0);
+  await storage.saveSnapshot({ owner: snapshotOwner, name: 'Mask snapshot', width: 1, height: 1, frames: 1, thumb: '' }, first);
+  await storage.saveSessionRecord(session, { data: first, editor: null });
+  sprite.putLayerMaskPixels(new Uint32Array([0xff808080])); const second = sprite.toJSON();
+  expect((await writes(() => storage.saveProjectData(meta(owner), second))).resources).toBe(1);
+  sprite.putLayerMaskPixels(new Uint32Array([0xff404040])); const third = sprite.toJSON();
+  await storage.saveProjectData(meta(owner), third);
+  const db = await database();
+  const manifest: any = await new Promise((resolve, reject) => {
+    const req = db.transaction('data').objectStore('data').get(owner); req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
+  }); db.close();
+  manifest.resources = []; await put('data', owner, manifest);
+  await storage.collectUnusedResources();
+  expect((await records('resources')).some(resource => resource.payload === third.images.find(image => image.id === third.layers[0].mask!.image.id)!.d)).toBe(true);
+  expect((await storage.loadLastGoodProject(owner))?.data).toEqual(second);
+  const snapshot = (await storage.listSnapshots(snapshotOwner))[0]; expect(await storage.loadSnapshot(snapshot.id)).toEqual(first);
+  await storage.deleteProject(owner); await storage.deleteSnapshots(snapshotOwner);
+  expect((await storage.loadSession(session))?.data).toEqual(first);
+  expect((await records('resources')).some(resource => resource.payload === firstMask.d)).toBe(true);
+  await storage.deleteSession(session); await storage.collectUnusedResources();
+  expect((await records('resources')).some(resource => resource.payload === firstMask.d)).toBe(false);
+});
+
+test('v7 mask resource transaction abort is atomic, and a substituted mask digest cannot replace valid recovery pixels', async () => {
+  const owner = id(), sprite = new Sprite(1, 1);
+  sprite.setCel(createCelInstance(createImage(1, 1, new Uint32Array([0xff0000fb])))); sprite.createLayerMask();
+  const first = sprite.toJSON(); await storage.saveProjectData(meta(owner), first);
+  const stores = ['data', 'resources', 'meta', 'lastGoodData', 'lastGoodMeta', 'state', 'revisions'];
+  const before = await Promise.all(stores.map(records));
+  sprite.putLayerMaskPixels(new Uint32Array([0xff808080])); const second = sprite.toJSON();
+  const original = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore['put']>) {
+    const request = original.apply(this, args);
+    if (this.name === 'resources') queueMicrotask(() => this.transaction.abort());
+    return request;
+  };
+  try { await expect(storage.saveProjectData(meta(owner), second)).rejects.toBeDefined(); }
+  finally { IDBObjectStore.prototype.put = original; }
+  expect(await Promise.all(stores.map(records))).toEqual(before);
+  await storage.saveProjectData(meta(owner), second);
+  const bundle = await (await import('./DocumentResources')).splitDocument(second), raw = (bundle.manifest as any).document;
+  const key = raw.images.find((image: any) => image.id === raw.layers[0].mask.image.id).d.$resource;
+  await put('resources', key, { shape: 'image:1:1', payload: pixels(0x40000000) });
+  await expect(storage.loadProjectData(owner)).rejects.toThrow('Damaged document resource');
+  expect((await storage.loadLastGoodProject(owner))?.data).toEqual(first);
+});

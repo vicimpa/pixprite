@@ -12,11 +12,11 @@ export function isLocksRecord(v: unknown): v is LocksRecord {
   return isExtData(v) && typeof v.owner === 'string';
 }
 
-export const PIXPRITE_VERSION = 6;
-export const SUPPORTED_PIXPRITE_VERSIONS = [3, 4, 5, 6] as const;
+export const PIXPRITE_VERSION = 7;
+export const SUPPORTED_PIXPRITE_VERSIONS = [3, 4, 5, 6, 7] as const;
 
 type RawTileset = Omit<Tileset, 'tiles'> & { count: number; d: string; };
-type RawLayer = Partial<Omit<Layer, 'name' | 'cels'>> & { name: string; cels: any[]; };
+type RawLayer = Partial<Omit<Layer, 'name' | 'cels' | 'mask'>> & { name: string; cels: any[]; mask?: { image: { kind: 'image'; id: string }; x: number; y: number; outside: number; enabled: boolean; inverted: boolean } };
 export type RawImage = { id: string; w: number; h: number; d: string };
 export type PixpriteData = {
   format: 'pixprite';
@@ -74,6 +74,11 @@ export function migratePixpriteV4(data: PixpriteData): PixpriteData {
 /** v5 FX were live on every frame. An absent residual scope retains that exact behavior. */
 export function migratePixpriteV5(data: PixpriteData): PixpriteData {
   return { ...data, version: 6 };
+}
+
+/** v6 has no layer masks. Older readers must never silently discard v7 transparency. */
+export function migratePixpriteV6(data: PixpriteData): PixpriteData {
+  return { ...data, version: 7 };
 }
 
 const MAX_DOCUMENT_PIXELS = 4096 * 4096;
@@ -138,7 +143,7 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
   if (candidate.format !== 'pixprite') throw new Error('Unknown file format');
   if (typeof candidate.version !== 'number' || !Number.isInteger(candidate.version)) throw new Error('Unsupported pixprite version');
   if (candidate.version > PIXPRITE_VERSION) throw new Error(`Newer pixprite version: ${candidate.version}; supported up to ${PIXPRITE_VERSION}`);
-  if (!SUPPORTED_PIXPRITE_VERSIONS.includes(candidate.version as 3 | 4 | 5 | 6)) throw new Error(`Unsupported pixprite version: ${candidate.version}`);
+  if (!SUPPORTED_PIXPRITE_VERSIONS.includes(candidate.version as 3 | 4 | 5 | 6 | 7)) throw new Error(`Unsupported pixprite version: ${candidate.version}`);
   if (!Array.isArray(candidate.frames) || !candidate.frames.length) throw new Error('Document has no frames');
   if (!Array.isArray(candidate.layers) || !candidate.layers.length) throw new Error('Document has no layers');
   for (const key of ['tags', 'slices', 'guides', 'framePalettes', 'tilesets'] as const)
@@ -215,6 +220,13 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
     if (layer.depth !== undefined && (!Number.isInteger(layer.depth) || layer.depth < 0)) throw new Error('Invalid layer depth');
     if (layer.opacity !== undefined && (!Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1)) throw new Error('Invalid layer opacity');
     if (layer.blend !== undefined && !BLEND_MODES.includes(layer.blend)) throw new Error('Invalid layer blend mode');
+    if (layer.mask !== undefined) {
+      if (data.version < 7) throw new Error('Layer masks require pixprite version 7');
+      const mask = layer.mask;
+      if (!mask || typeof mask !== 'object' || !mask.image || mask.image.kind !== 'image' || !images.has(mask.image.id)
+        || !Number.isInteger(mask.x) || !Number.isInteger(mask.y) || !Number.isInteger(mask.outside) || mask.outside < 0 || mask.outside > 255
+        || typeof mask.enabled !== 'boolean' || typeof mask.inverted !== 'boolean' || layer.reference) throw new Error('Invalid layer mask');
+    }
     if (layer.effects !== undefined) validateLayerFX(layer.effects);
     if (layer.bakedEffects !== undefined && data.version < 6) throw new Error('Layer baked effects require pixprite version 6');
     if (layer.bakedEffects !== undefined && (!Array.isArray(layer.bakedEffects) || layer.bakedEffects.length !== data.frames.length

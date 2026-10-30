@@ -2,7 +2,7 @@ import { bitmapToCanvas, unionRect } from "~/core/Image";
 import type { SpriteContext } from "./SpriteContext";
 import { celRect, childrenOf, rootsOf, parentOf, trimCel, type Cel } from "./SpriteModel";
 import { checkEffectBounds, effectBounds, LayerFXBoundsError } from './LayerEffects';
-import { bakeCel, effectsForFrame, hasPixelEffects, type LayerFX } from './DocumentModel';
+import { applyLayerMask, bakeCel, effectsForFrame, hasPixelEffects, type LayerFX } from './DocumentModel';
 
 /** Drawing is independent of editor state, cache ownership and playback. */
 export type DrawingContext = Pick<SpriteContext, 'layers' | 'floating' | 'canvasRect' | 'drawLayer' | 'drawNode' | 'drawSiblings'> & {
@@ -129,6 +129,10 @@ export function drawLayer(this: DrawingContext, ctx: OffscreenCanvasRenderingCon
     const baked = bakeCel(cel, effects)!;
     src = bitmapToCanvas(baked); sx = baked.x; sy = baked.y;
   }
+  if (layer.mask?.enabled) {
+    const masked = applyLayerMask({ x: sx, y: sy, w: src.width, h: src.height, data: new Uint32Array(src.getContext('2d')!.getImageData(0, 0, src.width, src.height).data.buffer) }, layer.mask)!;
+    src = bitmapToCanvas(masked);
+  }
   ctx.globalAlpha = layer.opacity * (layer.celOpacity[frame] ?? 1);
   ctx.globalCompositeOperation = layer.blend;
   ctx.drawImage(src, sx - ox, sy - oy);
@@ -150,6 +154,10 @@ export function drawNode(this: DrawingContext, ctx: OffscreenCanvasRenderingCont
   } else {
     pixels = new OffscreenCanvas(ctx.canvas.width, ctx.canvas.height);
     this.drawSiblings(pixels.getContext('2d')!, childrenOf(this.layers, i), frame, override, ox, oy);
+  }
+  if (l.mask?.enabled) {
+    const masked = applyLayerMask({ x: x + ox, y: y + oy, w: pixels.width, h: pixels.height, data: new Uint32Array(pixels.getContext('2d')!.getImageData(0, 0, pixels.width, pixels.height).data.buffer) }, l.mask)!;
+    pixels = bitmapToCanvas(masked);
   }
   ctx.globalAlpha = l.opacity;
   ctx.globalCompositeOperation = l.blend;

@@ -1,3 +1,5 @@
+import { t } from "./i18n";
+import { maskGray } from './LayerMaskOperations';
 import { Color } from "~/core/Color";
 import { alphaLockedPixel } from './SpriteModel';
 import { signal } from "@preact/signals-react";
@@ -445,6 +447,9 @@ type PaintMode =
 /** Paints into the current cel, honoring selection, symmetry and wrap-around */
 class Painter {
   sprite = state.sprite;
+  maskChannel = this.sprite.editingMask;
+  layer = this.sprite.layer;
+  frame = this.sprite.frame;
   w = this.sprite.width;
   h = this.sprite.height;
   cel: Uint32Array;
@@ -463,13 +468,15 @@ class Painter {
   constructor(public kind: 'paint' | 'erase', public alt: boolean, label: string, public mode: PaintMode = 'stroke', public dry = false) {
     if (!dry) this.sprite.checkpoint(label);
     // Strokes work on the canvas window of the cel; putCanvas keeps whatever lies outside it
-    const cel = this.sprite.canvasPixels();
+    const cel = this.maskChannel ? this.sprite.layerMaskPixels() : this.sprite.canvasPixels();
     this.cel = cel;
     this.origin = cel.slice();
     this.painted = new Uint8Array(cel.length);
-    const a = colorValue(state.colorA), b = colorValue(state.colorB);
+    const gray = (pixel: number) => (0xff000000 | maskGray(pixel) * 0x10101) >>> 0;
+    const a = this.maskChannel ? gray(colorValue(state.colorA)) : colorValue(state.colorA);
+    const b = this.maskChannel ? gray(colorValue(state.colorB)) : colorValue(state.colorB);
     [this.primary, this.secondary] = alt ? [b, a] : [a, b];
-    this.background = !!this.sprite.current?.background;
+    this.background = !this.maskChannel && !!this.sprite.current?.background;
   }
 
   /** Sprite index for (x, y) honoring wrap-around and the selection, or -1 */
@@ -500,6 +507,7 @@ class Painter {
     const pf = this.pressured ? pressureFactor('opacity') : 1;
     const op = state.opacity / 255 * pf;
 
+    if (this.maskChannel && this.kind === 'erase') return merge(src, 0xff000000, op);
     if (this.kind === 'erase') {
       if (this.alt) {
         // Right button: primary color pixels become the secondary color
@@ -555,7 +563,7 @@ class Painter {
         this.painted[i] = 1;
       }
       const next = this.ink(i, tx, ty);
-      this.cel[i] = this.sprite.current?.lockAlpha ? alphaLockedPixel(this.origin[i], next) : next;
+      this.cel[i] = !this.maskChannel && this.sprite.current?.lockAlpha ? alphaLockedPixel(this.origin[i], next) : next;
     }
   }
 
@@ -583,7 +591,8 @@ class Painter {
   }
 
   commit() {
-    this.sprite.putCanvas(this.cel);
+    if (this.maskChannel) this.sprite.putLayerMaskPixels(this.cel, this.layer);
+    else this.sprite.putCanvas(this.cel, this.layer, this.frame);
   }
 
   reset() {
@@ -844,6 +853,7 @@ function regionMask(x: number, y: number, ref: Uint32Array, respectSelection: bo
 
 function referencePixels() {
   const { sprite } = state;
+  if (sprite.editingMask) return sprite.layerMaskPixels();
   if (!state.sampleAll) return sprite.getBitmap().data;
   const ctx = sprite.render().getContext('2d')!;
   return new Uint32Array(ctx.getImageData(0, 0, sprite.width, sprite.height).data.buffer);
@@ -1262,7 +1272,7 @@ function pickColor(p: ToolPointer, secondary: boolean) {
   if (state.tiledX) x = ((x % sprite.width) + sprite.width) % sprite.width;
   if (state.tiledY) y = ((y % sprite.height) + sprite.height) % sprite.height;
   if (!sprite.inBounds(x, y)) return;
-  const v = state.pickMerged ? sprite.pick(x, y) : sprite.celPixel(x, y);
+  const v = sprite.editingMask ? sprite.layerMaskPixels()[y * sprite.width + x] : state.pickMerged ? sprite.pick(x, y) : sprite.celPixel(x, y);
   const [r, g, b, a] = unpackRgba(v);
   const current = secondary ? state.colorB : state.colorA;
   let c: Color;
@@ -1318,6 +1328,8 @@ export function beginSession(tool: ToolName, p: ToolPointer): Session | null {
 
 function start(tool: ToolName, p: ToolPointer): Session | null {
   const { sprite } = state;
+  if (sprite.maskBoundsNotice && (PAINT_TOOLS.includes(tool) || EFFECT_TOOLS.includes(tool))) { state.showTip(t('mask.bounds')); return null; }
+  if (sprite.editingChannel === 'mask' && ['move', 'text', 'blur', 'jumble'].includes(tool)) return null;
 
   switch (tool) {
     case 'hand':
@@ -1342,7 +1354,7 @@ function start(tool: ToolName, p: ToolPointer): Session | null {
     }
 
     case 'picker':
-      if (sprite.tileset && state.tilemapMode === 'tiles') {
+      if (!sprite.editingMask && sprite.tileset && state.tilemapMode === 'tiles') {
         // Picks the tile under the cursor instead of a color
         const pick = (q: ToolPointer) => { const ref = sprite.tileAt(q.x, q.y); if (p.secondary) state.tileB = ref; else state.tileA = ref; };
         pick(p);
@@ -1357,7 +1369,7 @@ function start(tool: ToolName, p: ToolPointer): Session | null {
     case 'polyLasso': {
       // Plain left drag inside the selection moves its pixels
       const plain = !p.shift && !p.alt && !p.secondary && state.selectMode === 'replace';
-      if (plain && sprite.mask?.has(p.x, p.y)) return beginTransform('move', p);
+      if (!sprite.editingMask && plain && sprite.mask?.has(p.x, p.y)) return beginTransform('move', p);
       sprite.dropFloating();
       if (tool === 'marquee' || tool === 'ellipseMarquee') return marqueeSession(p, tool === 'marquee' ? 'rect' : 'ellipse');
       if (tool === 'lasso') return lassoSession(p);
@@ -1429,7 +1441,7 @@ function start(tool: ToolName, p: ToolPointer): Session | null {
 
   // Tiles mode on a tilemap: tools place, erase and pick whole tiles
   const ts = sprite.tileset;
-  if (ts && state.tilemapMode === 'tiles' && ['pencil', 'eraser', 'fill', 'line'].includes(tool)) {
+  if (!sprite.editingMask && ts && state.tilemapMode === 'tiles' && ['pencil', 'eraser', 'fill', 'line'].includes(tool)) {
     const cell = (q: ToolPointer): Point => [Math.floor(q.x / ts.tw), Math.floor(q.y / ts.th)];
     if (!sprite.editable) return null;
     sprite.dropFloating();
@@ -1923,7 +1935,7 @@ export type StrokePlace = 'inside' | 'center' | 'outside';
 export function paintSelection(width: number, place: StrokePlace, label: string) {
   const sprite = state.sprite;
   const mask = sprite.mask;
-  if (!mask) return false;
+  if (!mask || !sprite.editable) return false;
   const painter = new Painter('paint', false, label);
   const { w, h } = painter;
   // Stroking outside the selection must reach unselected pixels

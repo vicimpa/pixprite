@@ -42,7 +42,7 @@ export function bakeLayerEffects(this: SpriteContext, scope: 'layer' | 'frame' |
     const context = { ...this, ...rendering, layers: layers.map((l, i) => i === index ? source : l), floating: null, effectsPreview: null };
     child.cels = this.frames.map((_, f) => {
       if (!selected.has(f)) return null;
-      alpha ||= hasPixelEffects(effectsForFrame(source, f)) || layers.slice(start, index).some(layer => hasPixelEffects(effectsForFrame(layer, f)));
+      alpha ||= hasPixelEffects(effectsForFrame(source, f)) || layers.slice(start, index).some(layer => layer.mask?.enabled || hasPixelEffects(effectsForFrame(layer, f)));
       color ||= hasColorEffects(effectsForFrame(source, f)) || layers.slice(start, index).some(layer => hasColorEffects(effectsForFrame(layer, f)));
       return rendering.groupCel.call(context, index, f);
     });
@@ -355,7 +355,7 @@ export function layerToBackground(this: SpriteContext): void {
     this.drawLayer(ctx, this.layer, f, true);
     return { ...this.canvasRect, data: new Uint32Array(ctx.getImageData(0, 0, this.width, this.height).data.buffer) };
   });
-  const bg: Layer = { ...l, name: 'Background', background: true, opacity: 1, blend: 'source-over', cels, celOpacity: cels.map(() => 1), ...(l.effects ? { effects: [], bakedEffects: undefined } : {}) };
+  const bg: Layer = { ...l, mask: undefined, name: 'Background', background: true, opacity: 1, blend: 'source-over', cels, celOpacity: cels.map(() => 1), ...(l.effects ? { effects: [], bakedEffects: undefined } : {}) };
   this.layers = [bg, ...this.layers.filter((_, i) => i !== this.layer)];
   this.layer = 0;
   this.touch();
@@ -391,7 +391,7 @@ export function mergeDown(this: SpriteContext): void {
   // Opacity is baked in; the blend mode stays, it still applies against what is under the result
   this.layers = this.layers
     .filter((_, i) => i !== top)
-    .map((l, i) => i === bottom ? { ...below, visible: shown, opacity: 1, cels, celOpacity: cels.map(() => 1), ...(below.effects ? { effects: [], bakedEffects: undefined } : {}) } : l);
+    .map((l, i) => i === bottom ? { ...below, mask: undefined, visible: shown, opacity: 1, cels, celOpacity: cels.map(() => 1), ...(below.effects ? { effects: [], bakedEffects: undefined } : {}) } : l);
   this.layer = bottom;
   this.range = null;
   this.touch();

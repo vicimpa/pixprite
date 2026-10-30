@@ -132,6 +132,7 @@ function onKeyUp(e: KeyboardEvent) {
 async function onPaste(e: ClipboardEvent) {
   if (isTyping(e as unknown as KeyboardEvent)) return;
   e.preventDefault();
+  if (state.sprite.editingChannel === 'mask') return;
   const file = [...e.clipboardData?.files ?? []].find(f => f.type.startsWith('image/'));
   if (!file && state.clipKind === 'range' && state.rangeClipboard) {
     state.clipSource = null;

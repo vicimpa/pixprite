@@ -563,7 +563,7 @@ test('v5 shared image instances and layer effects retain source pixels across im
   await command(page, 'file.save');
   await expect(page.getByText('Saved: Placed model', { exact: true })).toBeVisible();
   const saved = await documentNamed(page, 'Placed model');
-  expect(saved).toMatchObject({ version: 6, images: [{ id: 'shared-source', d: source }], layers: [{ effects: fixture.layers[0].effects }] });
+  expect(saved).toMatchObject({ version: 7, images: [{ id: 'shared-source', d: source }], layers: [{ effects: fixture.layers[0].effects }] });
   await page.reload();
   await expect(page.getByTestId('sprite-canvas')).toBeVisible();
   expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual({ width: 3, height: 3, data: expected });
@@ -935,7 +935,7 @@ test('Layer FX controls preview/cancel/reorder/play, persist editable stacks, an
   await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.layers[0].bakedEffects?.map((ids: string[]) => ids.length))
     .toEqual([2, 0]);
   const baked = await documentNamed(page, fixture.name) as any;
-  expect(baked.version).toBe(6);
+  expect(baked.version).toBe(7);
   expect(baked.layers[0].cels[1]).toMatchObject({ image: { id: 'red-source' } });
   expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(expected);
   await command(page, 'edit.undo');
@@ -1293,4 +1293,195 @@ test('persistent Lock Alpha UI protects real pencil, eraser, fill, gradient and 
   expect(filtered.data[(4 * 9 + 4) * 4]).not.toBe(painted.data[(4 * 9 + 4) * 4]);
   await page.reload(); await expect(page.getByTestId('sprite-canvas')).toBeVisible();
   expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(filtered);
+});
+
+/** Coordinates of a fitted sprite; all browser mask workflows use actual pointer tools. */
+async function maskPoint(page: Page, x: number, y: number, size = 9) {
+  const box = await page.getByTestId('sprite-canvas').boundingBox(); if (!box) throw new Error('Missing mask canvas');
+  const zoom = Math.max(1, Math.floor(Math.min(box.width / size, box.height / size) * .85));
+  return { x: box.x + Math.round(box.width / 2 - size / 2 * zoom) + (x + .5) * zoom,
+    y: box.y + Math.round(box.height / 2 - size / 2 * zoom) + (y + .5) * zoom };
+}
+async function maskStroke(page: Page, key: string, x = 4, y = 4) {
+  await page.keyboard.press(key); const p = await maskPoint(page, x, y); await page.mouse.click(p.x, p.y);
+  const box = await page.getByTestId('sprite-canvas').boundingBox(); await page.mouse.move(box!.x + 2, box!.y + 2); await command(page, 'file.save');
+}
+async function maskDialog(page: Page) {
+  await command(page, 'layer.mask'); return page.getByRole('dialog', { name: 'Layer mask', exact: true });
+}
+async function savedMaskAlpha(page: Page, name: string, layer = 0): Promise<number[]> {
+  const document: any = await documentNamed(page, name), mask = document?.layers[layer]?.mask;
+  if (!mask) return [];
+  const image = document.images.find((image: any) => image.id === mask.image.id);
+  return Array.from(Buffer.from(image.d, 'base64')).filter((_, i) => i % 4 === 3);
+}
+
+test('layer mask UI paints a separate channel with real pencil/eraser/fill/gradient, cancel/undo, invert/disable/view and baked exports after reload', async ({ page }) => {
+  test.setTimeout(120_000);
+  const source = Buffer.from(Array.from({ length: 81 }, () => [255, 0, 0, 255]).flat()).toString('base64');
+  const fixture = { format: 'pixprite', version: 6, name: 'Mask channel workflow', width: 9, height: 9,
+    frames: [{ duration: 100 }, { duration: 120 }], images: [{ id: 'red-mask-source', w: 9, h: 9, d: source }],
+    layers: [{ name: 'Linked red', lockAlpha: true, cels: [{ x: 0, y: 0, image: { kind: 'image', id: 'red-mask-source' } }, { link: 0 }] }] };
+  await openFixture(page, fixture);
+  const original = await pngPixels(page, await download(page, 'file.exportPng'));
+  let dialog = await maskDialog(page); await dialog.getByRole('button', { name: 'Reveal all', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Edit mask', exact: true }).click();
+  await expect(page.getByTestId('mask-channel')).toHaveAttribute('data-active', 'true');
+  await maskStroke(page, 'e');
+  await expect.poll(async () => (await savedMaskAlpha(page, fixture.name))[40]).toBe(0);
+  const hole = await pngPixels(page, await download(page, 'file.exportPng')); expect(hole.data[40 * 4 + 3]).toBe(0);
+  await command(page, 'edit.undo'); await expect.poll(async () => (await savedMaskAlpha(page, fixture.name))[40]).toBe(255);
+  await command(page, 'edit.redo'); await expect.poll(async () => (await savedMaskAlpha(page, fixture.name))[40]).toBe(0);
+  const visual = await canvasFingerprint(page); await page.getByTestId('mask-view').click();
+  await expect.poll(() => canvasFingerprint(page)).not.toBe(visual);
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(hole);
+  // Pick effective mask white, restore the erased pixel, then cancel an eraser stroke.
+  await maskStroke(page, 'i', 2, 2); await maskStroke(page, 'b');
+  await expect.poll(async () => (await savedMaskAlpha(page, fixture.name))[40]).toBe(255);
+  const beforeCancel = await documentNamed(page, fixture.name);
+  const center = await maskPoint(page, 4, 4); await page.keyboard.press('e'); await page.mouse.move(center.x, center.y); await page.mouse.down();
+  await page.keyboard.press('Escape'); await page.mouse.up(); await command(page, 'file.save');
+  await expect.poll(() => documentNamed(page, fixture.name)).toEqual(beforeCancel);
+  // Fill the uniform mask with black, then paint a native white-to-black gradient.
+  await page.locator('[data-i="0"]').click(); await page.getByTitle(/^Bucket \(G\)/).click();
+  await page.mouse.click(center.x, center.y); await command(page, 'file.save');
+  await expect.poll(async () => (await savedMaskAlpha(page, fixture.name)).every(alpha => alpha === 0)).toBe(true);
+  await page.locator('[data-i="7"]').click(); await page.locator('[data-i="0"]').click({ button: 'right' });
+  await page.getByTitle(/^Bucket \(G\)/).click({ button: 'right' }); await page.getByText('Gradient', { exact: true }).click();
+  const start = await maskPoint(page, 1, 4), end = await maskPoint(page, 7, 4);
+  await page.mouse.move(start.x, start.y); await page.mouse.down(); await page.mouse.move(end.x, end.y, { steps: 6 }); await page.mouse.up();
+  await page.mouse.move(2, 2); await command(page, 'file.save');
+  await expect.poll(async () => (await savedMaskAlpha(page, fixture.name)).some(alpha => alpha > 0 && alpha < 255)).toBe(true);
+  const gradientMask = await savedMaskAlpha(page, fixture.name), gradientExport = await pngPixels(page, await download(page, 'file.exportPng'));
+  expect(gradientExport.data.filter((_, i) => i % 4 === 3)).toEqual(gradientMask);
+  dialog = await maskDialog(page); await dialog.getByRole('checkbox', { name: 'Invert mask', exact: true }).check();
+  await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+  const inverted = await pngPixels(page, await download(page, 'file.exportPng'));
+  expect(inverted.data.filter((_, i) => i % 4 === 3)).toEqual(gradientMask.map(alpha => 255 - alpha));
+  const committed: any = await documentNamed(page, fixture.name), resource = committed.layers[0].mask.image.id;
+  dialog = await maskDialog(page); await dialog.getByRole('checkbox', { name: 'Enable mask', exact: true }).uncheck();
+  await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(original);
+  expect((await documentNamed(page, fixture.name) as any).layers[0].mask.image.id).toBe(resource);
+  await command(page, 'edit.undo'); expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(inverted);
+  const saved: any = await documentNamed(page, fixture.name);
+  expect(saved.version).toBe(7); expect(saved.images.find((image: any) => image.id === 'red-mask-source').d).toBe(source);
+  expect(saved.layers[0].cels).toEqual(fixture.layers[0].cels);
+  await command(page, 'anim.next'); expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(inverted);
+  await page.reload(); await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(inverted);
+});
+
+test('layer mask UI creates from selection, another layer alpha and chosen color, edits groups without touching children and backgrounds bake masks once', async ({ page }) => {
+  test.setTimeout(120_000);
+  const red = Buffer.from(Array.from({ length: 81 }, () => [255, 0, 0, 255]).flat()).toString('base64');
+  const alpha = Buffer.from(Array.from({ length: 81 }, (_, i) => [0, 0, 255, i === 40 ? 128 : 0]).flat()).toString('base64');
+  const fixture = { format: 'pixprite', version: 6, name: 'Mask factories and group', width: 9, height: 9,
+    frames: [{ duration: 100 }], images: [{ id: 'red', w: 9, h: 9, d: red }, { id: 'alpha', w: 9, h: 9, d: alpha }],
+    layers: [{ name: 'Red', cels: [{ x: 0, y: 0, image: { kind: 'image', id: 'red' } }] },
+      { name: 'Alpha source', visible: false, cels: [{ x: 0, y: 0, image: { kind: 'image', id: 'alpha' } }] }] };
+  await openFixture(page, fixture);
+  await page.locator('[data-hit="layer"][data-l="0"]').click(); await command(page, 'select.all');
+  let dialog = await maskDialog(page); await dialog.getByRole('button', { name: 'From selection', exact: true }).click();
+  await dialog.getByRole('button', { name: 'OK', exact: true }).click(); await command(page, 'select.none');
+  await expect.poll(async () => (await savedMaskAlpha(page, fixture.name)).every(alpha => alpha === 255)).toBe(true);
+  dialog = await maskDialog(page); await dialog.getByTitle('Alpha source layer', { exact: true }).click(); await page.locator('div[data-disabled]').filter({ hasText: /^Alpha source$/ }).click();
+  await dialog.getByRole('button', { name: 'From layer alpha', exact: true }).click(); await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect.poll(async () => (await savedMaskAlpha(page, fixture.name))[40]).toBe(128);
+  const alphaExport = await pngPixels(page, await download(page, 'file.exportPng')); expect(alphaExport.data.filter((_, i) => i % 4 === 3).filter(Boolean)).toEqual([128]);
+  // Background conversion consumes the semitransparent mask exactly once.
+  const before: any = await documentNamed(page, fixture.name);
+  await command(page, 'layer.toBackground');
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any).layers[0].mask).toBeUndefined();
+  const background = await pngPixels(page, await download(page, 'file.exportPng'));
+  expect(background.data.filter((_, i) => i % 4 === 3).every(alpha => alpha === 255)).toBe(true);
+  await command(page, 'edit.undo'); await expect.poll(() => documentNamed(page, fixture.name)).toEqual(before);
+  // Color factory snapshots exact source RGB; choosing black matches none of the red layer.
+  await page.locator('[data-i="0"]').click(); dialog = await maskDialog(page);
+  await dialog.getByRole('button', { name: 'From primary color', exact: true }).click();
+  await dialog.getByRole('checkbox', { name: 'Invert mask', exact: true }).check(); await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect.poll(async () => (await savedMaskAlpha(page, fixture.name)).every(alpha => alpha === 0)).toBe(true);
+  expect((await pngPixels(page, await download(page, 'file.exportPng'))).data.filter((_, i) => i % 4 === 3).every(alpha => alpha === 255)).toBe(true);
+  // Build a group by selecting Red's row, so the existing child remains untouched by group painting.
+  await page.locator('[data-hit="layer"][data-l="0"]').click(); await command(page, 'layer.newGroup');
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any).layers.some((l: any) => l.group)).toBe(true);
+  const groupDoc: any = await documentNamed(page, fixture.name); const group = groupDoc.layers.findIndex((l: any) => l.group);
+  expect(groupDoc.layers[0].depth).toBe(1);
+  dialog = await maskDialog(page); await dialog.getByRole('button', { name: 'Reveal all', exact: true }).click(); await dialog.getByRole('button', { name: 'Edit mask', exact: true }).click();
+  const childPixels = (await documentNamed(page, fixture.name) as any).images.filter((image: any) => ['red', 'alpha'].includes(image.id));
+  await maskStroke(page, 'e'); await expect.poll(async () => (await savedMaskAlpha(page, fixture.name, group))[40]).toBe(0);
+  expect((await documentNamed(page, fixture.name) as any).images.filter((image: any) => ['red', 'alpha'].includes(image.id))).toEqual(childPixels);
+  expect((await pngPixels(page, await download(page, 'file.exportPng'))).data[40 * 4 + 3]).toBe(0);
+
+});
+
+test('mask channel generic Delete/Cut/Copy/Paste ignores timeline ranges and never changes color cels or structure', async ({ page }) => {
+  test.setTimeout(60_000);
+  const fixture = { format: 'pixprite', version: 6, name: 'Mask command isolation', width: 9, height: 9,
+    frames: [{ duration: 100 }, { duration: 120 }], images: [{ id: 'red', w: 9, h: 9, d: Buffer.from(Array.from({ length: 81 }, () => [255, 0, 0, 255]).flat()).toString('base64') }],
+    layers: [{ name: 'Red', cels: [{ x: 0, y: 0, image: { kind: 'image', id: 'red' } }, { link: 0 }] }] };
+  await openFixture(page, fixture);
+  const cell = page.locator('[data-hit="cel"][data-l="0"][data-f="0"]');
+  await cell.click(); await command(page, 'edit.copy'); // Store a color timeline clipboard first.
+  const dialog = await maskDialog(page); await dialog.getByRole('button', { name: 'Reveal all', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Edit mask', exact: true }).click();
+  await cell.click(); await command(page, 'file.save');
+  await expect.poll(async () => (await savedMaskAlpha(page, fixture.name)).length).toBe(81);
+  const before: any = await documentNamed(page, fixture.name);
+  await command(page, 'edit.paste'); await page.evaluate(() => document.body.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: new DataTransfer() })));
+  await command(page, 'file.save'); await expect.poll(() => documentNamed(page, fixture.name)).toEqual(before);
+  for (const action of ['edit.clear', 'edit.cut']) {
+    await cell.click(); await command(page, action);
+    await expect.poll(async () => (await savedMaskAlpha(page, fixture.name)).every(alpha => alpha === 0)).toBe(true);
+    const after: any = await documentNamed(page, fixture.name);
+    expect(after.frames).toEqual(before.frames); expect(after.layers[0].cels).toEqual(before.layers[0].cels);
+    expect(after.layers).toHaveLength(1); expect(after.images.find((image: any) => image.id === 'red')).toEqual(before.images.find((image: any) => image.id === 'red'));
+    await command(page, 'edit.undo'); await expect.poll(() => documentNamed(page, fixture.name)).toEqual(before);
+  }
+  await command(page, 'edit.copy'); await command(page, 'edit.paste'); await command(page, 'file.save');
+  await expect.poll(() => documentNamed(page, fixture.name)).toEqual(before);
+});
+
+test('distant valid mask shows a painting-bounds notice without freezing hover, source/history or exports and replacement resumes painting', async ({ page }) => {
+  const fixture = { format: 'pixprite', version: 7, name: 'Mask painting bounds', width: 9, height: 9,
+    frames: [{ duration: 100 }], images: [
+      { id: 'red', w: 9, h: 9, d: Buffer.from(Array.from({ length: 81 }, () => [255, 0, 0, 255]).flat()).toString('base64') },
+      { id: 'distant-mask', w: 4096, h: 1, d: Buffer.from(Array.from({ length: 4096 }, () => [0, 0, 0, 255]).flat()).toString('base64') }],
+    layers: [{ name: 'Red', mask: { image: { kind: 'image', id: 'distant-mask' }, x: 4096, y: 0, outside: 255, enabled: true, inverted: false },
+      cels: [{ x: 0, y: 0, image: { kind: 'image', id: 'red' } }] }] };
+  const errors: string[] = []; page.on('pageerror', error => errors.push(String(error)));
+  await openFixture(page, fixture); const before = await documentNamed(page, fixture.name);
+  let dialog = await maskDialog(page); await dialog.getByRole('button', { name: 'Edit mask', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Mask painting unavailable' })).toBeVisible();
+  const p = await maskPoint(page, 4, 4); await page.mouse.move(p.x, p.y); await maskStroke(page, 'b'); await maskStroke(page, 'e');
+  await expect.poll(() => documentNamed(page, fixture.name)).toEqual(before); expect(errors).toEqual([]);
+  expect((await pngPixels(page, await download(page, 'file.exportPng'))).data.filter((_, i) => i % 4 === 3).every(a => a === 255)).toBe(true);
+  await page.getByTestId('mask-view').click(); expect(errors).toEqual([]);
+  dialog = await maskDialog(page); await dialog.getByRole('button', { name: 'Reveal all', exact: true }).click(); await dialog.getByRole('button', { name: 'Edit mask', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Mask painting unavailable' })).toHaveCount(0);
+  await maskStroke(page, 'e'); await expect.poll(async () => (await savedMaskAlpha(page, fixture.name))[40]).toBe(0); expect(errors).toEqual([]);
+});
+
+test('mask resize preflight refuses oversized resource allocation atomically and channel controls allow leaving a layer without a mask', async ({ page }) => {
+  const fixture = { format: 'pixprite', version: 7, name: 'Mask scaling preflight', width: 1, height: 1,
+    frames: [{ duration: 100 }], images: [
+      { id: 'red', w: 1, h: 1, d: Buffer.from([255, 0, 0, 255]).toString('base64') },
+      { id: 'large-mask', w: 4096, h: 1, d: Buffer.from(Array.from({ length: 4096 }, () => [0, 0, 0, 255]).flat()).toString('base64') }],
+    layers: [{ name: 'Red', mask: { image: { kind: 'image', id: 'large-mask' }, x: 0, y: 0, outside: 255, enabled: true, inverted: false },
+      cels: [{ x: 0, y: 0, image: { kind: 'image', id: 'red' } }] }] };
+  const errors: string[] = []; page.on('pageerror', error => errors.push(String(error)));
+  await openFixture(page, fixture); const before = await documentNamed(page, fixture.name);
+  await command(page, 'image.spriteSize');
+  const resize = page.getByRole('dialog', { name: 'Scale image', exact: true });
+  await resize.getByRole('checkbox', { name: 'Keep proportions', exact: true }).uncheck();
+  await resize.getByRole('spinbutton').nth(0).fill('4096'); await resize.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(resize.getByRole('alert')).toHaveText('Resize would exceed mask limits (4096 pixels per side). Reduce the scale or replace the mask.');
+  await resize.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await command(page, 'file.save'); await expect.poll(() => documentNamed(page, fixture.name)).toEqual(before); expect(errors).toEqual([]);
+  let dialog = await maskDialog(page); await dialog.getByRole('button', { name: 'Edit mask', exact: true }).click();
+  await command(page, 'layer.new');
+  await expect(page.getByTestId('mask-channel')).toHaveText('Color channel'); await page.getByTestId('mask-channel').click();
+  await page.keyboard.press('b'); const box = await page.getByTestId('sprite-canvas').boundingBox();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2); await command(page, 'file.save');
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any).layers[1]?.cels[0] ?? null).not.toBeNull(); expect(errors).toEqual([]);
 });
