@@ -12,6 +12,7 @@ import { Dialog, openDialog } from "~/ui/Dialog";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useState, type FC } from "react";
 import styled from "styled-components";
+import { VirtualList } from "~/ui/VirtualList";
 
 const List = styled.div`
   display: flex;
@@ -25,6 +26,7 @@ const List = styled.div`
 
 const Item = styled.button`
   display: flex;
+  width: 100%;
   gap: 6px;
   align-items: baseline;
   padding: 3px 6px;
@@ -74,13 +76,13 @@ const ProblemsWindow: FC<{ close: () => void; }> = ({ close }) => {
       }}>{t('problems.checkAgain')}</Button>}>
       <List>
         {!all.length && <Muted style={{ padding: 8 }}>{busy ? t('problems.checking') : t('problems.none')}</Muted>}
-        {all.map((p, i) => (
+        <VirtualList measurementKey={`${state.ui.font}:${state.prefs.uiFont}`} items={all} itemKey={(_, i) => i} estimate={state.ui.row} maxHeight="50vh" render={(p, i) => (
           <Item key={i} type="button" data-severity={p.severity} title={t(`problems.severity.${p.severity}`)} onClick={() => reveal(p)}>
             <b>{MARK[p.severity]}</b>
             <span style={{ flex: '1 1 auto' }}>{p.message}</span>
             <Muted>{host?.label(p.ext, host.installed.value.find(e => e.manifest.id === p.ext)?.manifest.name) || p.ext}</Muted>
           </Item>
-        ))}
+        )} />
       </List>
     </Dialog>
   );

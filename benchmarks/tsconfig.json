@@ -26,6 +26,7 @@
   "exclude": [
     "runner.ts",
     "vite.config.ts",
-    "compare.ts"
+    "compare.ts",
+    "virtualization-check.ts"
   ]
 }

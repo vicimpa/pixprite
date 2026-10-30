@@ -9,6 +9,7 @@
   "include": [
     "runner.ts",
     "scenarios.ts",
-    "compare.ts"
+    "compare.ts",
+    "virtualization-check.ts"
   ]
 }

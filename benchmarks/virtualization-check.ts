@@ -1,0 +1,142 @@
+/** bun benchmarks/virtualization-check.ts — optimized real-browser regression checks. */
+import { chromium, expect, type Page } from '@playwright/test';
+import { build } from 'vite';
+import { resolve, sep } from 'node:path';
+import { mkdir } from 'node:fs/promises';
+await build({ configFile: resolve(import.meta.dir, 'vite.config.ts'), logLevel: 'warn' });
+const root = resolve(import.meta.dir, '../.benchmark-dist');
+const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
+  const path = resolve(root, '.' + new URL(request.url).pathname);
+  if (!path.startsWith(root + sep)) return new Response('', { status: 403 });
+  const file = Bun.file(path);
+  return file.exists().then(exists => exists ? new Response(file) : new Response('Not found', { status: 404 }));
+} });
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
+const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+const api = (method: string, ...args: unknown[]) => page.evaluate(([method, args]) => (window as any).virtualization[method](...args), [method, args] as const);
+async function scroll(selector: string, left: number, top: number) {
+  await expect.poll(() => page.locator(selector).first().evaluate((el, [left, top]) => {
+    let holder = el.parentElement!;
+    while (holder && !['auto', 'scroll'].includes(getComputedStyle(holder).overflowY)) holder = holder.parentElement!;
+    if (!holder) return false;
+    holder.scrollTo(left, top); return true;
+  }, [left, top])).toBe(true);
+  await page.waitForTimeout(80);
+}
+async function count(selector: string, max: number) {
+  const n = await page.locator(selector).count(); if (n <= 0 || n > max) throw new Error(`${selector}: ${n}, expected 1..${max}`);
+}
+try {
+  await page.addInitScript(() => localStorage.setItem('pixprite:prefs', JSON.stringify({ language: 'en', autosave: false })));
+  await page.goto(`http://127.0.0.1:${server.port}/benchmarks/virtualization.html`);
+  await page.getByRole('button', { name: 'Custom size…', exact: true }).waitFor();
+  await mkdir('benchmark-results/virtualization', { recursive: true });
+  await api('timeline');
+  await expect(page.locator('[data-hit=cel]').first()).toBeVisible();
+  await count('[data-hit=cel]', 1200);
+  await api('select', 0, 999);
+  await expect(page.locator('[data-hit=cel][data-l="0"][data-f="999"]')).toBeVisible();
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(() => api('selection')).toMatchObject({ layer: 0, frame: 998 });
+  await scroll('[data-hit=cel]', 6000, 1000);
+  const cel = page.locator('[data-hit=cel]').filter({ visible: true }).nth(15);
+  const picked = await cel.evaluate(e => ({ layer: Number((e as HTMLElement).dataset.l), frame: Number((e as HTMLElement).dataset.f) }));
+  await cel.click(); await expect.poll(() => api('selection')).toMatchObject(picked);
+  await count('[data-hit=cel]', 1200);
+  await api('select', 99, 401);
+  await scroll('[data-hit=cel]', 390 * 24, 0);
+  const from = page.locator('[data-hit=frame][data-f="401"]'), to = page.locator('[data-hit=frame][data-f="404"]');
+  await from.click();
+  const a = await from.boundingBox(), b = await to.boundingBox();
+  if (!a || !b) throw new Error('Missing virtual frame headers');
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 4, b.y + b.height / 2, { steps: 5 }); await page.mouse.up();
+  await expect.poll(() => api('frames')).toEqual([80, 100, 110, 90, 120]);
+  await page.screenshot({ path: 'benchmark-results/virtualization/timeline.png' });
+  await api('fold', true);
+  await expect(page.locator('[data-hit=layer][data-l="98"]')).toHaveCount(0);
+  await expect(page.locator('[data-hit=layer][data-l="89"]')).toBeVisible();
+  await api('fold', false);
+  await expect(page.locator('[data-hit=layer][data-l="98"]')).toBeVisible();
+  // The palette's original indices survive scrolling and resizing.
+  await scroll('[data-i]', 0, 100000);
+  await count('[data-i]', 1500);
+  const swatch = page.locator('[data-i="9999"]'); await swatch.click();
+  await expect.poll(() => api('selection')).toMatchObject({ palette: [9999] });
+  await page.locator('[data-i="9995"]').click({ modifiers: ['Shift'] });
+  await expect.poll(() => api('selection')).toMatchObject({ palette: [9995, 9996, 9997, 9998, 9999] });
+  await page.locator('[data-i="9998"]').click({ modifiers: ['Meta'] });
+  await expect.poll(() => api('selection')).toMatchObject({ palette: [9995, 9996, 9997, 9999] });
+  await api('size'); await page.setViewportSize({ width: 1400, height: 1000 });
+  await count('[data-hit=cel]', 1500);
+  await api('history');
+  const history = page.getByRole('dialog', { name: 'History', exact: true });
+  await history.waitFor();
+  await count('[data-virtual-index]', 50);
+  await scroll('[data-virtual-index]', 0, 0);
+  await page.getByText('Rename 2', { exact: true }).click();
+  await expect.poll(() => api('step')).toBe(3);
+  await page.getByText('Rename 2', { exact: true }).focus();
+  await page.keyboard.press('End');
+  await expect(page.getByText('Rename 999', { exact: true })).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(page.getByText('Opened', { exact: true })).toBeFocused();
+  await history.getByRole('button', { name: 'Close', exact: true }).click();
+  await api('timeline'); await api('problems');
+  const problems = page.getByRole('dialog', { name: 'Problems', exact: true }); await problems.waitFor();
+  await count('[data-severity]', 40);
+  await scroll('[data-severity]', 0, 2000000);
+  await expect(page.getByText(/^Problem 9999:/)).toBeVisible();
+  await page.getByText(/^Problem 9999:/).click();
+  await expect.poll(() => api('selection')).toMatchObject({ frame: 999 });
+  await problems.getByRole('button', { name: 'Close', exact: true }).click();
+  await api('tiles');
+  const tiles = page.locator('canvas[aria-label="Tiles"]');
+  await expect(tiles).toBeVisible();
+  await tiles.evaluate(el => {
+    const canvas = el as HTMLCanvasElement; const holder = canvas.parentElement!.parentElement!;
+    if (canvas.height > holder.clientHeight + 26 * 6) throw new Error('Full tileset canvas allocated');
+    holder.scrollTop = holder.scrollHeight;
+  });
+  await page.waitForTimeout(80);
+  const geometry = await tiles.evaluate(el => {
+    const canvas = el as HTMLCanvasElement, holder = canvas.parentElement!.parentElement!;
+    if (canvas.height > holder.clientHeight + 26 * 6) throw new Error('Scrolled tileset canvas allocated');
+    const cols = canvas.width / 26, row = Math.floor(9999 / cols), r = holder.getBoundingClientRect();
+    return { x: r.left + (9999 % cols) * 26 + 13, y: r.top + row * 26 - holder.scrollTop + 13 };
+  });
+  await page.mouse.click(geometry.x, geometry.y);
+  await expect.poll(() => api('selection')).toMatchObject({ tile: 9999 });
+  const before = await api('tilePixel', 9999);
+  const previous = await tiles.evaluate(el => {
+    const canvas = el as HTMLCanvasElement, holder = canvas.parentElement!.parentElement!, cols = canvas.width / 26;
+    const r = holder.getBoundingClientRect(); return { x: r.left + (9998 % cols) * 26 + 13, y: r.top + Math.floor(9998 / cols) * 26 - holder.scrollTop + 13 };
+  });
+  await page.mouse.move(geometry.x, geometry.y); await page.mouse.down();
+  await page.mouse.move(previous.x, previous.y, { steps: 5 }); await page.mouse.up();
+  await expect.poll(() => api('tilePixel', 9998)).toBe(before);
+  await api('home');
+  await expect(page.locator('[data-key]').first()).toBeVisible();
+  await count('[data-key]', 50);
+  await scroll('[data-key]', 0, 2000000);
+  await expect(page.locator('[data-key="p:p0"]')).toBeVisible();
+  await count('[data-key]', 50);
+  await page.locator('[data-key="p:p0"]').click({ modifiers: ['Meta'] });
+  await expect(page.locator('[data-key="p:p0"]')).toHaveAttribute('data-selected', 'true');
+  await page.locator('[data-key="p:p0"]').focus();
+  await page.keyboard.press('Home');
+  await expect(page.locator('[data-key="f:f999"]')).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(page.locator('[data-key="p:p0"]')).toBeFocused();
+  await page.screenshot({ path: 'benchmark-results/virtualization/home.png' });
+  await api('snapshots');
+  const snapshots = page.getByRole('dialog', { name: 'Snapshots of "Fixture"', exact: true }); await snapshots.waitFor();
+  await count('[data-virtual-index]', 50);
+  await scroll('[role=dialog] [data-virtual-index]', 0, 2000000);
+  await expect(snapshots.locator('[title^="Snapshot 0 ·"]')).toBeVisible();
+  await snapshots.locator('[title^="Snapshot 0 ·"]').getByRole('button', { name: 'Restore' }).click();
+  await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  expect(errors).toEqual([]);
+  console.log('Virtualization browser checks passed: 1000×100 timeline, 1000 history/snapshots, 2000 explorer cards, 10000 palette/tiles/problems; scrolled original-index selection, resize and restore.');
+} finally { await browser.close(); server.stop(true); }

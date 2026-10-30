@@ -8,6 +8,8 @@ import { openContextMenu } from "~/ui/Menu";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef, type FC } from "react";
 import styled from "styled-components";
+import { useViewport } from "~/ui/useViewport";
+import { visibleRange } from "~/ui/virtualGeometry";
 
 const Box = styled.div`
   display: flex;
@@ -50,15 +52,19 @@ export const TilesPanel: FC = () => {
   const ts = sprite.tileset;
   const ref = useRef<HTMLCanvasElement>(null);
   const holder = useRef<HTMLDivElement>(null);
-  const cols = Math.max(1, Math.floor(((holder.current?.clientWidth ?? 200) - 4) / CELL));
+  const viewport = useViewport(holder);
+  const cols = Math.max(1, Math.floor((viewport.width - 4) / CELL));
+  const rows = Math.ceil((ts?.tiles.length ?? 0) / cols);
+  const window = visibleRange(rows, CELL, viewport.top, viewport.height);
+  const first = window.start * cols, last = Math.min(ts?.tiles.length ?? 0, window.end * cols);
   void sprite.version;
 
   useEffect(() => {
     const can = ref.current;
     if (!can || !ts) return;
-    const rows = Math.ceil(ts.tiles.length / cols);
+
     can.width = cols * CELL;
-    can.height = rows * CELL;
+    can.height = (window.end - window.start) * CELL;
     const ctx = can.getContext('2d')!;
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, can.width, can.height);
@@ -68,8 +74,9 @@ export const TilesPanel: FC = () => {
     const danger = getComputedStyle(document.documentElement).getPropertyValue('--danger').trim() || '#e2574c';
     ctx.font = '8px sans-serif';
     ctx.textAlign = 'right';
-    ts.tiles.forEach((tile, i) => {
-      const x = (i % cols) * CELL, y = Math.floor(i / cols) * CELL;
+    for (let i = first; i < last; i++) {
+      const tile = ts.tiles[i];
+      const x = (i % cols) * CELL, y = (Math.floor(i / cols) - window.start) * CELL;
       ctx.fillStyle = (Math.floor(i / cols) + i % cols) % 2 ? state.prefs.checkerA : state.prefs.checkerB;
       ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
       tctx.putImageData(new ImageData(new Uint8ClampedArray(tile.slice().buffer), ts.tw, ts.th), 0, 0);
@@ -94,22 +101,21 @@ export const TilesPanel: FC = () => {
         ctx.strokeRect(x + 1, y + 1, CELL - 2, CELL - 2);
         ctx.lineWidth = 1;
       }
-    });
+    }
   });
 
   if (!ts) return null;
   /** Tile index under a pointer, or -1 */
   const at = (e: { clientX: number; clientY: number; }) => {
-    const r = ref.current!.getBoundingClientRect();
-    const x = e.clientX - r.left, y = e.clientY - r.top;
-    if (x < 0 || y < 0 || x >= r.width || y >= r.height) return -1;
+    const el = holder.current!, r = el.getBoundingClientRect();
+    const x = e.clientX - r.left + el.scrollLeft, y = e.clientY - r.top + el.scrollTop;
+    if (e.clientX < r.left || e.clientY < r.top || e.clientX >= r.left + el.clientWidth || e.clientY >= r.top + el.clientHeight || x >= cols * CELL) return -1;
     const i = Math.floor(y / CELL) * cols + Math.floor(x / CELL);
     return i < ts.tiles.length ? i : -1;
   };
   const pick = (e: React.MouseEvent<HTMLCanvasElement>, secondary: boolean) => {
     e.preventDefault();
-    const r = e.currentTarget.getBoundingClientRect();
-    const i = Math.floor((e.clientY - r.top) / CELL) * cols + Math.floor((e.clientX - r.left) / CELL);
+    const i = at(e);
     if (i < 0 || i >= ts.tiles.length) return;
     // Picking keeps the flips set for that button
     if (secondary) state.tileB = (i | flagsOf(state.tileB)) >>> 0; else state.tileA = (i | flagsOf(state.tileA)) >>> 0;
@@ -148,7 +154,8 @@ export const TilesPanel: FC = () => {
         <Button $active={!!(state.tileA & FLIP_D)} title={t('tiles.turnTheLeftButton')} onClick={() => { state.tileA = rotateRef(state.tileA); }} disabled={ts.tw !== ts.th}>⟳</Button>
       </Bar>
       <Grid ref={holder}>
-        <canvas ref={ref} style={{ display: 'block', cursor: 'pointer' }}
+        <div style={{ position: 'relative', height: rows * CELL, width: cols * CELL }}>
+        <canvas ref={ref} aria-label={t('common.tiles')} style={{ display: 'block', cursor: 'pointer', position: 'absolute', top: window.start * CELL }}
           onPointerDown={e => {
             // Dragging a tile to another slot reorders the tileset
             if (e.button !== 0) return;
@@ -172,6 +179,7 @@ export const TilesPanel: FC = () => {
               { label: t('tiles.deleteTile'), disabled: i === 0, run: () => { sprite.deleteTiles([i]); state.save(); } },
             ], e.clientX, e.clientY);
           }} />
+        </div>
       </Grid>
     </Box>
   );

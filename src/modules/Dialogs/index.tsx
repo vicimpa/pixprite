@@ -1,3 +1,4 @@
+import { VirtualList } from "~/ui/VirtualList";
 import { ColorInput as ColorField } from "~/ui/ColorInput";
 import { Color } from "~/core/Color";
 import { COMMANDS, commandLabel } from "~/core/Commands";
@@ -742,16 +743,6 @@ const ImportSheet: FC<{ close: () => void; file?: File; data?: File; }> = ({ clo
   );
 };
 
-const HistoryList = styled.div`
-  display: flex;
-  flex-direction: column;
-  max-height: 320px;
-  min-width: 220px;
-  overflow-y: auto;
-  border: 1px solid var(--b1);
-  background: var(--field);
-`;
-
 const HistoryItem = styled.div`
   padding: 2px 6px;
   cursor: pointer;
@@ -768,18 +759,11 @@ const History: FC<{ close: () => void; }> = ({ close }) => {
   const future = sprite.future;
   return (
     <Dialog title={t('dialog.history.title')} onClose={close} cancelLabel={t('common.close')}>
-      <HistoryList>
-        {steps.map((label, i) => (
-          <HistoryItem key={i} data-current={i === steps.length - 1} onClick={() => { sprite.goToStep(i); state.save(); }}>
-            {label}
-          </HistoryItem>
-        ))}
-        {future.map((label, i) => (
-          <HistoryItem key={'f' + i} data-future onClick={() => { sprite.goToStep(steps.length + i); state.save(); }}>
-            {label}
-          </HistoryItem>
-        ))}
-      </HistoryList>
+      <VirtualList measurementKey={`${state.ui.font}:${state.prefs.uiFont}`} items={[...steps, ...future]} itemKey={(_, i) => i} estimate={state.ui.row} maxHeight={320}
+        current={steps.length - 1} style={{ minWidth: 220, border: '1px solid var(--b1)', background: 'var(--field)' }}
+        render={(label, i) => <HistoryItem tabIndex={0} role="button" data-current={i === steps.length - 1} data-future={i >= steps.length}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sprite.goToStep(i); state.save(); } }}
+          onClick={() => { sprite.goToStep(i); state.save(); }}>{label}</HistoryItem>} />
       <Muted>{t('dialog.history.nSteps', { n: sprite.history.length + future.length })} · {t('dialog.history.memory')}: {(sprite.historyBytes() / (1 << 20)).toFixed(1)} MB</Muted>
       <NumberField label={t('dialog.history.keepSteps')} value={String(state.prefs.historySteps ?? 256)} min={1} max={10000}
         onChange={v => state.setPrefs({ historySteps: Math.max(1, Math.round(+v) || 1) })} />

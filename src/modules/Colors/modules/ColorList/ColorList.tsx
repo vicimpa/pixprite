@@ -11,6 +11,8 @@ import { paletteDialogs } from "~/modules/Dialogs/Palette";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useRef, useState, type FC, type PointerEvent } from "react";
 import * as styled from "./styled";
+import { useViewport } from "~/ui/useViewport";
+import { indices, visibleRange } from "~/ui/virtualGeometry";
 
 const SORTS: [SortKey, string][] = [
   ['hue', 'common.hue'], ['saturation', 'common.saturation'], ['lightness', 'common.lightness'], ['luminance', 'colors.luminance'],
@@ -106,6 +108,11 @@ export const ColorList: FC = () => {
   const { palette, paletteSelection: sel } = state;
   const a = state.colorA.toHexString(false), b = state.colorB.toHexString(false);
   const box = state.layout.paletteBox;
+  const viewport = useViewport(ref);
+  const columns = Math.max(1, Math.floor((viewport.width - 5) / (box + 1)));
+  const rows = Math.ceil(palette.length / columns);
+  const window = visibleRange(rows, box + 1, viewport.top, viewport.height);
+  const entries = indices({ start: window.start * columns, end: Math.min(palette.length, window.end * columns) });
 
   const indexAt = (x: number, y: number) => {
     const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-i]');
@@ -194,7 +201,7 @@ export const ColorList: FC = () => {
         </styled.Bar>
         <styled.List
           ref={ref}
-          style={{ gridTemplateColumns: `repeat(auto-fill, ${box}px)`, gridAutoRows: `${box}px` }}
+          style={{ position: 'relative', display: 'block', padding: 0 }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -205,19 +212,21 @@ export const ColorList: FC = () => {
             state.setLayout({ paletteBox: Math.max(8, Math.min(40, box + (e.deltaY < 0 ? 2 : -2))) });
           }}
         >
-          {palette.map((hex, i) => (
+          <div style={{ height: rows * (box + 1) + 5, position: 'relative' }}>
+          {entries.map(i => { const hex = palette[i]; return (
             <styled.Swatch
               key={i}
               data-i={i}
               data-selected={sel.includes(i)}
               data-drop={drag?.mode === 'move' && drag.target === i}
-              style={{ backgroundColor: hex }}
+              style={{ backgroundColor: hex, position: 'absolute', left: 3 + (i % columns) * (box + 1), top: 3 + Math.floor(i / columns) * (box + 1), width: box, height: box }}
             >
               {hex.slice(0, 7).toLowerCase() === a.toLowerCase() && <styled.MarkA />}
               {hex.slice(0, 7).toLowerCase() === b.toLowerCase() && <styled.MarkB />}
               {state.sprite.colorMode === 'indexed' && state.sprite.transparentIndex === i && <styled.MarkT title={t('colors.transparentEntry')} />}
             </styled.Swatch>
-          ))}
+          ); })}
+          </div>
         </styled.List>
         <RecentStrip />
       </styled.Root>

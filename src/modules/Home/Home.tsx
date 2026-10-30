@@ -20,8 +20,10 @@ import { editProjectInfo } from "~/modules/ProjectInfo";
 import { askChoice, askConfirm, askText, Dialog, hasDialogs, openDialog } from "~/ui/Dialog";
 import { openContextMenu, type MenuItems } from "~/ui/Menu";
 import { useSignals } from "@preact/signals-react/runtime";
-import { useEffect, useRef, useState, type FC } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FC } from "react";
 import styled from "styled-components";
+import { useViewport } from "~/ui/useViewport";
+import { visibleRange } from "~/ui/virtualGeometry";
 
 const Page = styled.div`
   position: absolute;
@@ -363,6 +365,8 @@ export const Home: FC = () => {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>(loadSort);
   /** Selected items by key ('f:id' / 'p:id'), and where a Shift range starts */
+  const pendingFocus = useRef<{ key: string; backward: boolean } | null>(null);
+  const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const anchor = useRef<string | null>(null);
   /** Drop target under dragged items: folder id, '' for the root */
@@ -372,6 +376,9 @@ export const Home: FC = () => {
   /** An item to scroll to once its folder is shown */
   const [reveal, setReveal] = useState<string | null>(null);
   const grid = useRef<HTMLDivElement>(null);
+  const page = useRef<HTMLDivElement>(null);
+  const viewport = useViewport(page, grid);
+  const gridSize = useViewport(grid);
   /** A single click on a project waits a moment: a double click opens it instead of the preview */
   const clickTimer = useRef(0);
   void state.prefs.language;
@@ -409,6 +416,29 @@ export const Home: FC = () => {
     ...shownFolders.map(f => ({ kind: 'folder' as const, id: f.id, name: f.name, parent: f.parentId })),
     ...shown.map(p => ({ kind: 'project' as const, id: p.id, name: p.name, parent: p.folderId ?? null })),
   ];
+  const columns = Math.max(1, Math.floor((gridSize.width + 10) / 160));
+  const cardWidth = Math.max(0, (gridSize.width - (columns - 1) * 10) / columns);
+  const rowHeight = cardWidth + (q ? 12 + 3 * state.ui.font * 1.2 : 8 + 2 * state.ui.font * 1.2);
+  const virtualRows = visibleRange(Math.ceil(items.length / columns), rowHeight + 10, viewport.top, viewport.height);
+  const first = virtualRows.start * columns, last = Math.min(items.length, virtualRows.end * columns);
+  const mounted = new Set(Array.from({ length: Math.max(0, last - first) }, (_, i) => first + i));
+  if (focusedKey) { const i = items.findIndex(item => keyOf(item) === focusedKey); if (i >= 0) mounted.add(i); }
+  const revealIndex = (i: number) => {
+    const el = page.current;
+    if (!el || i < 0) return;
+    const y = Math.floor(i / columns) * (rowHeight + 10);
+    const top = el.scrollTop - viewport.top;
+    if (y < viewport.top) el.scrollTop = top + y;
+    else if (y + rowHeight > viewport.top + viewport.height) el.scrollTop = top + y + rowHeight - viewport.height;
+  };
+  useLayoutEffect(() => {
+    const pending = pendingFocus.current;
+    if (!pending) return;
+    const card = grid.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(pending.key)}"]`);
+    const stops = card?.querySelectorAll<HTMLElement>('button, [tabindex]');
+    const target = pending.backward && stops?.length ? stops[stops.length - 1] : card;
+    if (target) { pendingFocus.current = null; target.focus({ preventScroll: true }); }
+  });
   const picked = items.filter(i => selected.has(keyOf(i)));
   const where = (id: string | null | undefined) => '/ ' + folderPath(folders, id).map(f => f.name).join(' / ');
   const count = (id: string) => folders.filter(f => f.parentId === id).length + (projects ?? []).filter(p => p.folderId === id).length;
@@ -416,6 +446,7 @@ export const Home: FC = () => {
   // Once the folder of a revealed item is on screen, bring the item into view
   useEffect(() => {
     if (!reveal) return;
+    revealIndex(items.findIndex(i => keyOf(i) === reveal));
     const el = grid.current?.querySelector(`[data-key="${CSS.escape(reveal)}"]`);
     if (!el) return;
     el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -570,9 +601,10 @@ export const Home: FC = () => {
       const r = { left: Math.min(x0, ev.clientX), right: Math.max(x0, ev.clientX), top: Math.min(y0, ev.clientY), bottom: Math.max(y0, ev.clientY) };
       setBand({ x0, y0, x1: ev.clientX, y1: ev.clientY });
       const next = new Set(base);
-      grid.current?.querySelectorAll<HTMLElement>('[data-key]').forEach(card => {
-        const c = card.getBoundingClientRect();
-        if (c.left < r.right && c.right > r.left && c.top < r.bottom && c.bottom > r.top) next.add(card.dataset.key!);
+      const bounds = grid.current?.getBoundingClientRect();
+      if (bounds) items.forEach((item, i) => {
+        const left = bounds.left + (i % columns) * (cardWidth + 10), top = bounds.top + Math.floor(i / columns) * (rowHeight + 10);
+        if (left < r.right && left + cardWidth > r.left && top < r.bottom && top + rowHeight > r.top) next.add(keyOf(item));
       });
       setSelected(next);
     };
@@ -616,6 +648,8 @@ export const Home: FC = () => {
   /** Shared by folder and project cards: selection look, dragging, the key for the rubber band */
   const cardProps = (item: Item) => ({
     tabIndex: 0,
+    style: { gridColumn: items.findIndex(i => keyOf(i) === keyOf(item)) % columns + 1,
+      gridRow: Math.floor(items.findIndex(i => keyOf(i) === keyOf(item)) / columns) + 1 },
     draggable: true,
     'data-key': keyOf(item),
     'data-selected': selected.has(keyOf(item)),
@@ -660,7 +694,7 @@ export const Home: FC = () => {
   const shortcut = (id: string) => prettyCombo(cmd(id).keys?.[0]);
 
   return (
-    <Page>
+    <Page ref={page}>
       <Inner>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Card>
@@ -742,8 +776,23 @@ export const Home: FC = () => {
           {loaded && !projects.length && !folders.length && <Card><Note>{t('home.noProjectsYet')}</Note></Card>}
           {loaded && !q && !items.length && (projects.length || folders.length) ? <Muted>{t('home.thisFolderIsEmpty')}</Muted> : null}
           {q && !items.length && <Muted>{t('common.nothingFound')}</Muted>}
-          <Grid ref={grid}>
-            {shownFolders.map(f => {
+          <Grid ref={grid} style={{ height: Math.max(0, Math.ceil(items.length / columns) * (rowHeight + 10) - 10),
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gridTemplateRows: `repeat(${Math.ceil(items.length / columns)}, ${rowHeight}px)` }}
+            onFocusCapture={e => setFocusedKey((e.target as HTMLElement).closest<HTMLElement>('[data-key]')?.dataset.key ?? null)}
+            onBlurCapture={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusedKey(null); }}
+            onKeyDown={e => {
+              const card = (e.target as HTMLElement).closest<HTMLElement>('[data-key]');
+              const stops = card ? [card, ...card.querySelectorAll<HTMLElement>('button, [tabindex]')] : [];
+              const tabEdge = e.key === 'Tab' && e.target === (e.shiftKey ? stops[0] : stops.at(-1));
+              const key = (e.target as HTMLElement).closest<HTMLElement>('[data-key]')?.dataset.key;
+              const i = items.findIndex(item => keyOf(item) === key);
+              const next = tabEdge ? i + (e.shiftKey ? -1 : 1) : e.key === 'ArrowDown' ? i + columns : e.key === 'ArrowUp' ? i - columns : e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : -1;
+              if (i < 0 || next < 0 || next >= items.length) return;
+              e.preventDefault();
+              pendingFocus.current = { key: keyOf(items[next]), backward: tabEdge && e.shiftKey };
+              setFocusedKey(keyOf(items[next])); revealIndex(next);
+            }}>
+            {shownFolders.filter((_, i) => mounted.has(i)).map(f => {
               const item: Item = { kind: 'folder', id: f.id, name: f.name, parent: f.parentId };
               return (
                 <Project
@@ -762,7 +811,7 @@ export const Home: FC = () => {
                 </Project>
               );
             })}
-            {shown.map(p => {
+            {shown.filter((_, i) => mounted.has(i + shownFolders.length)).map(p => {
               const item: Item = { kind: 'project', id: p.id, name: p.name, parent: p.folderId ?? null };
               return (
                 <Project

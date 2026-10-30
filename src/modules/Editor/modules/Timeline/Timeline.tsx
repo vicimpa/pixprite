@@ -11,6 +11,8 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useLayoutEffect, useRef, useState, type FC, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import * as styled from "./styled";
+import { useViewport } from "~/ui/useViewport";
+import { indices, visibleRange } from "~/ui/virtualGeometry";
 
 type Hit =
   | { kind: 'frame'; f: number; }
@@ -190,6 +192,7 @@ export const Timeline: FC = () => {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [popup, setPopup] = useState<{ kind: 'onion' | 'play'; x: number; y: number; } | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
+  const viewport = useViewport(scroll);
   const cell = ui.cell;
   const nameWidth = 160;
   // Topmost first; layers inside folded groups are left out
@@ -203,6 +206,8 @@ export const Timeline: FC = () => {
   const r = sprite.range;
   const total = sprite.frames.reduce((a, f) => a + f.duration, 0);
   const headTop = rows.length * cell;
+  const frames = indices(visibleRange(sprite.frames.length, cell, viewport.left, viewport.width - cell * 3 - nameWidth));
+  const layerRows = indices(visibleRange(order.length, cell, viewport.top, viewport.height - headTop - cell));
 
   // Keep the current frame in view horizontally (also while playing)
   useLayoutEffect(() => {
@@ -212,7 +217,7 @@ export const Timeline: FC = () => {
     const x = left + sprite.frame * cell;
     if (x < el.scrollLeft + left) el.scrollLeft = x - left;
     else if (x + cell > el.scrollLeft + el.clientWidth) el.scrollLeft = x + cell - el.clientWidth;
-  }, [sprite.frame, sprite.frames.length]);
+  }, [sprite.frame, sprite.frames.length, cell, viewport.width]);
 
   // ...and the current layer vertically, only when the layer changes (playback leaves rows alone)
   useLayoutEffect(() => {
@@ -222,7 +227,7 @@ export const Timeline: FC = () => {
     const y = order.indexOf(sprite.layer) * cell;
     if (y < el.scrollTop) el.scrollTop = y;
     else if (y + cell + top > el.scrollTop + el.clientHeight) el.scrollTop = y + cell + top - el.clientHeight;
-  }, [sprite.layer, sprite.layers.length]);
+  }, [sprite.layer, sprite.layers.length, cell, headTop, viewport.height, order.join(",")]);
 
   const pick = (h: Hit) => {
     sprite.dropFloating();
@@ -417,12 +422,13 @@ export const Timeline: FC = () => {
         }}
       >
         <styled.Grid style={{
+          gridTemplateRows: `repeat(${rows.length + 1 + order.length}, ${cell}px)`,
           gridTemplateColumns: `${cell}px ${cell}px ${cell}px ${nameWidth}px repeat(${sprite.frames.length}, ${cell}px) 1fr`,
         }}>
           {rows.map((row, ri) => (
             <div key={'tags' + ri} className="contents">
               <styled.Corner style={{ gridRow: ri + 1, gridColumn: '1 / 5', top: ri * cell }} />
-              {row.map(i => {
+              {row.filter(i => sprite.tags[i].from < frames.at(-1)! + 1 && Math.max(sprite.tags[i].to, sprite.tags[i].from + Math.ceil((sprite.tags[i].name.length * 7 + 14) / cell) - 1) >= (frames[0] ?? 0)).map(i => {
                 const tag = sprite.tags[i];
                 return (
                   <styled.TagCell key={i} style={{ gridColumn: `${tag.from + 5} / ${tag.to + 6}`, gridRow: ri + 1, top: ri * cell }}>
@@ -504,7 +510,8 @@ export const Timeline: FC = () => {
           <styled.Corner style={{ gridRow: rows.length + 1, gridColumn: 4, top: headTop, left: cell * 3, justifyContent: 'flex-start', padding: '0 6px', cursor: 'default' }}>
             <Muted>{t('common.layers')}</Muted>
           </styled.Corner>
-          {sprite.frames.map((frame, f) => {
+          {frames.map(f => {
+            const frame = sprite.frames[f];
             const onionBand = state.onion && f !== sprite.frame && f >= sprite.frame - state.prefs.onionBefore && f <= sprite.frame + state.prefs.onionAfter;
             // Outer ends of the onion range can be dragged to change how many frames show
             const onionStart = Math.max(0, sprite.frame - state.prefs.onionBefore);
@@ -557,7 +564,8 @@ export const Timeline: FC = () => {
           <styled.HeadFill style={{ gridRow: rows.length + 1, gridColumn: sprite.frames.length + 5, top: headTop }} />
 
           {/* Layer rows, topmost first */}
-          {order.map((l, k) => {
+          {layerRows.map(k => {
+            const l = order[k];
             const layer = sprite.layers[l];
             const current = l === sprite.layer;
             // Explicit rows: auto-placement would otherwise fill gaps in the tag rows
@@ -591,7 +599,7 @@ export const Timeline: FC = () => {
                 <styled.LayerCell data-hit="layer" data-l={l} data-current={current} data-selected={layerSel} data-drop={drop} style={{ left: cell * 3, gridRow, gridColumn: 4 }}>
                   <LayerName index={l} />
                 </styled.LayerCell>
-                {sprite.frames.map((_, f) => {
+                {frames.map(f => {
                   const c = layer.cels[f];
                   if (layer.group) return (
                     <styled.Cel key={f} data-hit="cel" data-l={l} data-f={f} data-group

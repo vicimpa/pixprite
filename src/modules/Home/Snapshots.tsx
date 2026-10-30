@@ -7,20 +7,14 @@ import { Dialog, openDialog } from "~/ui/Dialog";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useState, type FC } from "react";
 import styled from "styled-components";
-
-const List = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 360px;
-  overflow-y: auto;
-`;
+import { VirtualList } from "~/ui/VirtualList";
 
 const Item = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 3px;
+  margin-bottom: 4px;
   background: var(--face);
   border: 1px solid var(--b1);
 
@@ -43,15 +37,13 @@ export const SnapshotList: FC<{ owner?: string; limit?: number; onRestore?: () =
   if (snaps === null) return <Muted>{t('home.loading')}</Muted>;
   if (!snaps.length) return <Muted>{t('home.noSnapshotsYet')}</Muted>;
   return (
-    <List>
-      {snaps.slice(0, limit).map(s => (
+    <VirtualList measurementKey={`${state.ui.font}:${state.prefs.uiFont}`} items={snaps.slice(0, limit)} itemKey={s => s.id} estimate={44} maxHeight={360} render={s => (
         <Item key={s.id} title={`${s.name} · ${s.width}×${s.height} · ${s.frames} ${t('common.framesLower')}`}>
           {s.thumb ? <img src={s.thumb} alt="" /> : null}
           <div>{s.name}<br /><Muted>{new Date(s.time).toLocaleString()}{s.bytes !== undefined ? ` · ${formatBytes(s.bytes)}` : ''}</Muted></div>
           <Button onClick={() => { void state.openSnapshot(s.id); onRestore?.(); }}>{t('home.restore')}</Button>
         </Item>
-      ))}
-    </List>
+      )} />
   );
 };
 
