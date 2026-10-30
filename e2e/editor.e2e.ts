@@ -66,26 +66,30 @@ async function draw(page: Page, offset = 0) {
   await expect.poll(async () => {
     const document = await documentNamed(page, name);
     if (!document) return null;
-    // These drawing fixtures are plain pixel layers; decode persisted payloads independently of the editor.
-    return page.evaluate(({ document, frame }: { document: any; frame: number }) => {
-      const canvas = new OffscreenCanvas(document.width, document.height), ctx = canvas.getContext('2d')!;
-      for (const layer of document.layers) {
-        if (layer.visible === false) continue;
-        let cel = layer.cels[frame];
-        while (cel && 'link' in cel) cel = layer.cels[cel.link];
-        if (!cel) continue;
-        if (cel.flipX || cel.flipY || cel.rotation || cel.opacity !== undefined || layer.effects?.length || layer.group || layer.clip)
-          throw new Error('Draw helper requires plain layer fixtures');
-        const image = document.images.find((image: { id: string }) => image.id === cel.image.id);
-        const bytes = Uint8ClampedArray.from(atob(image.d), value => value.charCodeAt(0));
-        const source = new OffscreenCanvas(image.w, image.h);
-        source.getContext('2d')!.putImageData(new ImageData(bytes, image.w, image.h), 0, 0);
-        ctx.globalAlpha = (layer.opacity ?? 1) * (layer.celOpacity?.[frame] ?? 1);
-        ctx.drawImage(source, cel.x, cel.y);
-      }
-      return { width: canvas.width, height: canvas.height, data: Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data) };
-    }, { document, frame });
+    return documentPixels(page, document, frame);
   }).toEqual(expected);
+}
+
+/** Decode/composite plain drawing fixtures independently of the editor and stored manifest loader. */
+async function documentPixels(page: Page, document: DocumentData, frame = 0) {
+  return page.evaluate(({ document, frame }: { document: any; frame: number }) => {
+    const canvas = new OffscreenCanvas(document.width, document.height), ctx = canvas.getContext('2d')!;
+    for (const layer of document.layers) {
+      if (layer.visible === false) continue;
+      let cel = layer.cels[frame];
+      while (cel && 'link' in cel) cel = layer.cels[cel.link];
+      if (!cel) continue;
+      if (cel.flipX || cel.flipY || cel.rotation || cel.opacity !== undefined || layer.effects?.length || layer.group || layer.clip)
+        throw new Error('Draw helper requires plain layer fixtures');
+      const image = document.images.find((image: { id: string }) => image.id === cel.image.id);
+      const bytes = Uint8ClampedArray.from(atob(image.d), value => value.charCodeAt(0));
+      const source = new OffscreenCanvas(image.w, image.h);
+      source.getContext('2d')!.putImageData(new ImageData(bytes, image.w, image.h), 0, 0);
+      ctx.globalAlpha = (layer.opacity ?? 1) * (layer.celOpacity?.[frame] ?? 1);
+      ctx.drawImage(source, cel.x, cel.y);
+    }
+    return { width: canvas.width, height: canvas.height, data: Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data) };
+  }, { document, frame });
 }
 
 async function documentNamed(page: Page, name: string): Promise<DocumentData | null> {
@@ -758,4 +762,126 @@ test('incremental autosave reuses pixels and previews, coalesces bursts and canc
   await expect(page.locator('[data-hit=frame]')).toHaveCount(9);
   await expect(page.locator('[data-hit=layer]')).toHaveCount(2);
   expect(await documentNamed(page, 'Incremental')).toEqual(final);
+});
+
+async function observeQuietPreparation(page: Page, name: string) {
+  await page.evaluate(name => {
+    const monitor = (window as any).quiet = { prepares: 0, copies: 0, cancelled: 0, held: false, holdNext: true, starts: [] as string[], downs: 0, moves: 0, ups: 0 };
+    const clone = structuredClone;
+    window.structuredClone = function <T,>(value: T, options?: StructuredSerializeOptions): T {
+      if ((value as any)?.format === 'pixprite' && (value as any).name === name) monitor.copies++;
+      return options === undefined ? clone(value) : clone(value, options);
+    };
+    for (const type of ['pointerdown', 'pointermove', 'pointerup']) document.addEventListener(type, event => {
+      const pointer = event as PointerEvent;
+      if (!pointer.isTrusted || !(pointer.target as Element)?.closest('[data-testid="sprite-canvas"]')) return;
+      if (type === 'pointerdown') monitor.downs++;
+      else if (type === 'pointermove' && pointer.buttons === 1) monitor.moves++;
+      else if (type === 'pointerup') monitor.ups++;
+    }, true);
+    const NativeWorker = Worker;
+    class ObservedWorker extends NativeWorker {
+      private held = false;
+      override terminate() { if (this.held) monitor.cancelled++; super.terminate(); }
+      override set onmessage(handler: ((this: Worker, event: MessageEvent) => unknown) | null) {
+        super.onmessage = event => {
+          if (this.held && event.data.type !== 'progress') monitor.held = true;
+          else handler?.call(this, event);
+        };
+      }
+      override get onmessage() { return super.onmessage; }
+      override postMessage(message: any, options?: any) {
+        if (message.op === 'prepareDocument') {
+          monitor.prepares++; monitor.starts.push(message.args.raw.name);
+          if (monitor.holdNext) { this.held = true; monitor.holdNext = false; }
+        }
+        super.postMessage(message, options);
+      }
+    }
+    window.Worker = ObservedWorker;
+  }, name);
+}
+
+test('continuous trusted pencil mutations cancel on pointerdown and wait for quiet without repeated preparation or copies', async ({ page }) => {
+  await create(page, 'Quiet stroke');
+  await draw(page);
+  await command(page, 'file.save');
+  await expect(page.getByText('Saved: Quiet stroke', { exact: true })).toBeVisible();
+  await observeQuietPreparation(page, 'Quiet stroke');
+  await command(page, 'layer.new');
+  await expect.poll(() => page.evaluate(() => (window as any).quiet.held)).toBe(true);
+  expect(await page.evaluate(() => ({ prepares: (window as any).quiet.prepares, copies: (window as any).quiet.copies }))).toEqual({ prepares: 1, copies: 1 });
+  await page.keyboard.press('b');
+  const box = await page.getByTestId('sprite-canvas').boundingBox();
+  if (!box) throw new Error('Missing drawing surface');
+  const x = box.x + box.width / 2, y = box.y + box.height / 2;
+  await page.mouse.move(x - 120, y);
+  await page.mouse.down();
+  // The first mutation is pointerdown, before any move or pointerup/state.save().
+  expect(await page.evaluate(() => ({ cancelled: (window as any).quiet.cancelled, downs: (window as any).quiet.downs, moves: (window as any).quiet.moves, ups: (window as any).quiet.ups })))
+    .toEqual({ cancelled: 1, downs: 1, moves: 0, ups: 0 });
+  for (let i = 0; i < 200; i++) {
+    await page.mouse.move(x - 120 + i * 240 / 199, y + Math.sin(i / 8) * 40);
+    if (i % 40 === 39) expect(await page.evaluate(() => ({ prepares: (window as any).quiet.prepares, copies: (window as any).quiet.copies, ups: (window as any).quiet.ups })))
+      .toEqual({ prepares: 1, copies: 1, ups: 0 });
+  }
+  expect(await page.evaluate(() => (window as any).quiet.moves)).toBe(200);
+  // Keep the button down: only actual version mutations have stopped. No pointerup save is available.
+  await expect.poll(() => page.evaluate(() => (window as any).quiet.prepares)).toBe(2);
+  expect(await page.evaluate(() => (window as any).quiet.ups)).toBe(0);
+  await page.mouse.up();
+  const expected = await pngPixels(page, await download(page, 'file.exportPng'));
+  await expect.poll(async () => {
+    const stored = await documentNamed(page, 'Quiet stroke');
+    return stored ? documentPixels(page, stored) : null;
+  }).toEqual(expected);
+  expect(await page.evaluate(() => (window as any).quiet.prepares)).toBe(2);
+  await expect(page.getByText(/Could not save/)).toHaveCount(0);
+  const final = await documentNamed(page, 'Quiet stroke');
+  await page.reload();
+  await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(expected);
+  expect(await documentNamed(page, 'Quiet stroke')).toEqual(final);
+});
+
+test('closing a pending preparation disposes its watch and disabled autosave stays disabled after further strokes', async ({ page }) => {
+  await create(page, 'Closing quiet');
+  await draw(page);
+  await command(page, 'file.save');
+  await expect(page.getByText('Saved: Closing quiet', { exact: true })).toBeVisible();
+  await observeQuietPreparation(page, 'Closing quiet');
+  await command(page, 'layer.new');
+  await expect.poll(() => page.evaluate(() => (window as any).quiet.held)).toBe(true);
+  await page.locator('[draggable=true][data-active=true]').getByRole('button').click();
+  await page.getByRole('button', { name: "Don't save", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as any).quiet.cancelled)).toBe(1);
+  await expect(page.locator('[draggable=true]')).toHaveCount(0);
+  await command(page, 'edit.prefs');
+  const preferences = page.getByRole('dialog', { name: 'Preferences', exact: true });
+  await preferences.getByLabel('Keep work in the browser between sessions', { exact: true }).uncheck();
+  await preferences.getByRole('button', { name: 'Done', exact: true }).click();
+  await create(page, 'Manual quiet');
+  await command(page, 'file.save');
+  await expect(page.getByText('Saved: Manual quiet', { exact: true })).toBeVisible();
+  const before = await documentNamed(page, 'Manual quiet');
+  const prepares = await page.evaluate(() => (window as any).quiet.prepares);
+  const box = await page.getByTestId('sprite-canvas').boundingBox();
+  if (!box) throw new Error('Missing drawing surface');
+  await page.keyboard.press('b');
+  await page.mouse.move(box.x + box.width / 2 - 100, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2 + 40, { steps: 60 });
+  await page.mouse.up();
+  await page.waitForTimeout(700); // Beyond both autosave and editor-state debounce deadlines.
+  expect(await page.evaluate(() => (window as any).quiet.prepares)).toBe(prepares);
+  expect(await documentNamed(page, 'Manual quiet')).toEqual(before);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pixprite:prefs')!).autosave)).toBe(false);
+  expect((await page.evaluate(() => (window as any).quiet.starts) as string[]).filter(name => name === 'Closing quiet')).toHaveLength(1);
+  await expect(page.locator('[draggable=true][data-active=true] [data-modified=true]')).toHaveCount(1);
+  await command(page, 'file.save');
+  await expect.poll(() => page.locator('[draggable=true][data-active=true] [data-modified=true]').count()).toBe(0);
+  const expected = await pngPixels(page, await download(page, 'file.exportPng'));
+  const stored = await documentNamed(page, 'Manual quiet');
+  expect(await documentPixels(page, stored!)).toEqual(expected);
+  await expect(page.getByText(/Could not save/)).toHaveCount(0);
 });

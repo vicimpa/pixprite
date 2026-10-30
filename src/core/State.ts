@@ -669,6 +669,24 @@ export class State {
   private cancelObsoletePreparations() {
     for (const [doc, job] of this.preparations) if (doc.version !== job.version || !this.docs.includes(doc)) job.controller.abort();
   }
+  /** Observe mutations only for the lifetime of a flush, including its quiet wait.
+   * Pencil moves touch version before pointerup calls save(); they must cancel/debounce too. */
+  private watchPersistenceChanges() {
+    let previous: Map<Sprite, number> | undefined;
+    return effect(() => {
+      const current = new Map(this.docs.map(doc => [doc, doc.version]));
+      untracked(() => {
+        if (previous) {
+          for (const [doc, version] of current) if (previous.get(doc) !== version) {
+            this.autosaveReadyAt = performance.now() + 300;
+            this.persistRequested = true;
+          }
+          this.cancelObsoletePreparations();
+        }
+        previous = current;
+      });
+    });
+  }
   private documentSaves = new WeakMap<Sprite, Promise<void>>();
   private failedSessions = new Set<string>();
 
@@ -701,6 +719,7 @@ export class State {
     this.cancelObsoletePreparations();
     if (!this.persistQueue) {
       this.persistQueue = (async () => {
+        const stopWatching = this.watchPersistenceChanges();
         try {
           // Calls during a flush request one latest pass, rather than enqueueing every edit.
           let again = false;
@@ -712,7 +731,7 @@ export class State {
             await this.persistEditors();
             again = true;
           }
-        } finally { this.persistQueue = null; }
+        } finally { stopWatching(); this.persistQueue = null; }
       })();
     }
     return this.persistQueue;

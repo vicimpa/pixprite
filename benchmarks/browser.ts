@@ -57,9 +57,9 @@ const activePreparations = () => workers.filter(w => w.op === 'prepareDocument' 
 
 let doc: Sprite;
 let autosaveFinished: Promise<void> | undefined;
-let pending: { start: number; overlap: boolean }[] = [];
-let latency: number[] = [], overlapLatency: number[] = [], renderTimes: number[] = [];
-let tracking = false, queued = false, eventCount = 0;
+let pending: { start: number; overlap: boolean; down: boolean }[] = [];
+let latency: number[] = [], overlapLatency: number[] = [], downLatency: number[] = [], overlapDownLatency: number[] = [], renderTimes: number[] = [];
+let tracking = false, queued = false, eventCount = 0, downCount = 0;
 let measureStart = 0;
 let editorBeforeHash = '';
 const drawImage = CanvasRenderingContext2D.prototype.drawImage;
@@ -74,8 +74,13 @@ CanvasRenderingContext2D.prototype.drawImage = function (...args: any[]) {
     const end = now(); renderTimes.push(end);
     for (const event of pending) {
       const value = end - event.start;
-      latency.push(value);
-      if (event.overlap) overlapLatency.push(value);
+      if (event.down) {
+        downLatency.push(value);
+        if (event.overlap) overlapDownLatency.push(value);
+      } else {
+        latency.push(value);
+        if (event.overlap) overlapLatency.push(value);
+      }
     }
     pending = [];
   });
@@ -83,7 +88,15 @@ CanvasRenderingContext2D.prototype.drawImage = function (...args: any[]) {
 document.addEventListener('pointermove', e => {
   if (!tracking || !e.isTrusted || !(e.buttons & 1) || !(e.target as Element)?.closest('[data-testid="sprite-canvas"]')) return;
   eventCount++;
-  pending.push({ start: e.timeStamp, overlap: activePreparations() > 0 });
+  pending.push({ start: e.timeStamp, overlap: activePreparations() > 0, down: false });
+}, true);
+
+// Observe before React paints the first pixel and cancels its obsolete autosave Worker.
+// Keep down samples separate: existing pointermove latency/FPS fields remain comparable.
+document.addEventListener('pointerdown', e => {
+  if (!tracking || !e.isTrusted || e.button !== 0 || !(e.target as Element)?.closest('[data-testid="sprite-canvas"]')) return;
+  downCount++;
+  pending.push({ start: e.timeStamp, overlap: activePreparations() > 0, down: true });
 }, true);
 
 async function clearStorage() {
@@ -158,7 +171,7 @@ async function installEditor(config: Scenario) {
   return { width: doc.width, height: doc.height, zoom: state.zoom, ox: state.offsetX, oy: state.offsetY };
 }
 function startTracking() {
-  latency = []; overlapLatency = []; renderTimes = []; pending = []; eventCount = 0;
+  latency = []; overlapLatency = []; downLatency = []; overlapDownLatency = []; renderTimes = []; pending = []; eventCount = 0; downCount = 0;
   measureStart = now(); tracking = true;
 }
 async function finishTracking(requireOverlap: boolean) {
@@ -169,11 +182,15 @@ async function finishTracking(requireOverlap: boolean) {
   assert(afterHash !== editorBeforeHash, 'Stroke did not change document pixels');
   const sample = { elapsedMs, renderedFrames: renderTimes.length, fps: renderTimes.length * 1000 / elapsedMs,
     inputLatencyMs: latency, autosaveInputLatencyMs: overlapLatency, trustedPointerMoves: eventCount,
+    autosaveMoveOverlapUnavailableReason: overlapLatency.length ? null : 'No trusted pointermove overlapped preparation; pointerdown may have cancelled the Worker',
+    pointerDownLatencyMs: downLatency, autosavePointerDownLatencyMs: overlapDownLatency, trustedPointerDowns: downCount,
+    renderedPointerDownSamples: downLatency.length,
     renderedInputSamples: latency.length, workerSpans: workers.slice(), history: retainedHistoryMemory.call(doc as unknown as SpriteContext),
     correctness: { beforeCompositeHash: editorBeforeHash, afterCompositeHash: afterHash, pixelsChanged: true } };
   assert(eventCount > 0 && latency.length === eventCount, 'Trusted pointer input did not reach a rendered editor frame');
   assert(doc.undoDepth > 0, 'Stroke did not create undo history');
-  if (requireOverlap) assert(overlapLatency.length > 0, 'No pointer input overlapped a real prepareDocument Worker');
+  assert(downCount > 0 && downLatency.length === downCount, 'Trusted pointerdown did not reach a rendered editor frame');
+  if (requireOverlap) assert(overlapLatency.length > 0 || overlapDownLatency.length > 0, 'No drawing pointerdown or pointermove overlapped a real prepareDocument Worker');
   return sample;
 }
 function scheduleAutosave() {

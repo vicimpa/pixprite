@@ -131,8 +131,9 @@ try {
         if (beforeChecksum.equals(afterChecksum)) throw new Error('Real editor did not visibly render the stroke');
         const memoryAfter = await memory(cdp), storageAfter = await storage(cdp);
         if (i >= 0) raw.push({ scenario: config.id, config, sample: i, ...measurement, memoryBefore, memoryAfter, storageBefore, storageAfter, autosave,
-          inputLatencySummaryMs: summary(measurement.inputLatencyMs), autosaveInputLatencySummaryMs: summary(measurement.autosaveInputLatencyMs) });
-        console.log(`${i < 0 ? 'warmup' : `sample ${i + 1}`} ${config.id}: ${measurement.fps.toFixed(1)} FPS, input p95 ${summary(measurement.inputLatencyMs).p95?.toFixed(2)} ms, Worker overlap ${measurement.autosaveInputLatencyMs.length} events`);
+          inputLatencySummaryMs: summary(measurement.inputLatencyMs), autosaveInputLatencySummaryMs: summary(measurement.autosaveInputLatencyMs),
+          pointerDownLatencySummaryMs: summary(measurement.pointerDownLatencyMs), autosavePointerDownLatencySummaryMs: summary(measurement.autosavePointerDownLatencyMs) });
+        console.log(`${i < 0 ? 'warmup' : `sample ${i + 1}`} ${config.id}: ${measurement.fps.toFixed(1)} FPS, input p95 ${summary(measurement.inputLatencyMs).p95?.toFixed(2)} ms, Worker overlap ${measurement.autosaveInputLatencyMs.length} moves / ${measurement.autosavePointerDownLatencyMs.length} downs`);
       } finally { await context.close(); }
     }
   }
@@ -146,6 +147,7 @@ try {
     const metrics = ['saveMs', 'openMs', 'exportMs', 'fps', 'indexedDBDeltaBytes'];
     return { scenario, ...Object.fromEntries(metrics.filter(key => rows.some(row => typeof row[key] === 'number')).map(key => [key, summary(rows.map(row => row[key]))])),
       inputLatencyMs: summary(rows.flatMap(row => row.inputLatencyMs ?? [])), autosaveInputLatencyMs: summary(rows.flatMap(row => row.autosaveInputLatencyMs ?? [])),
+      pointerDownLatencyMs: summary(rows.flatMap(row => row.pointerDownLatencyMs ?? [])), autosavePointerDownLatencyMs: summary(rows.flatMap(row => row.autosavePointerDownLatencyMs ?? [])),
       jsHeapUsedBytes: summary(rows.flatMap(row => row.memoryAfter.value ? [row.memoryAfter.value.usedSize] : [])),
       backingStorageBytes: summary(rows.flatMap(row => typeof row.memoryAfter.value?.backingStorageSize === 'number' ? [row.memoryAfter.value.backingStorageSize] : [])),
       indexedDBBytes: summary(rows.flatMap(row => row.storageAfter.indexedDBBytes === null ? [] : [row.storageAfter.indexedDBBytes])),
@@ -159,11 +161,12 @@ try {
       sourceSha256, sourceFileCount: trackedSources.length, gitStatus: (await Bun.$`git status --porcelain`.cwd(root).quiet()).text() },
     config: { mode: smoke ? 'smoke' : 'full', samples, warmups, steps, viewport: [1440, 1000], deviceScaleFactor: 1,
       strictIDBDurability: true, gcBeforeHeapSamples: true, freshBrowserContextPerIteration: true, scenarios: [...scenarios, drawingScenario, autosaveScenario] },
-    units: { saveMs: 'ms', openMs: 'ms', exportMs: 'ms', inputLatencyMs: 'ms', autosaveInputLatencyMs: 'ms', elapsedMs: 'ms', fps: 'frames/s', '*Bytes': 'bytes', workerTimes: 'ms since navigation' },
+    units: { saveMs: 'ms', openMs: 'ms', exportMs: 'ms', inputLatencyMs: 'ms', autosaveInputLatencyMs: 'ms', pointerDownLatencyMs: 'ms', autosavePointerDownLatencyMs: 'ms', elapsedMs: 'ms', fps: 'frames/s', '*Bytes': 'bytes', workerTimes: 'ms since navigation' },
     methodology: { percentile: 'nearest rank', save: 'incremental capture + Worker prepare/validate/preview + real project storage; resolves after strict IDB transaction.complete',
       open: 'IDB manifest/resource hydration + Worker decode + Sprite.loadAsync hydration', export: 'capture + Worker render + PNG encoding, one frame, scale 1',
       fps: 'actual editor canvas draw loops / measured performance.now window; continuous pencil input including autosave wait when applicable',
       latency: 'trusted pointer event.timeStamp to microtask after next actual editor canvas draw loop, including event handling/brush/frame/render; excludes display scanout/OS device latency',
+      pointerDownLatency: 'separate trusted pointerdown capture-phase timestamp to next editor draw; measured before the first pixel mutation can cancel preparation; existing latency arrays contain pointermoves only',
       memory: 'CDP Runtime.getHeapUsage after GC, browser JS heap only; excludes worker heaps, GPU/native allocations, object overhead of undo estimate and process RSS',
       history: 'unique retained ArrayBuffers excluding buffers shared with live document; metadataPayloadBytes is a specified payload estimate, excludes engine headers/allocator/WeakMap overhead',
       storage: 'CDP Storage.getUsageAndQuota actual browser origin IndexedDB usage, includes database overhead; delta from fresh context, excludes browser executable/cache/GPU',
