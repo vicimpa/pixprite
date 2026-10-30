@@ -33,3 +33,7 @@ public/extensions
 # Browser test artifacts
 playwright-report
 test-results
+
+# Separate browser benchmark build and raw machine-specific measurements
+.benchmark-dist
+benchmark-results

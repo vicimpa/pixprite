@@ -3,11 +3,39 @@ import { canvasPixels, installSoftwareCanvas } from './Canvas.test-helper';
 import { packRgba } from './Image';
 import { decodeAseprite, encodeAseprite } from './formats/Aseprite';
 import { renderTiles } from './Tilemap';
-import { isCelInstance } from './DocumentModel';
+import { isCelInstance, retainedBufferIdentity, visitCelBuffers } from './DocumentModel';
+import { retainedHistoryMemory } from './SpriteHistory';
+import type { SpriteContext } from './SpriteContext';
 
 mock.module('@vicimpa/decorators', () => ({ prop: () => {}, reactive: () => <T,>(value: T) => value }));
 const { Sprite, createImage, createCelInstance, imageOf, transformCel, bakeCel } = await import('./Sprite');
 beforeAll(installSoftwareCanvas);
+
+test('history diagnostics deduplicate private source/bitmap storage and never materialize cels', () => {
+  const sprite = new Sprite(2, 1);
+  const shared = createImage(2, 1, new Uint32Array([0xff000001, 0xff000002]));
+  const a = createCelInstance(shared), b = createCelInstance(shared, { x: 1 });
+  sprite.layers[0].cels = [a, b];
+  sprite.frames = [{ duration: 100 }, { duration: 100 }];
+  sprite.checkpoint('shared');
+  sprite.layers[0].cels = [createCelInstance(createImage(2, 1, new Uint32Array([0xff000003, 0xff000004]))), null];
+  const retained = () => retainedHistoryMemory.call(sprite as unknown as SpriteContext);
+  const before = retained();
+  expect(before.uniqueBufferBytes).toBe(8);
+  expect(before.metadataPayloadBytes).toBeGreaterThan(0);
+  expect(retained()).toEqual(before);
+  let allocated = 0;
+  visitCelBuffers(a, (_, bytes) => { allocated += bytes; });
+  expect(allocated).toBe(8); // No bitmap was created by the measurement.
+  void a.data;
+  expect(retained().uniqueBufferBytes).toBe(16); // Existing private bitmap now counted.
+  const tokens: object[] = [];
+  visitCelBuffers(a, identity => { tokens.push(identity); });
+  expect(tokens.every(identity => !(identity instanceof ArrayBuffer))).toBe(true);
+  expect(tokens).toContain(retainedBufferIdentity(a.data.buffer));
+  sprite.undo();
+  expect(retained().uniqueBufferBytes).toBe(8); // Shared live sources are excluded.
+});
 
 const RED = packRgba(255, 0, 0, 255), GREEN = packRgba(0, 255, 0, 255), BLUE = packRgba(0, 0, 255, 255);
 const copyJSON = <T,>(value: T): T => JSON.parse(JSON.stringify(value));

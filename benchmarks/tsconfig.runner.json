@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ],
+    "tsBuildInfoFile": "../node_modules/.tmp/benchmarks-runner.tsbuildinfo"
+  },
+  "include": [
+    "runner.ts",
+    "scenarios.ts",
+    "compare.ts"
+  ]
+}

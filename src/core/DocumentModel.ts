@@ -14,6 +14,7 @@ export type CelInstance = CelImage & {
 export type LayerFX = Readonly<{ id: string; type: 'opacity'; enabled: boolean; amount: number }>;
 
 const sourcePixels = new WeakMap<Image, Uint32Array>();
+const bufferIdentities = new WeakMap<object, object>();
 const instances = new WeakMap<CelImage, { image: Image; transform: CelTransform; bitmap?: Bitmap }>();
 const legacyImages = new WeakMap<Uint32Array, Map<string, Image>>();
 const defaults = (): CelTransform => ({ flipX: false, flipY: false, rotation: 0, opacity: 1 });
@@ -93,6 +94,25 @@ export function createCelInstance(image: Image, options: Partial<CelTransform> &
 }
 
 export function isCelInstance(cel: CelImage): cel is CelInstance { return instances.has(cel); }
+
+/** Opaque diagnostics token: never exposes the private immutable source buffer. */
+export function retainedBufferIdentity(buffer: ArrayBufferLike): object {
+  let token = bufferIdentities.get(buffer);
+  if (!token) {
+    token = Object.freeze({});
+    bufferIdentities.set(buffer, token);
+  }
+  return token;
+}
+
+/** Read-only diagnostics: count existing storage without materializing/reconciling a bitmap. */
+export function visitCelBuffers(cel: CelImage, visit: (identity: object, bytes: number) => void) {
+  const state = instances.get(cel);
+  if (!state) return;
+  const source = sourcePixels.get(state.image);
+  if (source) visit(retainedBufferIdentity(source.buffer), source.buffer.byteLength);
+  if (state.bitmap) visit(retainedBufferIdentity(state.bitmap.data.buffer), state.bitmap.data.buffer.byteLength);
+}
 
 export function hasCelTransform(cel: CelImage) {
   if (!isCelInstance(cel)) return false;

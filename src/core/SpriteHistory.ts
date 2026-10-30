@@ -3,6 +3,7 @@ import type { ColorMode } from "~/core/ColorMode";
 import type { Mask } from "~/core/Mask";
 import type { Tileset } from "~/core/Tilemap";
 import { copyLayers, type ExtData, type Floating, type Frame, type FramePalette, type Guide, type Layer, type Slice, type Tag } from "./SpriteModel";
+import { isCelInstance, retainedBufferIdentity, visitCelBuffers } from './DocumentModel';
 export type Snapshot = {
   label: string;
   ext: ExtData;
@@ -95,6 +96,44 @@ export function historyBytes(this: SpriteContext): number {
   for (const s of [...this.undoStack, ...this.redoStack]) for (const l of s.layers) for (const c of l.cels)
     if (c && !live.has(c.data) && !seen.has(c.data)) { seen.add(c.data); n += c.data.byteLength; }
   return n;
+}
+
+/** Diagnostic payload sizes, not a JS heap estimate. Never invokes accessors or creates bitmaps.
+ * Counts backing stores once, including masks/tilesets/private immutable image storage.
+ * Metadata is a deterministic payload model (UTF-8 strings, 8-byte numbers,
+ * 1-byte booleans and property names), excluding engine object/array/header overhead.
+ */
+export function retainedHistoryMemory(this: SpriteContext) {
+  const live = new Set<object>(), history = new Set<object>();
+  function measure(root: unknown, seen: Set<object>, exclude: Set<object>) {
+    let buffers = 0, metadata = 0;
+    const encoder = new TextEncoder();
+    const buffer = (identity: object, bytes: number) => {
+      if (seen.has(identity) || exclude.has(identity)) return;
+      seen.add(identity); buffers += bytes;
+    };
+    function walk(value: unknown): void {
+      if (typeof value === 'string') { metadata += encoder.encode(value).length; return; }
+      if (typeof value === 'number') { metadata += 8; return; }
+      if (typeof value === 'boolean') { metadata++; return; }
+      if (!value || typeof value !== 'object' || seen.has(value) || exclude.has(value)) return;
+      if (ArrayBuffer.isView(value)) { buffer(retainedBufferIdentity(value.buffer), value.buffer.byteLength); seen.add(value); return; }
+      if (value instanceof ArrayBuffer) { buffer(retainedBufferIdentity(value), value.byteLength); return; }
+      seen.add(value);
+      if (isCelInstance(value as any)) visitCelBuffers(value as any, buffer);
+      for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+        if (!('value' in descriptor) || typeof descriptor.value === 'function') continue;
+        metadata += encoder.encode(key).length;
+        walk(descriptor.value);
+      }
+    }
+    walk(root);
+    return { uniqueBufferBytes: buffers, metadataPayloadBytes: metadata };
+  }
+  const keys = ['ext', 'guides', 'palette', 'framePalettes', 'layers', 'frames', 'tags', 'slices', 'tilesets', 'loop', 'mask', 'floating'] as const;
+  measure(keys.map(key => key === 'palette' ? this.paletteHost?.get() : this[key]), live, new Set());
+  const retained = measure([...this.undoStack, ...this.redoStack], history, live);
+  return { ...retained, undoSteps: this.undoStack.length, redoSteps: this.redoStack.length };
 }
 
 /** Drops the oldest steps beyond the limits */

@@ -32,7 +32,8 @@
     "ext:check": "bun scripts/build-extensions.ts",
     "bundle:check": "bun scripts/bundle-check.ts",
     "test:e2e": "playwright test",
-    "test:e2e:smoke": "playwright test --grep @smoke"
+    "test:e2e:smoke": "playwright test --grep @smoke",
+    "benchmark": "bun benchmarks/runner.ts"
   },
   "dependencies": {
     "@fontsource/pixelify-sans": "^5.3.0",

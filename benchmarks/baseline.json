@@ -1,0 +1,1325 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-10-30T19:30:41.905Z",
+  "status": "complete",
+  "environment": {
+    "bun": "1.4.2",
+    "playwright": "1.64.1",
+    "vite": "7.1.5",
+    "browserIdentity": {
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.8078.4 Safari/537.36",
+      "platform": "MacIntel",
+      "hardwareConcurrency": 12,
+      "deviceMemoryGiB": 16
+    },
+    "chromium": "156.0.8078.4",
+    "headless": true,
+    "platform": "darwin",
+    "osRelease": "27.0.0",
+    "cpu": "Apple M4 Pro",
+    "logicalCpus": 12,
+    "hostRamBytes": 25769803776,
+    "graphics": {
+      "devices": [
+        {
+          "vendorId": 65535,
+          "deviceId": 65535,
+          "vendorString": "Google Inc. (Google)",
+          "deviceString": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver-5.0.0)",
+          "driverVendor": "SwANGLE",
+          "driverVersion": "5.0.0"
+        }
+      ],
+      "featureStatus": {
+        "2d_canvas": "unavailable_software",
+        "direct_rendering_display_compositor": "disabled_off_ok",
+        "gpu_compositing": "disabled_software",
+        "multiple_raster_threads": "enabled_on",
+        "opengl": "disabled_off",
+        "rasterization": "disabled_software",
+        "raw_draw": "disabled_off_ok",
+        "skia_graphite": "disabled_off",
+        "trees_in_viz": "disabled_off",
+        "video_decode": "disabled_software",
+        "video_encode": "disabled_software",
+        "webgl": "unavailable_software",
+        "webgpu": "unavailable_software",
+        "webnn": "unavailable_software"
+      },
+      "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver-5.0.0)"
+    },
+    "commit": "6a787e679e3105e8aace5233902a3e3c8d4d5b06",
+    "sourceSha256": "6cd8f8bc3767a21f22f420e25d03fc6b698f3a637661d0ebb86550dd7373fe55",
+    "sourceFileCount": 245,
+    "gitStatus": " M .gitignore\n M package.json\n M src/core/DocumentModel.test.ts\n M src/core/DocumentModel.ts\n M src/core/SpriteHistory.ts\n M tsconfig.json\n?? benchmarks/\n"
+  },
+  "config": {
+    "mode": "full",
+    "samples": 3,
+    "warmups": 1,
+    "steps": 200,
+    "viewport": [
+      1440,
+      1000
+    ],
+    "deviceScaleFactor": 1,
+    "strictIDBDurability": true,
+    "gcBeforeHeapSamples": true,
+    "freshBrowserContextPerIteration": true,
+    "scenarios": [
+      {
+        "id": "frames-100",
+        "width": 32,
+        "height": 32,
+        "frames": 100,
+        "layers": 1
+      },
+      {
+        "id": "frames-400",
+        "width": 32,
+        "height": 32,
+        "frames": 400,
+        "layers": 1
+      },
+      {
+        "id": "frames-1000",
+        "width": 32,
+        "height": 32,
+        "frames": 1000,
+        "layers": 1
+      },
+      {
+        "id": "layers-10",
+        "width": 128,
+        "height": 128,
+        "frames": 1,
+        "layers": 10
+      },
+      {
+        "id": "layers-50",
+        "width": 128,
+        "height": 128,
+        "frames": 1,
+        "layers": 50
+      },
+      {
+        "id": "layers-100",
+        "width": 128,
+        "height": 128,
+        "frames": 1,
+        "layers": 100
+      },
+      {
+        "id": "image-2048",
+        "width": 2048,
+        "height": 2048,
+        "frames": 1,
+        "layers": 1
+      },
+      {
+        "id": "image-wide-4096",
+        "width": 4096,
+        "height": 256,
+        "frames": 1,
+        "layers": 1
+      },
+      {
+        "id": "linked-50000",
+        "width": 32,
+        "height": 32,
+        "frames": 1000,
+        "layers": 50,
+        "linked": true
+      },
+      {
+        "id": "tileset-4096",
+        "width": 256,
+        "height": 256,
+        "frames": 1,
+        "layers": 1,
+        "tiles": 4096
+      },
+      {
+        "id": "long-stroke",
+        "width": 256,
+        "height": 256,
+        "frames": 1,
+        "layers": 1
+      },
+      {
+        "id": "drawing-autosave",
+        "width": 1024,
+        "height": 1024,
+        "frames": 1,
+        "layers": 4
+      }
+    ]
+  },
+  "units": {
+    "saveMs": "ms",
+    "openMs": "ms",
+    "exportMs": "ms",
+    "inputLatencyMs": "ms",
+    "autosaveInputLatencyMs": "ms",
+    "elapsedMs": "ms",
+    "fps": "frames/s",
+    "*Bytes": "bytes",
+    "workerTimes": "ms since navigation"
+  },
+  "methodology": {
+    "percentile": "nearest rank",
+    "save": "incremental capture + Worker prepare/validate/preview + real project storage; resolves after strict IDB transaction.complete",
+    "open": "IDB manifest/resource hydration + Worker decode + Sprite.loadAsync hydration",
+    "export": "capture + Worker render + PNG encoding, one frame, scale 1",
+    "fps": "actual editor canvas draw loops / measured performance.now window; continuous pencil input including autosave wait when applicable",
+    "latency": "trusted pointer event.timeStamp to microtask after next actual editor canvas draw loop, including event handling/brush/frame/render; excludes display scanout/OS device latency",
+    "memory": "CDP Runtime.getHeapUsage after GC, browser JS heap only; excludes worker heaps, GPU/native allocations, object overhead of undo estimate and process RSS",
+    "history": "unique retained ArrayBuffers excluding buffers shared with live document; metadataPayloadBytes is a specified payload estimate, excludes engine headers/allocator/WeakMap overhead",
+    "storage": "CDP Storage.getUsageAndQuota actual browser origin IndexedDB usage, includes database overhead; delta from fresh context, excludes browser executable/cache/GPU",
+    "correctness": "full resource checksums, metadata, tile refs and cel aliases; first/middle/last composites; decoded first-frame PNG; latest autosaved stroke pixels"
+  },
+  "summary": [
+    {
+      "scenario": "frames-100",
+      "saveMs": {
+        "n": 3,
+        "p50": 35.60000002384186,
+        "p95": 44.10000002384186,
+        "min": 34.299999952316284,
+        "max": 44.10000002384186
+      },
+      "openMs": {
+        "n": 3,
+        "p50": 13.599999904632568,
+        "p95": 14.600000023841858,
+        "min": 13.200000047683716,
+        "max": 14.600000023841858
+      },
+      "exportMs": {
+        "n": 3,
+        "p50": 5.299999952316284,
+        "p95": 5.5,
+        "min": 5.100000023841858,
+        "max": 5.5
+      },
+      "indexedDBDeltaBytes": {
+        "n": 3,
+        "p50": 659456,
+        "p95": 659456,
+        "min": 659456,
+        "max": 659456
+      },
+      "inputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "autosaveInputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "jsHeapUsedBytes": {
+        "n": 3,
+        "p50": 5772552,
+        "p95": 5781232,
+        "min": 5768864,
+        "max": 5781232
+      },
+      "backingStorageBytes": {
+        "n": 3,
+        "p50": 1925963,
+        "p95": 1925963,
+        "min": 1925963,
+        "max": 1925963
+      },
+      "indexedDBBytes": {
+        "n": 3,
+        "p50": 806912,
+        "p95": 806912,
+        "min": 806912,
+        "max": 806912
+      },
+      "undoUniqueBufferBytes": {
+        "n": 3,
+        "p50": 69632,
+        "p95": 69632,
+        "min": 69632,
+        "max": 69632
+      },
+      "undoMetadataPayloadBytes": {
+        "n": 3,
+        "p50": 54468,
+        "p95": 54468,
+        "min": 54468,
+        "max": 54468
+      }
+    },
+    {
+      "scenario": "frames-400",
+      "saveMs": {
+        "n": 3,
+        "p50": 90.70000004768372,
+        "p95": 92.10000002384186,
+        "min": 90.70000004768372,
+        "max": 92.10000002384186
+      },
+      "openMs": {
+        "n": 3,
+        "p50": 27,
+        "p95": 27.09999990463257,
+        "min": 26.899999976158142,
+        "max": 27.09999990463257
+      },
+      "exportMs": {
+        "n": 3,
+        "p50": 7.800000071525574,
+        "p95": 7.899999976158142,
+        "min": 7.5,
+        "max": 7.899999976158142
+      },
+      "indexedDBDeltaBytes": {
+        "n": 3,
+        "p50": 2617344,
+        "p95": 2617344,
+        "min": 2617344,
+        "max": 2617344
+      },
+      "inputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "autosaveInputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "jsHeapUsedBytes": {
+        "n": 3,
+        "p50": 6280956,
+        "p95": 6301448,
+        "min": 6279748,
+        "max": 6301448
+      },
+      "backingStorageBytes": {
+        "n": 3,
+        "p50": 3154698,
+        "p95": 3154763,
+        "min": 3154690,
+        "max": 3154763
+      },
+      "indexedDBBytes": {
+        "n": 3,
+        "p50": 2764800,
+        "p95": 2764800,
+        "min": 2764800,
+        "max": 2764800
+      },
+      "undoUniqueBufferBytes": {
+        "n": 3,
+        "p50": 69632,
+        "p95": 69632,
+        "min": 69632,
+        "max": 69632
+      },
+      "undoMetadataPayloadBytes": {
+        "n": 3,
+        "p50": 212868,
+        "p95": 212868,
+        "min": 212868,
+        "max": 212868
+      }
+    },
+    {
+      "scenario": "frames-1000",
+      "saveMs": {
+        "n": 3,
+        "p50": 248.69999992847443,
+        "p95": 252.39999997615814,
+        "min": 243.39999997615814,
+        "max": 252.39999997615814
+      },
+      "openMs": {
+        "n": 3,
+        "p50": 86.20000004768372,
+        "p95": 92.29999995231628,
+        "min": 75.40000009536743,
+        "max": 92.29999995231628
+      },
+      "exportMs": {
+        "n": 3,
+        "p50": 17.800000071525574,
+        "p95": 23.899999976158142,
+        "min": 15.799999952316284,
+        "max": 23.899999976158142
+      },
+      "indexedDBDeltaBytes": {
+        "n": 3,
+        "p50": 6533120,
+        "p95": 6533120,
+        "min": 6533120,
+        "max": 6533120
+      },
+      "inputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "autosaveInputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "jsHeapUsedBytes": {
+        "n": 3,
+        "p50": 7284932,
+        "p95": 7309784,
+        "min": 7271284,
+        "max": 7309784
+      },
+      "backingStorageBytes": {
+        "n": 3,
+        "p50": 5612275,
+        "p95": 5612275,
+        "min": 5612275,
+        "max": 5612275
+      },
+      "indexedDBBytes": {
+        "n": 3,
+        "p50": 6680576,
+        "p95": 6680576,
+        "min": 6680576,
+        "max": 6680576
+      },
+      "undoUniqueBufferBytes": {
+        "n": 3,
+        "p50": 69632,
+        "p95": 69632,
+        "min": 69632,
+        "max": 69632
+      },
+      "undoMetadataPayloadBytes": {
+        "n": 3,
+        "p50": 529668,
+        "p95": 529668,
+        "min": 529668,
+        "max": 529668
+      }
+    },
+    {
+      "scenario": "layers-10",
+      "saveMs": {
+        "n": 3,
+        "p50": 54.300000071525574,
+        "p95": 67.89999997615814,
+        "min": 47.799999952316284,
+        "max": 67.89999997615814
+      },
+      "openMs": {
+        "n": 3,
+        "p50": 15.599999904632568,
+        "p95": 25,
+        "min": 14.700000047683716,
+        "max": 25
+      },
+      "exportMs": {
+        "n": 3,
+        "p50": 17.5,
+        "p95": 28.600000023841858,
+        "min": 15.5,
+        "max": 28.600000023841858
+      },
+      "indexedDBDeltaBytes": {
+        "n": 3,
+        "p50": 970752,
+        "p95": 970752,
+        "min": 970752,
+        "max": 970752
+      },
+      "inputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "autosaveInputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "jsHeapUsedBytes": {
+        "n": 3,
+        "p50": 5663024,
+        "p95": 5668296,
+        "min": 5655576,
+        "max": 5668296
+      },
+      "backingStorageBytes": {
+        "n": 3,
+        "p50": 3797825,
+        "p95": 3797825,
+        "min": 3797825,
+        "max": 3797825
+      },
+      "indexedDBBytes": {
+        "n": 3,
+        "p50": 1118208,
+        "p95": 1118208,
+        "min": 1118208,
+        "max": 1118208
+      },
+      "undoUniqueBufferBytes": {
+        "n": 3,
+        "p50": 1114112,
+        "p95": 1114112,
+        "min": 1114112,
+        "max": 1114112
+      },
+      "undoMetadataPayloadBytes": {
+        "n": 3,
+        "p50": 32724,
+        "p95": 32724,
+        "min": 32724,
+        "max": 32724
+      }
+    },
+    {
+      "scenario": "layers-50",
+      "saveMs": {
+        "n": 3,
+        "p50": 140,
+        "p95": 147.80000007152557,
+        "min": 138.79999995231628,
+        "max": 147.80000007152557
+      },
+      "openMs": {
+        "n": 3,
+        "p50": 25.799999952316284,
+        "p95": 26.700000047683716,
+        "min": 25.700000047683716,
+        "max": 26.700000047683716
+      },
+      "exportMs": {
+        "n": 3,
+        "p50": 33.5,
+        "p95": 35,
+        "min": 33.300000071525574,
+        "max": 35
+      },
+      "indexedDBDeltaBytes": {
+        "n": 3,
+        "p50": 4501504,
+        "p95": 4501504,
+        "min": 4501504,
+        "max": 4501504
+      },
+      "inputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "autosaveInputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "jsHeapUsedBytes": {
+        "n": 3,
+        "p50": 5804972,
+        "p95": 5824136,
+        "min": 5803288,
+        "max": 5824136
+      },
+      "backingStorageBytes": {
+        "n": 3,
+        "p50": 9041083,
+        "p95": 9041098,
+        "min": 9041018,
+        "max": 9041098
+      },
+      "indexedDBBytes": {
+        "n": 3,
+        "p50": 4648960,
+        "p95": 4648960,
+        "min": 4648960,
+        "max": 4648960
+      },
+      "undoUniqueBufferBytes": {
+        "n": 3,
+        "p50": 1114112,
+        "p95": 1114112,
+        "min": 1114112,
+        "max": 1114112
+      },
+      "undoMetadataPayloadBytes": {
+        "n": 3,
+        "p50": 146644,
+        "p95": 146644,
+        "min": 146644,
+        "max": 146644
+      }
+    },
+    {
+      "scenario": "layers-100",
+      "saveMs": {
+        "n": 3,
+        "p50": 254.39999997615814,
+        "p95": 258.6999999284744,
+        "min": 250.5,
+        "max": 258.6999999284744
+      },
+      "openMs": {
+        "n": 3,
+        "p50": 44.90000009536743,
+        "p95": 47.10000002384186,
+        "min": 41.799999952316284,
+        "max": 47.10000002384186
+      },
+      "exportMs": {
+        "n": 3,
+        "p50": 54.299999952316284,
+        "p95": 56.200000047683716,
+        "min": 51.699999928474426,
+        "max": 56.200000047683716
+      },
+      "indexedDBDeltaBytes": {
+        "n": 3,
+        "p50": 8925184,
+        "p95": 8925184,
+        "min": 8925184,
+        "max": 8925184
+      },
+      "inputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "autosaveInputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "jsHeapUsedBytes": {
+        "n": 3,
+        "p50": 6089080,
+        "p95": 6104064,
+        "min": 6088864,
+        "max": 6104064
+      },
+      "backingStorageBytes": {
+        "n": 3,
+        "p50": 15595083,
+        "p95": 15595083,
+        "min": 15595018,
+        "max": 15595083
+      },
+      "indexedDBBytes": {
+        "n": 3,
+        "p50": 9072640,
+        "p95": 9072640,
+        "min": 9072640,
+        "max": 9072640
+      },
+      "undoUniqueBufferBytes": {
+        "n": 3,
+        "p50": 1114112,
+        "p95": 1114112,
+        "min": 1114112,
+        "max": 1114112
+      },
+      "undoMetadataPayloadBytes": {
+        "n": 3,
+        "p50": 289044,
+        "p95": 289044,
+        "min": 289044,
+        "max": 289044
+      }
+    },
+    {
+      "scenario": "image-2048",
+      "saveMs": {
+        "n": 3,
+        "p50": 524,
+        "p95": 527.2999999523163,
+        "min": 514.3999999761581,
+        "max": 527.2999999523163
+      },
+      "openMs": {
+        "n": 3,
+        "p50": 82.79999995231628,
+        "p95": 86,
+        "min": 78.20000004768372,
+        "max": 86
+      },
+      "exportMs": {
+        "n": 3,
+        "p50": 147.89999997615814,
+        "p95": 152.29999995231628,
+        "min": 141.60000002384186,
+        "max": 152.29999995231628
+      },
+      "indexedDBDeltaBytes": {
+        "n": 3,
+        "p50": 22482944,
+        "p95": 22482944,
+        "min": 22482944,
+        "max": 22482944
+      },
+      "inputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "autosaveInputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "jsHeapUsedBytes": {
+        "n": 3,
+        "p50": 5566516,
+        "p95": 5567468,
+        "min": 5565240,
+        "max": 5567468
+      },
+      "backingStorageBytes": {
+        "n": 3,
+        "p50": 303428657,
+        "p95": 303428657,
+        "min": 303428657,
+        "max": 303428657
+      },
+      "indexedDBBytes": {
+        "n": 3,
+        "p50": 22630400,
+        "p95": 22630400,
+        "min": 22630400,
+        "max": 22630400
+      },
+      "undoUniqueBufferBytes": {
+        "n": 3,
+        "p50": 285212672,
+        "p95": 285212672,
+        "min": 285212672,
+        "max": 285212672
+      },
+      "undoMetadataPayloadBytes": {
+        "n": 3,
+        "p50": 7380,
+        "p95": 7380,
+        "min": 7380,
+        "max": 7380
+      }
+    },
+    {
+      "scenario": "image-wide-4096",
+      "saveMs": {
+        "n": 3,
+        "p50": 148,
+        "p95": 149.29999995231628,
+        "min": 147.70000004768372,
+        "max": 149.29999995231628
+      },
+      "openMs": {
+        "n": 3,
+        "p50": 28.199999928474426,
+        "p95": 29.399999976158142,
+        "min": 27.799999952316284,
+        "max": 29.399999976158142
+      },
+      "exportMs": {
+        "n": 3,
+        "p50": 43,
+        "p95": 43.200000047683716,
+        "min": 42.800000071525574,
+        "max": 43.200000047683716
+      },
+      "indexedDBDeltaBytes": {
+        "n": 3,
+        "p50": 5611520,
+        "p95": 5611520,
+        "min": 5611520,
+        "max": 5611520
+      },
+      "inputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "autosaveInputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "jsHeapUsedBytes": {
+        "n": 3,
+        "p50": 5555328,
+        "p95": 5555808,
+        "min": 5555112,
+        "max": 5555808
+      },
+      "backingStorageBytes": {
+        "n": 3,
+        "p50": 76936140,
+        "p95": 76936151,
+        "min": 76936140,
+        "max": 76936151
+      },
+      "indexedDBBytes": {
+        "n": 3,
+        "p50": 5758976,
+        "p95": 5758976,
+        "min": 5758976,
+        "max": 5758976
+      },
+      "undoUniqueBufferBytes": {
+        "n": 3,
+        "p50": 71303168,
+        "p95": 71303168,
+        "min": 71303168,
+        "max": 71303168
+      },
+      "undoMetadataPayloadBytes": {
+        "n": 3,
+        "p50": 7380,
+        "p95": 7380,
+        "min": 7380,
+        "max": 7380
+      }
+    },
+    {
+      "scenario": "linked-50000",
+      "saveMs": {
+        "n": 3,
+        "p50": 181.60000002384186,
+        "p95": 185.60000002384186,
+        "min": 181.19999992847443,
+        "max": 185.60000002384186
+      },
+      "openMs": {
+        "n": 3,
+        "p50": 102.10000002384186,
+        "p95": 103.29999995231628,
+        "min": 101.60000002384186,
+        "max": 103.29999995231628
+      },
+      "exportMs": {
+        "n": 3,
+        "p50": 32.5,
+        "p95": 32.60000002384186,
+        "min": 32.199999928474426,
+        "max": 32.60000002384186
+      },
+      "indexedDBDeltaBytes": {
+        "n": 3,
+        "p50": 368640,
+        "p95": 368640,
+        "min": 368640,
+        "max": 368640
+      },
+      "inputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "autosaveInputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "jsHeapUsedBytes": {
+        "n": 3,
+        "p50": 12951640,
+        "p95": 12954872,
+        "min": 12947284,
+        "max": 12954872
+      },
+      "backingStorageBytes": {
+        "n": 3,
+        "p50": 1914289,
+        "p95": 1914289,
+        "min": 1914289,
+        "max": 1914289
+      },
+      "indexedDBBytes": {
+        "n": 3,
+        "p50": 516096,
+        "p95": 516096,
+        "min": 516096,
+        "max": 516096
+      },
+      "undoUniqueBufferBytes": {
+        "n": 3,
+        "p50": 69632,
+        "p95": 69632,
+        "min": 69632,
+        "max": 69632
+      },
+      "undoMetadataPayloadBytes": {
+        "n": 3,
+        "p50": 11464612,
+        "p95": 11464612,
+        "min": 11464612,
+        "max": 11464612
+      }
+    },
+    {
+      "scenario": "tileset-4096",
+      "saveMs": {
+        "n": 3,
+        "p50": 145.70000004768372,
+        "p95": 150,
+        "min": 143.5,
+        "max": 150
+      },
+      "openMs": {
+        "n": 3,
+        "p50": 35.200000047683716,
+        "p95": 36,
+        "min": 35,
+        "max": 36
+      },
+      "exportMs": {
+        "n": 3,
+        "p50": 12.899999976158142,
+        "p95": 13.5,
+        "min": 12.799999952316284,
+        "max": 13.5
+      },
+      "indexedDBDeltaBytes": {
+        "n": 3,
+        "p50": 6041600,
+        "p95": 6041600,
+        "min": 6041600,
+        "max": 6041600
+      },
+      "inputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "autosaveInputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "jsHeapUsedBytes": {
+        "n": 3,
+        "p50": 6213672,
+        "p95": 6232152,
+        "min": 6211472,
+        "max": 6232152
+      },
+      "backingStorageBytes": {
+        "n": 3,
+        "p50": 6158139,
+        "p95": 6158204,
+        "min": 6158131,
+        "max": 6158204
+      },
+      "indexedDBBytes": {
+        "n": 3,
+        "p50": 6189056,
+        "p95": 6189056,
+        "min": 6189056,
+        "max": 6189056
+      },
+      "undoUniqueBufferBytes": {
+        "n": 3,
+        "p50": 0,
+        "p95": 0,
+        "min": 0,
+        "max": 0
+      },
+      "undoMetadataPayloadBytes": {
+        "n": 3,
+        "p50": 6762,
+        "p95": 6762,
+        "min": 6762,
+        "max": 6762
+      }
+    },
+    {
+      "scenario": "long-stroke",
+      "fps": {
+        "n": 3,
+        "p50": 60.06713385675059,
+        "p95": 60.279934133990345,
+        "min": 60.01588655989043,
+        "max": 60.279934133990345
+      },
+      "inputLatencyMs": {
+        "n": 600,
+        "p50": 14.5,
+        "p95": 16,
+        "min": 5,
+        "max": 37.200000047683716
+      },
+      "autosaveInputLatencyMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "min": null,
+        "max": null
+      },
+      "jsHeapUsedBytes": {
+        "n": 3,
+        "p50": 7527212,
+        "p95": 7562532,
+        "min": 7527192,
+        "max": 7562532
+      },
+      "backingStorageBytes": {
+        "n": 3,
+        "p50": 2751744,
+        "p95": 2751752,
+        "min": 2751744,
+        "max": 2751752
+      },
+      "indexedDBBytes": {
+        "n": 3,
+        "p50": 147456,
+        "p95": 147456,
+        "min": 147456,
+        "max": 147456
+      },
+      "undoUniqueBufferBytes": {
+        "n": 3,
+        "p50": 524288,
+        "p95": 524288,
+        "min": 524288,
+        "max": 524288
+      },
+      "undoMetadataPayloadBytes": {
+        "n": 3,
+        "p50": 735,
+        "p95": 735,
+        "min": 735,
+        "max": 735
+      }
+    },
+    {
+      "scenario": "drawing-autosave",
+      "fps": {
+        "n": 3,
+        "p50": 55.21033056927079,
+        "p95": 55.8852735367071,
+        "min": 54.847519344560766,
+        "max": 55.8852735367071
+      },
+      "inputLatencyMs": {
+        "n": 600,
+        "p50": 15.100000023841858,
+        "p95": 48.89999997615814,
+        "min": 4.899999976158142,
+        "max": 65.60000002384186
+      },
+      "autosaveInputLatencyMs": {
+        "n": 600,
+        "p50": 15.100000023841858,
+        "p95": 48.89999997615814,
+        "min": 4.899999976158142,
+        "max": 65.60000002384186
+      },
+      "jsHeapUsedBytes": {
+        "n": 3,
+        "p50": 35788676,
+        "p95": 35822932,
+        "min": 35788140,
+        "max": 35822932
+      },
+      "backingStorageBytes": {
+        "n": 3,
+        "p50": 68550019,
+        "p95": 68550027,
+        "min": 68550019,
+        "max": 68550027
+      },
+      "indexedDBBytes": {
+        "n": 3,
+        "p50": 22597632,
+        "p95": 22597632,
+        "min": 22597632,
+        "max": 22597632
+      },
+      "undoUniqueBufferBytes": {
+        "n": 3,
+        "p50": 8388608,
+        "p95": 8388608,
+        "min": 8388608,
+        "max": 8388608
+      },
+      "undoMetadataPayloadBytes": {
+        "n": 3,
+        "p50": 1263,
+        "p95": 1263,
+        "min": 1263,
+        "max": 1263
+      }
+    }
+  ],
+  "sampleCount": 36,
+  "rawArtifact": "benchmark-results/full-baseline.json (ignored, generated locally)",
+  "correctness": [
+    {
+      "scenario": "frames-100",
+      "samples": 3,
+      "checks": {
+        "signatureHash": "35aafea6",
+        "compositeHashes": [
+          {
+            "frame": 0,
+            "hash": "cbe79371"
+          },
+          {
+            "frame": 50,
+            "hash": "8b919634"
+          },
+          {
+            "frame": 99,
+            "hash": "cdc90a09"
+          }
+        ],
+        "pngHash": "cbe79371",
+        "sourceAndAliasRoundTrip": true
+      }
+    },
+    {
+      "scenario": "frames-400",
+      "samples": 3,
+      "checks": {
+        "signatureHash": "c174a0cb",
+        "compositeHashes": [
+          {
+            "frame": 0,
+            "hash": "cbe79371"
+          },
+          {
+            "frame": 200,
+            "hash": "071e29ef"
+          },
+          {
+            "frame": 399,
+            "hash": "0a6f7325"
+          }
+        ],
+        "pngHash": "cbe79371",
+        "sourceAndAliasRoundTrip": true
+      }
+    },
+    {
+      "scenario": "frames-1000",
+      "samples": 3,
+      "checks": {
+        "signatureHash": "6cefa267",
+        "compositeHashes": [
+          {
+            "frame": 0,
+            "hash": "cbe79371"
+          },
+          {
+            "frame": 500,
+            "hash": "df16c895"
+          },
+          {
+            "frame": 999,
+            "hash": "9d3b8af0"
+          }
+        ],
+        "pngHash": "cbe79371",
+        "sourceAndAliasRoundTrip": true
+      }
+    },
+    {
+      "scenario": "layers-10",
+      "samples": 3,
+      "checks": {
+        "signatureHash": "74b05437",
+        "compositeHashes": [
+          {
+            "frame": 0,
+            "hash": "3bba94f1"
+          }
+        ],
+        "pngHash": "3bba94f1",
+        "sourceAndAliasRoundTrip": true
+      }
+    },
+    {
+      "scenario": "layers-50",
+      "samples": 3,
+      "checks": {
+        "signatureHash": "ce8b9c4e",
+        "compositeHashes": [
+          {
+            "frame": 0,
+            "hash": "c8a93e6f"
+          }
+        ],
+        "pngHash": "c8a93e6f",
+        "sourceAndAliasRoundTrip": true
+      }
+    },
+    {
+      "scenario": "layers-100",
+      "samples": 3,
+      "checks": {
+        "signatureHash": "7c7fe558",
+        "compositeHashes": [
+          {
+            "frame": 0,
+            "hash": "f7078720"
+          }
+        ],
+        "pngHash": "f7078720",
+        "sourceAndAliasRoundTrip": true
+      }
+    },
+    {
+      "scenario": "image-2048",
+      "samples": 3,
+      "checks": {
+        "signatureHash": "1203da86",
+        "compositeHashes": [
+          {
+            "frame": 0,
+            "hash": "25c05011"
+          }
+        ],
+        "pngHash": "25c05011",
+        "sourceAndAliasRoundTrip": true
+      }
+    },
+    {
+      "scenario": "image-wide-4096",
+      "samples": 3,
+      "checks": {
+        "signatureHash": "6a91e9ba",
+        "compositeHashes": [
+          {
+            "frame": 0,
+            "hash": "c2f9bfe3"
+          }
+        ],
+        "pngHash": "c2f9bfe3",
+        "sourceAndAliasRoundTrip": true
+      }
+    },
+    {
+      "scenario": "linked-50000",
+      "samples": 3,
+      "checks": {
+        "signatureHash": "a7d5c9f2",
+        "compositeHashes": [
+          {
+            "frame": 0,
+            "hash": "cbbf70bc"
+          },
+          {
+            "frame": 500,
+            "hash": "cbbf70bc"
+          },
+          {
+            "frame": 999,
+            "hash": "cbbf70bc"
+          }
+        ],
+        "pngHash": "cbbf70bc",
+        "sourceAndAliasRoundTrip": true
+      }
+    },
+    {
+      "scenario": "tileset-4096",
+      "samples": 3,
+      "checks": {
+        "signatureHash": "b00a3e1f",
+        "compositeHashes": [
+          {
+            "frame": 0,
+            "hash": "b489635d"
+          }
+        ],
+        "pngHash": "b489635d",
+        "sourceAndAliasRoundTrip": true
+      }
+    },
+    {
+      "scenario": "long-stroke",
+      "samples": 3,
+      "checks": {
+        "beforeCompositeHash": "04f8fd0a",
+        "afterCompositeHash": "c240d399",
+        "pixelsChanged": true
+      }
+    },
+    {
+      "scenario": "drawing-autosave",
+      "samples": 3,
+      "checks": {
+        "beforeCompositeHash": "ff55da36",
+        "afterCompositeHash": "14642eca",
+        "pixelsChanged": true
+      }
+    }
+  ],
+  "autosaveEvidence": [
+    {
+      "sample": 0,
+      "overlappingInputEvents": 200,
+      "prepareTaskCount": 15,
+      "latestPersistedPixelsMatch": true
+    },
+    {
+      "sample": 1,
+      "overlappingInputEvents": 200,
+      "prepareTaskCount": 15,
+      "latestPersistedPixelsMatch": true
+    },
+    {
+      "sample": 2,
+      "overlappingInputEvents": 200,
+      "prepareTaskCount": 16,
+      "latestPersistedPixelsMatch": true
+    }
+  ]
+}

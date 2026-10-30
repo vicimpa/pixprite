@@ -7,6 +7,8 @@
     { "path": "./packages/api" },
     { "path": "./scripts" },
     { "path": "./e2e" },
+    { "path": "./benchmarks" },
+    { "path": "./benchmarks/tsconfig.runner.json" },
     { "path": "./extensions/ai-assistant" },
     { "path": "./extensions/game-rig" },
     { "path": "./extensions/template" }
