@@ -243,6 +243,224 @@ function isLocksRecord(v: unknown): v is LocksRecord {
   return isExtData(v) && typeof v.owner === 'string';
 }
 
+export const PIXPRITE_VERSION = 4;
+export const SUPPORTED_PIXPRITE_VERSIONS = [3, 4] as const;
+
+type RawTileset = Omit<Tileset, 'tiles'> & { count: number; d: string; };
+type RawLayer = Partial<Omit<Layer, 'name' | 'cels'>> & { name: string; cels: any[]; };
+export type PixpriteData = {
+  format: 'pixprite';
+  version: number;
+  width: number;
+  height: number;
+  name?: string;
+  info?: unknown;
+  frames: Frame[];
+  layers: RawLayer[];
+  tags?: Tag[];
+  slices?: Slice[];
+  guides?: Guide[];
+  framePalettes?: FramePalette[];
+  tilesets?: RawTileset[];
+  loop?: [number, number] | null;
+  colorMode?: ColorMode;
+  transparentIndex?: number;
+  ext?: ExtData;
+  locks?: LocksRecord;
+};
+
+export function migratePixpriteV3(data: PixpriteData) {
+  return {
+    ...data,
+    version: 4,
+    layers: data.layers.map(layer => ({
+      ...layer,
+      cels: layer.cels.map(cel => typeof cel === 'string'
+        ? { x: 0, y: 0, w: data.width, h: data.height, d: cel }
+        : cel),
+    })),
+  };
+}
+
+const MAX_DOCUMENT_PIXELS = 4096 * 4096;
+const MAX_TOTAL_PIXELS = 4 * MAX_DOCUMENT_PIXELS;
+const MAX_DOCUMENT_CELS = 1_000_000;
+const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+
+function validateColor(value: unknown) {
+  if (typeof value !== 'string' || !HEX_COLOR.test(value)) throw new Error('Invalid color');
+}
+
+function validateJson(value: unknown, seen = new Set<object>()) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return;
+  if (typeof value === 'number' && Number.isFinite(value)) return;
+  if (!value || typeof value !== 'object') throw new Error('Invalid extension metadata');
+  if (seen.has(value)) throw new Error('Cyclic extension metadata');
+  seen.add(value);
+  for (const nested of Object.values(value)) validateJson(nested, seen);
+  seen.delete(value);
+}
+
+function validateExt(value: unknown) {
+  if (value === undefined) return;
+  if (!isExtData(value)) throw new Error('Invalid extension metadata');
+  validateJson(value);
+}
+
+function validateUserData(value: any) {
+  if (value === undefined) return;
+  if (!isExtData(value) || (value.text !== undefined && typeof value.text !== 'string')) throw new Error('Invalid user data');
+  if (value.color !== undefined) validateColor(value.color);
+}
+
+function validatePixpriteMetadata(data: PixpriteData) {
+  validateExt(data.ext);
+  for (const frame of data.frames) validateExt(frame?.ext);
+  for (const key of data.framePalettes ?? []) {
+    if (!Array.isArray(key?.colors) || key.colors.length > 256) throw new Error('Invalid frame palette');
+    for (const color of key.colors) validateColor(color);
+  }
+  for (const tag of data.tags ?? []) {
+    validateColor(tag?.color);
+    validateUserData(tag?.userData);
+    validateExt(tag?.ext);
+  }
+  for (const slice of data.slices ?? []) {
+    validateColor(slice?.color);
+    validateUserData(slice?.userData);
+    validateExt(slice?.ext);
+  }
+  for (const ts of data.tilesets ?? []) validateUserData(ts?.userData);
+  for (const layer of data.layers) {
+    validateUserData(layer?.userData);
+    validateExt(layer?.ext);
+    for (const cel of layer.cels) if (cel && typeof cel === 'object' && !('link' in cel)) validateExt(cel.ext);
+  }
+}
+
+function validatePixpriteShape(value: unknown): asserts value is PixpriteData {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid document structure');
+  const candidate = value as Record<string, unknown>;
+  if (candidate.format !== 'pixprite') throw new Error('Unknown file format');
+  if (typeof candidate.version !== 'number' || !Number.isInteger(candidate.version)) throw new Error('Unsupported pixprite version');
+  if (candidate.version > PIXPRITE_VERSION) throw new Error(`Newer pixprite version: ${candidate.version}; supported up to ${PIXPRITE_VERSION}`);
+  if (!SUPPORTED_PIXPRITE_VERSIONS.includes(candidate.version as 3 | 4)) throw new Error(`Unsupported pixprite version: ${candidate.version}`);
+  if (!Array.isArray(candidate.frames) || !candidate.frames.length) throw new Error('Document has no frames');
+  if (!Array.isArray(candidate.layers) || !candidate.layers.length) throw new Error('Document has no layers');
+  for (const key of ['tags', 'slices', 'guides', 'framePalettes', 'tilesets'] as const)
+    if (candidate[key] !== undefined && !Array.isArray(candidate[key])) throw new Error(`Invalid ${key}`);
+  const data = value as PixpriteData;
+  const size = (w: unknown, h: unknown, kind: string) => {
+    if (!Number.isInteger(w) || !Number.isInteger(h) || (w as number) <= 0 || (h as number) <= 0
+      || (w as number) > 4096 || (h as number) > 4096) throw new Error(`Invalid ${kind} dimensions`);
+    return (w as number) * (h as number);
+  };
+  size(data.width, data.height, 'document');
+  if (data.name !== undefined && typeof data.name !== 'string') throw new Error('Invalid document name');
+  if (data.frames.length * data.layers.length > MAX_DOCUMENT_CELS) throw new Error('Document has too many cels');
+  if (data.colorMode !== undefined && !['rgb', 'gray', 'indexed'].includes(data.colorMode)) throw new Error('Invalid color mode');
+  if (data.transparentIndex !== undefined && (!Number.isInteger(data.transparentIndex) || data.transparentIndex < -1 || data.transparentIndex > 255))
+    throw new Error('Invalid transparent index');
+  for (const frame of data.frames) {
+    if (!frame || !Number.isFinite(frame.duration) || frame.duration <= 0) throw new Error('Invalid frame duration');
+  }
+  if (data.loop !== undefined && data.loop !== null && (!Array.isArray(data.loop) || data.loop.length !== 2
+    || !data.loop.every(Number.isInteger) || data.loop[0] < 0 || data.loop[1] < data.loop[0] || data.loop[1] >= data.frames.length))
+    throw new Error('Invalid loop range');
+  for (const tag of data.tags ?? []) {
+    if (!Number.isInteger(tag.from) || !Number.isInteger(tag.to) || tag.from < 0 || tag.to < tag.from || tag.to >= data.frames.length)
+      throw new Error('Invalid tag range');
+    if (!['forward', 'reverse', 'pingpong', 'pingpong-reverse'].includes(tag.direction)) throw new Error('Invalid tag direction');
+    if (tag.repeat !== undefined && (!Number.isInteger(tag.repeat) || tag.repeat < 0)) throw new Error('Invalid tag repeat');
+  }
+  for (const slice of data.slices ?? []) {
+    if (!Array.isArray(slice.keys)) throw new Error('Invalid slice keys');
+    for (const key of slice.keys) {
+      if (!Number.isInteger(key.frame) || key.frame < 0 || key.frame >= data.frames.length) throw new Error('Invalid slice frame');
+      for (const n of [key.x, key.y, key.w, key.h]) if (!Number.isFinite(n)) throw new Error('Invalid slice coordinates');
+      if (key.w <= 0 || key.h <= 0) throw new Error('Invalid slice dimensions');
+    }
+  }
+  for (const guide of data.guides ?? [])
+    if ((guide.axis !== 'x' && guide.axis !== 'y') || !Number.isFinite(guide.pos)) throw new Error('Invalid guide');
+  const paletteFrames = new Set<number>();
+  for (const key of data.framePalettes ?? []) {
+    if (!Number.isInteger(key.frame) || key.frame < 0 || key.frame >= data.frames.length || paletteFrames.has(key.frame))
+      throw new Error('Invalid frame palette key');
+    paletteFrames.add(key.frame);
+  }
+  let pixelsLeft = MAX_TOTAL_PIXELS;
+  const buffer = (encoded: unknown, pixels: number, kind: string) => {
+    if (typeof encoded !== 'string' || encoded.length !== Math.ceil(pixels * 4 / 3) * 4)
+      throw new Error(`Invalid ${kind} buffer length`);
+  };
+  const tilesets = data.tilesets ?? [];
+  for (const ts of tilesets) {
+    const tilePixels = size(ts?.tw, ts?.th, 'tileset');
+    if (typeof ts.name !== 'string' || typeof ts.d !== 'string') throw new Error('Invalid tileset');
+    if (!Number.isInteger(ts.count) || ts.count < 1 || ts.count * tilePixels > pixelsLeft) throw new Error('Tileset is too large');
+    buffer(ts.d, ts.count * tilePixels, 'tileset pixel');
+    pixelsLeft -= ts.count * tilePixels;
+  }
+
+  for (const layer of data.layers) {
+    if (!layer || typeof layer.name !== 'string' || !Array.isArray(layer.cels) || layer.cels.length !== data.frames.length)
+      throw new Error('Layer cel count does not match frame count');
+    if (layer.depth !== undefined && (!Number.isInteger(layer.depth) || layer.depth < 0)) throw new Error('Invalid layer depth');
+    if (layer.opacity !== undefined && (!Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1)) throw new Error('Invalid layer opacity');
+    if (layer.blend !== undefined && !BLEND_MODES.includes(layer.blend)) throw new Error('Invalid layer blend mode');
+    if (layer.celOpacity !== undefined && (!Array.isArray(layer.celOpacity) || layer.celOpacity.length !== data.frames.length
+      || layer.celOpacity.some(v => !Number.isFinite(v) || v < 0 || v > 1))) throw new Error('Invalid cel opacity');
+    for (const key of ['visible', 'locked', 'background', 'continuous', 'group', 'collapsed', 'clip'] as const)
+      if (layer[key] !== undefined && typeof layer[key] !== 'boolean') throw new Error(`Invalid layer ${key}`);
+    const tileset = layer.tileset ?? -1;
+    if (!Number.isInteger(tileset) || tileset < -1 || tileset >= tilesets.length) throw new Error('Invalid layer tileset reference');
+    layer.cels.forEach((cel: any, i: number) => {
+      if (cel === null) return;
+      if (typeof cel === 'string') {
+        const pixels = data.width * data.height;
+        if (pixels > pixelsLeft) throw new Error('Document pixel data is too large');
+        pixelsLeft -= pixels;
+        buffer(cel, pixels, 'cel pixel');
+        return;
+      }
+      if (!cel || typeof cel !== 'object' || Array.isArray(cel)) throw new Error('Invalid cel structure');
+      if (typeof cel === 'object' && 'link' in cel) {
+        if (!Number.isInteger(cel.link) || cel.link < 0 || cel.link >= i || !layer.cels[cel.link])
+          throw new Error('Invalid linked cel reference');
+        return;
+      }
+      if (!Number.isInteger(cel.x) || !Number.isInteger(cel.y)) throw new Error('Invalid cel coordinates');
+      if (typeof cel.d !== 'string') throw new Error('Invalid cel pixel data');
+      const pixels = size(cel.w, cel.h, 'cel');
+      if (pixels > pixelsLeft) throw new Error('Document pixel data is too large');
+      pixelsLeft -= pixels;
+      buffer(cel.d, pixels, 'cel pixel');
+      if (cel.t !== undefined) buffer(cel.t, size(cel.tc, cel.tr, 'tilemap'), 'tile reference');
+    });
+  }
+  validatePixpriteMetadata(data);
+}
+
+function validateDocumentIntegrity(doc: { layers: Layer[]; frames: Frame[]; tags: Tag[]; loop: [number, number] | null; tilesets: Tileset[]; }) {
+  doc.layers.forEach((layer, i) => {
+    if (layer.cels.length !== doc.frames.length || layer.celOpacity.length !== doc.frames.length)
+      throw new Error('Document integrity: mismatched cel count');
+    if (layer.depth > 0 && parentOf(doc.layers, i) < 0) throw new Error('Document integrity: missing layer group');
+    if (layer.group && layer.cels.some(Boolean)) throw new Error('Document integrity: group contains cels');
+    if (layer.tileset >= 0) {
+      const ts = doc.tilesets[layer.tileset];
+      if (!ts) throw new Error('Document integrity: missing tileset');
+      for (const cel of layer.cels) if (cel?.tiles) for (const ref of cel.tiles.refs)
+        if (tileOf(ref) >= ts.tiles.length) throw new Error('Invalid tile reference');
+    }
+  });
+  for (const tag of doc.tags) if (tag.from < 0 || tag.to < tag.from || tag.to >= doc.frames.length)
+    throw new Error('Document integrity: invalid tag range');
+  if (doc.loop && (doc.loop[0] < 0 || doc.loop[1] < doc.loop[0] || doc.loop[1] >= doc.frames.length))
+    throw new Error('Document integrity: invalid loop range');
+}
+
 type Snapshot = {
   label: string;
   ext: ExtData;
@@ -1728,8 +1946,9 @@ export class Sprite {
     this.checkpoint(copy ? 'Copy frames' : 'Move frames');
     const pick = <T,>(arr: T[]) => arr.slice(a, b + 1);
     const frames = pick(this.frames).map(f => ({ ...f }));
+    const copies = new Map<CelImage, Cel>();
     const blocks = this.layers.map(l => ({
-      cels: pick(l.cels).map(c => c && (copy && !l.continuous ? cloneCel(c) : c)),
+      cels: pick(l.cels).map(c => c && (copy && !l.continuous ? copies.get(c) ?? copies.set(c, cloneCel(c)).get(c)! : c)),
       op: pick(l.celOpacity),
     }));
     let at = before;
@@ -1763,8 +1982,9 @@ export class Sprite {
     if (this.refuse('layers', copy ? 'create' : 'move')) return false;
     this.dropFloating();
     this.checkpoint(copy ? 'Copy layers' : 'Move layers');
+    const copies = new Map<CelImage, Cel>();
     const moved = block.map(l => copy
-      ? { ...l, background: false, name: `${l.name} copy`, cels: l.cels.map(cloneCel), celOpacity: l.celOpacity.slice() }
+      ? { ...l, background: false, name: `${l.name} copy`, cels: l.cels.map(c => c && (copies.get(c) ?? copies.set(c, cloneCel(c)).get(c)!)), celOpacity: l.celOpacity.slice() }
       : l);
     let layers = this.layers.slice();
     let at = before;
@@ -1800,12 +2020,13 @@ export class Sprite {
       const layer = this.layers[l];
       layer.cels[f] = layer.background ? this.filledCel() : null;
     }));
+    const copies = new Map<CelImage, Cel>();
     src.forEach((row, i) => row.forEach(({ cel, op }, k) => {
       const l = l0 + i + dl, f = f0 + k + df;
       const layer = this.layers[l];
       const sameLayer = dl === 0;
       // Copies within a continuous layer become links
-      layer.cels[f] = cel && (copy && !(sameLayer && layer.continuous) ? cloneCel(cel) : cel);
+      layer.cels[f] = cel && (copy && !(sameLayer && layer.continuous) ? copies.get(cel) ?? copies.set(cel, cloneCel(cel)).get(cel)! : cel);
       layer.celOpacity[f] = op;
     }));
     this.layer = Math.min(this.layers.length - 1, this.layer + dl);
@@ -1884,17 +2105,19 @@ export class Sprite {
       this.range = { type: 'layers', layers: [this.layers.length - added.length, this.layers.length - 1], frames: [0, this.frames.length - 1] };
     } else if (clip.type === 'frames') {
       // Inserted before the current frame with their durations
+      const copies = new Map<CelImage, Cel>();
       const at = this.frame;
       clip.frames.forEach((fr, k) => {
         this.insertFrames(at + k, 1, (l, li) => {
           const c = fr.cels[li]?.cel ?? null;
-          return c && (l.continuous ? c : cloneCel(c));
+          return c && (l.continuous ? c : copies.get(c) ?? copies.set(c, cloneCel(c)).get(c)!);
         }, fr.duration);
         this.layers.forEach((l, li) => { l.celOpacity[at + k] = fr.cels[li]?.op ?? 1; });
       });
       this.range = { type: 'frames', layers: [0, this.layers.length - 1], frames: [at, at + clip.frames.length - 1] };
     } else {
       // Overwrites a block starting at the active cel, going down through the layers
+      const copies = new Map<CelImage, Cel>();
       const f0 = this.frame;
       const need = f0 + clip.rows[0].cels.length - this.frames.length;
       if (need > 0) this.insertFrames(this.frames.length, need, () => null, this.frames[this.frames.length - 1].duration);
@@ -1906,7 +2129,7 @@ export class Sprite {
         row.cels.forEach(({ cel, op }, k) => {
           // Links survive only when pasting back into the same continuous layer
           const keep = l === row.layer && layer.continuous;
-          layer.cels[f0 + k] = layer.background ? reframeCel(cel, this.canvasRect, this.backgroundFill) : cel && (keep ? cel : cloneCel(cel));
+          layer.cels[f0 + k] = layer.background ? reframeCel(cel, this.canvasRect, this.backgroundFill) : cel && (keep ? cel : copies.get(cel) ?? copies.set(cel, cloneCel(cel)).get(cel)!);
           layer.celOpacity[f0 + k] = op;
         });
         bottom = l;
@@ -2886,7 +3109,7 @@ export class Sprite {
     };
     return {
       format: 'pixprite',
-      version: 4,
+      version: PIXPRITE_VERSION,
       colorMode: this.colorMode,
       transparentIndex: this.transparentIndex,
       name: this.name,
@@ -2917,8 +3140,12 @@ export class Sprite {
     };
   }
 
-  load(data: any) {
-    if (data?.format !== 'pixprite') throw new Error('Unknown file format');
+  load(data: unknown) {
+    validatePixpriteShape(data);
+    if (data.version === 3) {
+      data = migratePixpriteV3(data);
+      validatePixpriteShape(data);
+    }
     const bytes = (s: string) => {
       const bin = atob(s);
       const out = new Uint8Array(bin.length);
@@ -2928,39 +3155,58 @@ export class Sprite {
     // v3 stored full-canvas buffers as plain strings, v4 stores placed cel images
     const decode = (c: string | { x: number; y: number; w: number; h: number; d: string; } | null): Cel => {
       if (!c) return null;
-      if (typeof c === 'string') return trimCel({ x: 0, y: 0, w: data.width, h: data.height, data: bytes(c) });
-      const cel: CelImage = { x: c.x, y: c.y, w: c.w, h: c.h, data: bytes(c.d) };
+      if (typeof c === 'string') {
+        const pixels = bytes(c);
+        if (pixels.length !== data.width * data.height) throw new Error('Invalid cel pixel buffer length');
+        return trimCel({ x: 0, y: 0, w: data.width, h: data.height, data: pixels });
+      }
+      const pixels = bytes(c.d);
+      if (pixels.length !== c.w * c.h) throw new Error('Invalid cel pixel buffer length');
+      const cel: CelImage = { x: c.x, y: c.y, w: c.w, h: c.h, data: pixels };
       const t = (c as { t?: string; tc?: number; tr?: number; });
-      if (t.t) cel.tiles = { cols: t.tc!, rows: t.tr!, refs: bytes(t.t) };
+      if (t.t) {
+        const refs = bytes(t.t);
+        if (refs.length !== t.tc! * t.tr!) throw new Error('Invalid tile reference buffer length');
+        cel.tiles = { cols: t.tc!, rows: t.tr!, refs };
+      }
       const ext = (c as { ext?: unknown; }).ext;
       if (isExtData(ext)) cel.ext = ext;
       return cel;
     };
-    this.reset(data.width, data.height, data.name ?? 'untitled');
-    this.info = cleanInfo(data.info);
     const count = data.frames.length;
-    this.frames = data.frames.map((f: Frame) => ({ ...f }));
-    this.tags = data.tags ?? [];
-    this.slices = data.slices ?? [];
-    this.guides = Array.isArray(data.guides) ? data.guides.filter((g: any) => (g?.axis === 'x' || g?.axis === 'y') && Number.isFinite(g.pos)) : [];
-    this.framePalettes = data.framePalettes ?? [];
-    this.tilesets = (data.tilesets ?? []).map((t: any) => {
+    const frames = data.frames.map((f: Frame) => ({ ...f }));
+    const tilesets = (data.tilesets ?? []).map(t => {
       const all = bytes(t.d), n = t.tw * t.th;
+      if (all.length !== t.count * n) throw new Error('Invalid tileset pixel buffer length');
       return { name: t.name, tw: t.tw, th: t.th, baseIndex: t.baseIndex ?? 1, ...(t.userData ? { userData: t.userData } : {}), tiles: Array.from({ length: t.count }, (_, i) => all.slice(i * n, (i + 1) * n)) };
     });
-    this.loop = data.loop ?? null;
-    this.colorMode = data.colorMode ?? 'rgb';
-    this.transparentIndex = data.transparentIndex ?? -1;
-    this.ext = isExtData(data.ext) ? data.ext : {};
-    // Locks of an extension that isn't installed are kept aside until it is (or the user unlocks)
-    const locks = isLocksRecord(data.locks) ? data.locks : null;
-    if (locks && lockOwners.installed(locks.owner)) this.locks = locks;
-    else this.orphanLocks = locks;
-    this.layers = data.layers.map((l: any) => {
+    const layers = data.layers.map(l => {
       const cels: Cel[] = [];
       l.cels.forEach((c: any, i: number) => cels[i] = c && typeof c === 'object' && 'link' in c ? cels[c.link] ?? null : decode(c));
       return { ...newLayer(l.name, count), ...l, cels, celOpacity: l.celOpacity ?? Array(count).fill(1) };
     });
+    const tags = data.tags ?? [], loop = data.loop ?? null;
+    validateDocumentIntegrity({ layers, frames, tags, loop, tilesets });
+    // Commit the decoded model only after all buffers and resource references are valid.
+    const info = cleanInfo(data.info);
+    const locks = isLocksRecord(data.locks) ? data.locks : null;
+    const installed = locks ? lockOwners.installed(locks.owner) : false;
+    this.reset(data.width, data.height, data.name ?? 'untitled');
+    this.info = info;
+    this.frames = frames;
+    this.layers = layers;
+    this.tags = tags;
+    this.loop = loop;
+    this.tilesets = tilesets;
+    this.slices = data.slices ?? [];
+    this.guides = data.guides ?? [];
+    this.framePalettes = data.framePalettes ?? [];
+    this.colorMode = data.colorMode ?? 'rgb';
+    this.transparentIndex = data.transparentIndex ?? -1;
+    this.ext = data.ext ?? {};
+    // Keep locks for absent extensions until installation or an explicit unlock.
+    if (installed) this.locks = locks;
+    else this.orphanLocks = locks;
     this.touch();
   }
 

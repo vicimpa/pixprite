@@ -1,7 +1,7 @@
 /**
  * GIF87a/GIF89a decoder.
  * Produces fully composited RGBA frames (0xAABBGGRR) honoring disposal methods.
- * Truncated input is tolerated: decoding stops and the frames read so far are returned.
+ * Truncated input is rejected before decoding so partial animations are not imported silently.
  */
 
 export type DecodedGif = {
@@ -58,7 +58,7 @@ class ByteReader {
 /** Variable-width LZW decoder; missing pixels are left as 0 */
 function lzwDecode(data: Uint8Array, minCodeSize: number, count: number) {
   const out = new Uint8Array(count);
-  if (minCodeSize < 1 || minCodeSize > 11) return out;
+  if (minCodeSize < 2 || minCodeSize > 8) throw new Error('Invalid GIF LZW code size');
   const clear = 1 << minCodeSize, end = clear + 1;
   const prefix = new Uint16Array(4096);
   const suffix = new Uint8Array(4096);
@@ -73,7 +73,7 @@ function lzwDecode(data: Uint8Array, minCodeSize: number, count: number) {
 
   while (o < count) {
     while (bits < codeSize) {
-      if (pos >= data.length) return out;
+      if (pos >= data.length) throw new Error('Truncated GIF pixel data');
       acc |= data[pos++] << bits;
       bits += 8;
     }
@@ -97,7 +97,10 @@ function lzwDecode(data: Uint8Array, minCodeSize: number, count: number) {
       stack[sp++] = first[prev];
       c = prev;
     }
-    while (c >= clear) { stack[sp++] = suffix[c]; c = prefix[c]; }
+    while (c >= clear) {
+      if (c >= next || sp >= stack.length) throw new Error('Invalid GIF LZW data');
+      stack[sp++] = suffix[c]; c = prefix[c];
+    }
     stack[sp++] = c;
     const head = c;
     while (sp > 0 && o < count) out[o++] = stack[--sp];
@@ -112,6 +115,7 @@ function lzwDecode(data: Uint8Array, minCodeSize: number, count: number) {
     }
     prev = code;
   }
+  if (o !== count) throw new Error('Truncated GIF pixel data');
   return out;
 }
 
@@ -123,12 +127,62 @@ function interlaceRows(h: number) {
   return rows;
 }
 
+function assertCompleteGif(bytes: Uint8Array) {
+  if (bytes.length < 13) throw new Error('Truncated GIF header');
+  let pos = 13;
+  let frames = 0;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const width = view.getUint16(6, true), height = view.getUint16(8, true);
+  if (!width || !height || width * height > 4096 * 4096) throw new Error('Invalid GIF dimensions');
+  const flags = bytes[10];
+  if (flags & 0x80) pos += 3 * (1 << ((flags & 7) + 1));
+  if (pos > bytes.length) throw new Error('Truncated GIF palette');
+
+  const blocks = () => {
+    while (true) {
+      if (pos >= bytes.length) throw new Error('Truncated GIF data block');
+      const size = bytes[pos++];
+      if (!size) return;
+      if (pos + size > bytes.length) throw new Error('Truncated GIF data block');
+      pos += size;
+    }
+  };
+
+  while (pos < bytes.length) {
+    const block = bytes[pos++];
+    if (block === 0x3b) {
+      if (!frames) throw new Error('GIF has no frames');
+      return;
+    }
+    if (block === 0x21) {
+      if (pos >= bytes.length) throw new Error('Truncated GIF extension');
+      pos++;
+      blocks();
+      continue;
+    }
+    if (block !== 0x2c) throw new Error('Unknown GIF block');
+    if (pos + 9 > bytes.length) throw new Error('Truncated GIF image descriptor');
+    const frameWidth = view.getUint16(pos + 4, true), frameHeight = view.getUint16(pos + 6, true);
+    if (!frameWidth || !frameHeight || frameWidth * frameHeight > 4096 * 4096) throw new Error('Invalid GIF frame dimensions');
+    if (++frames * width * height > 4 * 4096 * 4096) throw new Error('GIF animation is too large');
+    const localFlags = bytes[pos + 8];
+    pos += 9;
+    if (localFlags & 0x80) pos += 3 * (1 << ((localFlags & 7) + 1));
+    if (pos >= bytes.length) throw new Error('Truncated GIF image data');
+    pos++;
+    blocks();
+  }
+  throw new Error('GIF has no trailer');
+}
+
 export function decodeGif(bytes: Uint8Array): DecodedGif {
+  assertCompleteGif(bytes);
   const r = new ByteReader(bytes);
   const sig = r.str(6);
   if (sig !== 'GIF87a' && sig !== 'GIF89a') throw new Error('Not a GIF file');
 
   const width = r.word(), height = r.word();
+  if (!width || !height || width * height > 4096 * 4096) throw new Error('Invalid GIF dimensions');
   const flags = r.byte();
   r.byte(); // background color index (treated as transparent)
   r.byte(); // pixel aspect ratio

@@ -22,6 +22,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "test": "bun test",
+    "test:aseprite": "PIXPRITE_ASEPRITE_COMPAT=1 bun test src/core/formats/AsepriteRoundTrip.test.ts",
     "typecheck": "tsc -b",
     "i18n:check": "bun scripts/i18n-check.ts",
     "ext:dev": "bun scripts/build-extensions.ts --dev",

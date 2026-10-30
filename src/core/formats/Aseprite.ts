@@ -7,6 +7,7 @@
 import type { ColorMode } from "~/core/ColorMode";
 import type { BlendMode, Cel, FramePalette, Slice } from "~/core/Sprite";
 import { renderTiles, type Tileset, type UserData } from "~/core/Tilemap";
+import { inflatePixels } from "~/core/formats/Inflate";
 
 export type AseLayer = {
   name: string;
@@ -113,7 +114,6 @@ async function pipe(data: Uint8Array, stream: CompressionStream | DecompressionS
 }
 
 const deflate = (data: Uint8Array) => pipe(data, new CompressionStream('deflate'));
-const inflate = (data: Uint8Array) => pipe(data, new DecompressionStream('deflate'));
 
 const hex2 = (v: number) => v.toString(16).padStart(2, '0');
 
@@ -159,16 +159,19 @@ class Writer {
 class Reader {
   view: DataView;
   pos = 0;
+  limit: number;
   constructor(public buf: Uint8Array) {
     this.view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    this.limit = buf.length;
   }
-  byte() { return this.buf[this.pos++]; }
-  word() { const v = this.view.getUint16(this.pos, true); this.pos += 2; return v; }
-  short() { const v = this.view.getInt16(this.pos, true); this.pos += 2; return v; }
-  dword() { const v = this.view.getUint32(this.pos, true); this.pos += 4; return v; }
-  int() { const v = this.view.getInt32(this.pos, true); this.pos += 4; return v; }
-  skip(n: number) { this.pos += n; }
-  bytes(n: number) { const v = this.buf.subarray(this.pos, this.pos + n); this.pos += n; return v; }
+  ensure(n: number) { if (n < 0 || this.pos + n > this.limit) throw new Error('Truncated Aseprite data'); }
+  byte() { this.ensure(1); return this.buf[this.pos++]; }
+  word() { this.ensure(2); const v = this.view.getUint16(this.pos, true); this.pos += 2; return v; }
+  short() { this.ensure(2); const v = this.view.getInt16(this.pos, true); this.pos += 2; return v; }
+  dword() { this.ensure(4); const v = this.view.getUint32(this.pos, true); this.pos += 4; return v; }
+  int() { this.ensure(4); const v = this.view.getInt32(this.pos, true); this.pos += 4; return v; }
+  skip(n: number) { this.ensure(n); this.pos += n; }
+  bytes(n: number) { this.ensure(n); const v = this.buf.subarray(this.pos, this.pos + n); this.pos += n; return v; }
   string() { return new TextDecoder().decode(this.bytes(this.word())); }
 }
 
@@ -478,7 +481,10 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
   const frameCount = r.word();
   const width = r.word();
   const height = r.word();
+  if (!frameCount) throw new Error('Aseprite file has no frames');
+  if (!width || !height || width * height > 4096 * 4096) throw new Error('Invalid Aseprite dimensions');
   const depth = r.word();
+  if (![8, 16, 32].includes(depth)) throw new Error('Invalid Aseprite color depth');
   const flags = r.dword();
   const speed = r.word();
   r.skip(8);
@@ -507,6 +513,7 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
   });
   /** `n` pixels of raw file data starting at pixel `at`, as RGBA */
   const decodeRun = (px: Uint8Array, at: number, n: number, pal = toPacked(newPalette ?? []), background = false) => {
+    if (at < 0 || n < 0 || px.length < (at + n) * bpp) throw new Error('Invalid Aseprite pixel buffer length');
     const out = new Uint32Array(n);
     for (let k = 0; k < n; k++) {
       const i = (at + k) * bpp;
@@ -518,10 +525,20 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
   };
   const oldPalette: string[] = [];
   const celsByFrame: RawCel[][] = [];
+  let pixelsLeft = 4 * 4096 * 4096;
+  const pixelCount = (w: number, h: number, count = 1) => {
+    const n = w * h * count;
+    if (!w || !h || w > 4096 || h > 4096 || n > pixelsLeft) throw new Error('Invalid Aseprite pixel dimensions');
+    pixelsLeft -= n;
+    return n;
+  };
 
   for (let f = 0; f < frameCount; f++) {
     const frameStart = r.pos;
     const frameSize = r.dword();
+    const frameEnd = frameStart + frameSize;
+    if (frameSize < 16 || frameEnd > bytes.length) throw new Error('Truncated Aseprite frame');
+    r.limit = frameEnd;
     if (r.word() !== 0xF1FA) throw new Error(`Bad frame magic in frame ${f}`);
     const oldCount = r.word();
     const duration = r.word();
@@ -532,10 +549,13 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
     const cels: RawCel[] = [];
     celsByFrame.push(cels);
 
-    for (let c = 0; c < chunkCount && r.pos < frameStart + frameSize; c++) {
+    for (let c = 0; c < chunkCount; c++) {
       const chunkStart = r.pos;
       const chunkSize = r.dword();
       const type = r.word();
+      const chunkEnd = chunkStart + chunkSize;
+      if (chunkSize < 6 || chunkEnd > frameEnd) throw new Error('Invalid Aseprite chunk length');
+      r.limit = chunkEnd;
       if (type !== 0x2020) { udTarget = null; tagQueue = []; }
 
       if (type === 0x0004 || type === 0x0011) {
@@ -554,6 +574,7 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
         const size = r.dword();
         const first = r.dword();
         const last = r.dword();
+        if (size > 65536 || first > last || last >= size) throw new Error('Invalid Aseprite palette size');
         r.skip(8);
         newPalette = newPalette ? newPalette.slice() : [];
         paletteAt[f] = newPalette;
@@ -566,6 +587,7 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
           newPalette[i] = `#${hex2(cr)}${hex2(cg)}${hex2(cb)}${ca === 255 ? '' : hex2(ca)}`;
         }
       } else if (type === 0x2004) {
+        if ((fileLayers.length + 1) * frameCount > 1_000_000) throw new Error('Aseprite document has too many cels');
         const lf = r.word();
         const lt = r.word();
         const level = r.word();
@@ -586,8 +608,8 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
           collapsed: !!(lf & 32),
           group: lt === 1,
           depth: level,
-          opacity: flags & 1 ? opacity / 255 : 1,
-          blend: ASE_BLENDS[blend] ?? 'source-over',
+          opacity: (flags & 1) && (lt !== 1 || (flags & 2)) ? opacity / 255 : 1,
+          blend: lt === 1 && !(flags & 2) ? 'source-over' : ASE_BLENDS[blend] ?? 'source-over',
           cels: new Array(frameCount).fill(null),
         });
         const layer = fileLayers[fileLayers.length - 1];
@@ -606,28 +628,34 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
         } else if (cel.type === 0 || cel.type === 2) {
           cel.w = r.word();
           cel.h = r.word();
+          const length = pixelCount(cel.w, cel.h) * bpp;
           const data = r.bytes(chunkStart + chunkSize - r.pos);
-          cel.pixels = cel.type === 0 ? data : await inflate(data);
+          cel.pixels = cel.type === 0 ? data : await inflatePixels(data, length);
+          if (cel.pixels.length !== length) throw new Error('Invalid Aseprite pixel buffer length');
         } else if (cel.type === 3) {
           cel.w = r.word();
           cel.h = r.word();
+          const count = pixelCount(cel.w, cel.h);
           const bits = r.word();
+          if (bits !== 32) throw new Error('Unsupported Aseprite tile size');
           cel.idMask = r.dword();
           r.skip(12 + 10);
-          const data = await inflate(r.bytes(chunkStart + chunkSize - r.pos));
+          const data = await inflatePixels(r.bytes(chunkStart + chunkSize - r.pos), count * 4);
           if (bits === 32) cel.refs = new Uint32Array(data.buffer.slice(data.byteOffset, data.byteOffset + cel.w * cel.h * 4));
         }
         cels.push(cel);
       } else if (type === 0x2023) {
         const id = r.dword(), tf = r.dword(), count = r.dword();
         const tw = r.word(), th = r.word(), base = r.short();
+        if (id > 65535 || !count) throw new Error('Invalid Aseprite tileset');
+        const length = pixelCount(tw, th, count) * bpp;
         r.skip(14);
         const name = r.string();
         if (tf & 1) r.skip(8);
         const tiles: Uint32Array[] = [];
         if (tf & 2) {
           const len = r.dword();
-          const px = await inflate(r.bytes(len));
+          const px = await inflatePixels(r.bytes(len), length);
           for (let i = 0; i < count; i++) tiles.push(decodeRun(px, i * tw * th, tw * th));
         }
         while (tiles.length < count) tiles.push(new Uint32Array(tw * th));
@@ -684,9 +712,11 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
       }
 
       r.pos = chunkStart + chunkSize;
+      r.limit = frameEnd;
     }
 
     r.pos = frameStart + frameSize;
+    r.limit = bytes.length;
   }
 
   const firstPalette = paletteAt[0] ?? newPalette ?? oldPalette.map(c => c ?? '#000000');
@@ -714,14 +744,19 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
     for (let f = 0; f < celsByFrame.length; f++) {
       for (const cel of celsByFrame[f]) {
         const li = layerMap[cel.layer] ?? -1;
-        if (li < 0) continue;
+        if (li < 0) throw new Error('Invalid Aseprite cel layer reference');
         const layer = layers[li];
         if (pass === 1) {
-          if (cel.type === 1) layer.cels[f] = layer.cels[cel.link] ?? null;
+          if (cel.type === 1) {
+            if (cel.link < 0 || cel.link >= frameCount || cel.link === f || !layer.cels[cel.link])
+              throw new Error('Invalid Aseprite linked cel reference');
+            layer.cels[f] = layer.cels[cel.link];
+          }
           continue;
         }
         if (cel.refs && (layer.tileset ?? -1) >= 0 && tilesets[layer.tileset!]) {
           const ts = tilesets[layer.tileset!];
+          pixelCount(cel.w * ts.tw, cel.h * ts.th);
           const tiles = { cols: cel.w, rows: cel.h, refs: cel.refs.map(v => { const i = v & (cel.idMask ?? 0x1fffffff); return i < ts.tiles.length ? (i | (v & 0xe0000000)) >>> 0 : 0; }) };
           layer.cels[f] = { x: cel.x, y: cel.y, w: cel.w * ts.tw, h: cel.h * ts.th, tiles, data: renderTiles(ts, tiles) };
           continue;

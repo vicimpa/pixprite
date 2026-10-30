@@ -11,5 +11,6 @@
       "@pixprite/api/*": ["../packages/api/src/*"]
     }
   },
-  "include": ["."]
+  "include": ["."],
+  "exclude": ["**/*.test.ts", "**/*.test-helper.ts"]
 }

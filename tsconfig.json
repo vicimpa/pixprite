@@ -3,6 +3,7 @@
   "files": [],
   "references": [
     { "path": "./src" },
+    { "path": "./src/tsconfig.test.json" },
     { "path": "./packages/api" },
     { "path": "./scripts" },
     { "path": "./extensions/ai-assistant" },

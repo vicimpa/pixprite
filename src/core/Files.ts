@@ -477,7 +477,10 @@ export async function loadFiles(files: File[]) {
 
   for (const file of rest) {
     try { docs.push(await readDocument(file)); }
-    catch (err) { console.error('Failed to open file', err); failed.push(file.name); }
+    catch (err) {
+      console.error('Failed to open file', err);
+      failed.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   await addDocuments(docs, failed);
 }

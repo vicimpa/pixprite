@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../node_modules/.tmp/src-tests.tsbuildinfo",
+    "types": ["bun", "vite/client", "vite-plugin-glsl/ext"]
+  },
+  "include": ["./**/*.test.ts"],
+  "exclude": []
+}
