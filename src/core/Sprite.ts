@@ -75,12 +75,16 @@ export class Sprite {
   /** Playback loop section (inclusive frames), used when no tag covers the current frame */
   @prop loop: [number, number] | null = null;
 
+  /** View-only transition counter: same-frame reveal also scrolls to its destination. Never serialized. */
+  @prop timelineReveal = 0;
+
   /** Explicit navigation reveals every independent reason covering the destination. Playback/restore retain folds. */
   goToFrame(frame: number) {
     if (!Number.isFinite(frame)) return;
     frame = Math.max(0, Math.min(this.frames.length - 1, Math.round(frame)));
     this.revealFrames([frame, frame]);
     this.frame = frame;
+    this.timelineReveal++;
   }
 
   revealFrames([from, to]: FrameSpan) {

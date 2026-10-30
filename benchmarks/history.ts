@@ -13,9 +13,10 @@ import { dialogs } from '../src/modules/Dialogs';
 const frame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 const assert = (ok: unknown, text: string) => { if (!ok) throw new Error(text); };
 let weakDoc: WeakRef<Sprite> | undefined, weakSnapshot: WeakRef<object> | undefined;
-const host = new ExtensionHost({ id: 'history-check', manifest: { id: 'history-check', name: 'History check', version: '1.0.0', apiVersion: API_VERSION },
+const makeHost = () => new ExtensionHost({ id: 'history-check', manifest: { id: 'history-check', name: 'History check', version: '1.0.0', apiVersion: API_VERSION },
   files: {}, enabled: true, source: 'file', installedAt: 0 });
-const call = { host } as Call;
+let host = makeHost();
+let call = { host } as Call;
 const pixels = (doc: Sprite) => doc.canvasPixels().reduce((sum, value) => sum + value, 0);
 const api = {
   onionOwnership() {
@@ -59,6 +60,8 @@ const api = {
     return true;
   },
   async close() {
+    // transactionFailure deliberately disposes its host; close tests independent ownership cleanup.
+    host = makeHost(); call = { host } as Call;
     state.setPrefs({ historyOperationMB: 0, historyMB: 0 });
     const doc = state.sprite;
     state.clipSource = { sprite: doc, range: { type: 'frames', layers: [0, 0], frames: [0, 0] } };

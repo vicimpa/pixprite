@@ -35,7 +35,9 @@ Budgets in `scripts/bundle-budgets.json` are measured in bytes:
 | Metric | Baseline | Limit |
 | --- | ---: | ---: |
 | Initial JavaScript gzip | 266,405 | 307,200 (300 KiB) |
-| Total JavaScript gzip | 356,072 | 425,984 (416 KiB) |
+| Total JavaScript gzip | 356,072 | 432,128 (422 KiB) |
+
+The timeline navigation block raised total by 6 KiB after measuring 424,290 → 428,046 bytes (+3,756); initial stayed within its unchanged limit. See [timeline navigation](timeline-navigation.md) for LOD/minimap scope and checks.
 
 Missing build manifests/chunks and exceeded budgets fail the command. Unit tests exercise passing builds, oversized static imports, oversized workers, and missing files. To review a budget change, rebuild, inspect the measured growth and chunk split, then update the limits in the JSON file with the reason in the PR. The checker never updates limits automatically.
 

@@ -1192,5 +1192,16 @@
   "timeline.expandAll": "Развернуть всё",
   "timeline.collapseTag": "Свернуть тег",
   "timeline.expandTag": "Развернуть тег",
-  "timeline.hiddenFrames": "Скрытые кадры"
+  "timeline.hiddenFrames": "Скрытые кадры",
+  "timeline.navigation": "Навигация таймлайна",
+  "timeline.zoom": "Масштаб таймлайна",
+  "timeline.zoomOut": "Уменьшить таймлайн",
+  "timeline.zoomIn": "Увеличить таймлайн",
+  "timeline.fitAll": "Показать всю анимацию",
+  "timeline.fitTag": "Показать выбранный тег",
+  "timeline.previousTag": "Предыдущий тег",
+  "timeline.nextTag": "Следующий тег",
+  "timeline.jumpTag": "Перейти к тегу",
+  "timeline.onlyTag": "Только текущий тег",
+  "timeline.minimap": "Мини-карта таймлайна"
 }

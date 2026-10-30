@@ -1614,3 +1614,187 @@ test('large folded timeline keeps bounded cells, reaches the original last frame
   expect(await page.locator('[data-hit="cel"], [data-folded-frames]').count()).toBeLessThan(1200);
   await page.keyboard.press('Home'); await expect(page.locator('[data-hit="frame"][data-f="0"]')).toBeVisible();
 });
+
+async function timelineGoto(page: Page, frame: number) {
+  await command(page, 'anim.goto');
+  const dialog = page.getByRole('dialog', { name: 'Go to frame', exact: true });
+  await dialog.getByRole('spinbutton').fill(String(frame)); await dialog.getByRole('button', { name: 'Go', exact: true }).click();
+}
+
+function navigationFixture(count: number, name: string, layers = 1) {
+  return { format: 'pixprite', version: 7, name, width: 1, height: 1,
+    frames: Array.from({ length: count }, (_, i) => ({ duration: 100 + i % 1000 })),
+    images: [{ id: 'nav-red', w: 1, h: 1, d: Buffer.from([255, 0, 0, 255]).toString('base64') }],
+    layers: Array.from({ length: layers }, (_, l) => ({ name: `Layer ${l}`,
+      cels: Array.from({ length: count }, (_, i) => i ? { link: 0 } : { x: 0, y: 0, image: { kind: 'image', id: 'nav-red' } }) })) };
+}
+
+test('timeline navigation fits endpoints, zooms horizontally with source picking, and tag list/filter/goto keep overlaps and source data intact', async ({ page }) => {
+  test.setTimeout(90_000);
+  const fixture = { ...navigationFixture(120, 'Navigation overlap'), tags: [
+    { name: 'Late', from: 90, to: 119, color: '#ff0000', direction: 'forward' },
+    { name: 'Wide', from: 10, to: 60, color: '#00ff00', direction: 'forward' },
+    { name: 'Short', from: 10, to: 20, color: '#0000ff', direction: 'forward' },
+    { name: 'Nested', from: 15, to: 18, color: '#ffff00', direction: 'forward' }], hiddenFrameRanges: [[30, 40]] };
+  await openFixture(page, fixture);
+  const scroller = page.getByTestId('timeline-scroll'), zoom = page.getByRole('spinbutton', { name: 'Timeline zoom', exact: true });
+  const jump = page.getByRole('combobox', { name: 'Jump to tag', exact: true });
+  await jump.selectOption('1');
+  await expect(page.locator('[data-hit=frame][data-current=true]')).toHaveAttribute('data-f', '10');
+  await page.getByRole('button', { name: 'Next tag', exact: true }).click(); await expect(jump).toHaveValue('2');
+  await page.getByRole('button', { name: 'Previous tag', exact: true }).click(); await expect(jump).toHaveValue('1');
+  await page.getByRole('checkbox', { name: 'Only current tag', exact: true }).check();
+  await expect(scroller).toHaveAttribute('data-column-count', '41'); // 51 source frames, 11 collapsed into one.
+  await timelineGoto(page, 17); // Explicit wide selection wins the innermost nested tag.
+  await expect(scroller).toHaveAttribute('data-column-count', '41');
+  await timelineGoto(page, 80); // Outside every tag: no inaccessible playhead.
+  await expect(scroller).toHaveAttribute('data-column-count', '110');
+  await expect(page.locator('[data-hit=frame][data-current=true]')).toHaveAttribute('data-f', '79');
+  await page.getByRole('button', { name: 'Fit entire animation', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: 'Only current tag', exact: true })).not.toBeChecked();
+  await expect(page.locator('[data-hit=frame][data-f="0"]')).toBeVisible();
+  const first = await page.locator('[data-hit=frame][data-f="0"]').boundingBox();
+  const height = first!.height;
+  const anchor = await scroller.evaluate(el => (el.scrollLeft + (el.clientWidth - 232) / 2) / Number(el.getAttribute('data-frame-width')));
+  await zoom.fill('200'); await zoom.press('Tab');
+  await expect.poll(() => scroller.evaluate((el, anchor) => Math.abs((el.scrollLeft + (el.clientWidth - 232) / 2) / Number(el.getAttribute('data-frame-width')) - anchor), anchor)).toBeLessThan(.1);
+  await expect.poll(async () => Number(await scroller.getAttribute('data-frame-width'))).toBe(48);
+  let f: number | null = null;
+  await expect.poll(async () => {
+    f = await scroller.evaluate(el => {
+      const box = el.getBoundingClientRect();
+      const visible = [...el.querySelectorAll<HTMLElement>('[data-hit=frame]')].find(node => { const r = node.getBoundingClientRect(); return r.left >= box.left + 232 && r.right <= box.right; });
+      return visible ? Number(visible.dataset.f) : null;
+    });
+    return f;
+  }).not.toBeNull();
+  const head = page.locator(`[data-hit=frame][data-f="${f}"]`);
+  expect((await head.boundingBox())!.height).toBe(height);
+  await head.click(); await expect(page.locator('[data-hit=frame][data-current=true]')).toHaveAttribute('data-f', String(f));
+  await jump.selectOption('0'); await page.getByRole('button', { name: 'Collapse tag: Late', exact: true }).click();
+  await page.getByRole('button', { name: 'Fit selected tag', exact: true }).click();
+  await expect(page.locator('[data-fold-from="90"]')).toBeVisible(); // Fit does not unfold or navigate.
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.tags[0].collapsed).toBe(true);
+  await timelineGoto(page, 91); // A manual same-frame jump reveals the folded tag.
+  await expect(page.locator('[data-hit=frame][data-current=true]')).toHaveAttribute('data-f', '90');
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.tags[0].collapsed).toBe(false);
+  await page.getByTitle(/^Late: frames/).dblclick();
+  const dialog = page.getByRole('dialog', { name: 'Tag', exact: true });
+  await dialog.getByRole('textbox').first().fill('Renamed Late'); await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(jump.locator('option:checked')).toHaveText('Renamed Late (91–120)');
+  const fit = page.getByRole('button', { name: 'Fit selected tag', exact: true });
+  await fit.click(); await expect(fit).toHaveAttribute('aria-pressed', 'true');
+  await timelineGoto(page, 80); await expect(fit).toHaveAttribute('aria-pressed', 'false');
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await expect(page.locator('[data-hit=frame][data-f="79"][data-current=true]')).toBeVisible();
+  await jump.selectOption('1'); await fit.click();
+  await page.getByRole('checkbox', { name: 'Only current tag', exact: true }).check();
+  await expect(fit).toHaveAttribute('aria-pressed', 'false');
+  await timelineGoto(page, 100); await expect(scroller).toHaveAttribute('data-column-count', '30');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.locator('[data-hit=frame][data-f="99"][data-current=true]')).toBeVisible();
+  await timelineGoto(page, 80); await expect(scroller).toHaveAttribute('data-column-count', '110');
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await expect(page.locator('[data-hit=frame][data-f="79"][data-current=true]')).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Only current tag', exact: true }).uncheck();
+  await jump.selectOption('0');
+
+  await page.getByTitle(/^Renamed Late: frames/).click({ button: 'right' }); await page.getByText('Delete tag', { exact: true }).click();
+  await expect(jump).toHaveValue('-1');
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.tags.length).toBe(3);
+  const saved: any = await documentNamed(page, fixture.name);
+  expect(saved.images).toEqual(fixture.images); expect(saved.layers[0].cels).toEqual(fixture.layers[0].cels); expect(saved.frames).toEqual(fixture.frames);
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual({ width: 1, height: 1, data: [255, 0, 0, 255] });
+});
+
+test('timeline minimap synchronizes native wheel scroll, pointer drag, keyboard, folding and resize with a bounded DPR canvas', async ({ page }) => {
+  test.setTimeout(90_000);
+  const fixture = navigationFixture(1000, 'Minimap synchronization'); await openFixture(page, fixture);
+  const scroller = page.getByTestId('timeline-scroll'), map = page.getByTestId('timeline-minimap'), view = page.getByTestId('timeline-minimap-viewport');
+  const read = () => scroller.evaluate(el => ({ left: el.scrollLeft, available: el.clientWidth - 232, width: el.scrollWidth - 232 }));
+  const assertSync = async () => {
+    await expect.poll(async () => {
+      const actual = await read(), fraction = Number(await view.getAttribute('data-left'));
+      return Math.abs(fraction - actual.left / actual.width);
+    }).toBeLessThan(.0001);
+  };
+  await scroller.hover(); await page.mouse.wheel(2000, 0); await expect.poll(async () => (await read()).left).toBeGreaterThan(1000); await assertSync();
+  const rect = await map.boundingBox();
+  await page.mouse.click(rect!.x + rect!.width * .75, rect!.y + 12);
+  await expect.poll(async () => (await read()).left).toBeGreaterThan(15000); await assertSync();
+  const vbox = await view.boundingBox();
+  await page.mouse.move(vbox!.x + vbox!.width / 2, vbox!.y + 12); await page.mouse.down();
+  await page.mouse.move(rect!.x + rect!.width * .25, rect!.y + 12, { steps: 8 }); await page.mouse.up();
+  await expect.poll(async () => (await read()).left).toBeLessThan(7000); await assertSync();
+  await map.focus(); await page.keyboard.press('End'); await assertSync();
+  await expect(page.locator('[data-hit=frame][data-f="999"]')).toBeVisible();
+  const before = Number(await view.getAttribute('data-width'));
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect.poll(async () => Number(await view.getAttribute('data-width'))).toBeGreaterThan(before); await assertSync();
+  await page.getByRole('button', { name: 'Collapse all', exact: true }).click();
+  await expect(view).toHaveAttribute('data-width', '1'); await assertSync();
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1450, height: 1000, deviceScaleFactor: 2, mobile: false });
+  await expect.poll(() => map.locator('canvas').evaluate((el: HTMLCanvasElement) => el.height)).toBe(48);
+  const backing = await map.locator('canvas').evaluate((el: HTMLCanvasElement) => ({ width: el.width, height: el.height }));
+  expect(backing.width).toBeLessThanOrEqual(4096); expect(backing.height).toBeLessThanOrEqual(96);
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.hiddenFrameRanges).toEqual([[0, 999]]);
+  expect((await documentNamed(page, fixture.name) as any).images).toEqual(fixture.images);
+});
+
+test('fit huge timeline uses bounded aggregate DOM, geometrically picks original frames and reaches the final frame at every viewport size', async ({ page }) => {
+  test.setTimeout(120_000);
+  const fixture = navigationFixture(20000, 'Huge fitted navigation', 10); await openFixture(page, fixture);
+  await page.getByRole('button', { name: 'Fit entire animation', exact: true }).click();
+  const scroller = page.getByTestId('timeline-scroll');
+  await expect.poll(async () => Number(await scroller.getAttribute('data-frame-width'))).toBeLessThan(.1);
+  expect(await page.locator('[data-hit=cel]').count()).toBeLessThan(2200);
+  expect(await page.locator('[data-hit=frame]').count()).toBeLessThan(200);
+  const data = await scroller.evaluate(el => ({ left: el.getBoundingClientRect().left, right: el.getBoundingClientRect().right, width: el.clientWidth,
+    extent: el.scrollWidth, frameWidth: Number(el.getAttribute('data-frame-width')) }));
+  expect(data.extent).toBeLessThanOrEqual(data.width + 1);
+  const head = await page.locator('[data-hit=frame]').first().boundingBox();
+  const frame = 12345;
+  await page.mouse.click(data.left + 232 + (frame + .5) * data.frameWidth, head!.y + head!.height / 2);
+  await command(page, 'anim.frameProperties');
+  let timing = page.getByRole('dialog', { name: 'Frame timing', exact: true });
+  await expect(timing.getByRole('spinbutton').first()).toHaveValue(String(100 + frame % 1000));
+  await timing.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.keyboard.press('End');
+  await command(page, 'anim.frameProperties'); timing = page.getByRole('dialog', { name: 'Frame timing', exact: true });
+  await expect(timing.getByRole('spinbutton').first()).toHaveValue('1099'); await timing.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await expect.poll(() => scroller.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+  expect(await page.locator('[data-hit=cel]').count()).toBeLessThan(2200);
+  await expect.poll(() => documentNamed(page, fixture.name)).not.toBeNull();
+  const saved: any = await documentNamed(page, fixture.name);
+  expect(saved.frames).toEqual(fixture.frames); expect(saved.layers).toHaveLength(10); expect(saved.images).toEqual(fixture.images);
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual({ width: 1, height: 1, data: [255, 0, 0, 255] });
+});
+
+test('dense folded Fit and current-tag crop keep a pointer gesture in its original source coordinate system after reveal', async ({ page }) => {
+  test.setTimeout(90_000);
+  const fixture = { ...navigationFixture(5000, 'Frozen navigation gesture'), tags: [
+    { name: 'Wide', from: 0, to: 4000, color: '#00ff00', direction: 'forward' },
+    { name: 'Fold', from: 0, to: 3000, color: '#ff0000', direction: 'forward', collapsed: true }] };
+  await openFixture(page, fixture); await page.getByRole('button', { name: 'Fit entire animation', exact: true }).click();
+  const scroller = page.getByTestId('timeline-scroll');
+  const gesture = async () => {
+    const geometry = await scroller.evaluate(el => ({ x: el.getBoundingClientRect().left + 232, width: Number(el.getAttribute('data-frame-width')) }));
+    const head = await page.locator('[data-hit=frame]').first().boundingBox();
+    const x = geometry.x + geometry.width * .5, y = head!.y + head!.height / 2;
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x, y + 1); await page.mouse.up();
+    await expect(page.getByRole('textbox', { name: 'Go to frame', exact: true })).toHaveValue('1501');
+  };
+  await gesture();
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.tags[1].collapsed).toBe(false);
+  await page.getByRole('button', { name: 'Collapse tag: Fold', exact: true }).click();
+  await timelineGoto(page, 3501); // Wide active, Fold still collapsed.
+  await page.getByRole('checkbox', { name: 'Only current tag', exact: true }).check();
+  await expect(scroller).toHaveAttribute('data-column-count', '1001');
+  await gesture(); // Reveals Fold and changes the active crop to that shorter tag during pointerdown.
+  await expect(scroller).toHaveAttribute('data-column-count', '3001');
+  const saved: any = await documentNamed(page, fixture.name);
+  expect(saved.images).toEqual(fixture.images); expect(saved.layers[0].cels).toEqual(fixture.layers[0].cels);
+});

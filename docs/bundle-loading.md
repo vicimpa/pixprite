@@ -68,3 +68,7 @@ Production SW теперь precache-ит полный build, включая вс
 | Весь emitted JS, включая workers | 408593 | 412711 (+4118) | 425984 (416 KiB) |
 
 Прежний total limit 409600 (400 KiB) превышен на 3111 байт. Total budget увеличен на 16384 байта (16 KiB), до 416 KiB; текущий запас — 13273 байта. Причина — отдельный lazy Layer FX dialog, residual scope в общей модели и timeline-операциях, корректный group bake/export, явная миграция формата v5 → v6 и тот же pipeline в Worker/fallback. FX dialog остаётся demand entry; границы Home/editor/dialogs/formats/extensions/worker проходят graph gate. Initial limit не повышался. Историческое измерение выше сохранено для сравнения; новый total limit зафиксирован в `scripts/bundle-budgets.json`.
+
+## Timeline navigation: total budget
+
+После folding (`1676075`) initial gzip был 191414 B, total 424290 B. Навигация/LOD/мини-карта дают 191434 B initial (+20) и 428046 B total (+3756); измерено gzip level 9 на финальном production build. Total limit увеличен на 6 KiB: 425984 → 432128 B (422 KiB), запас 4082 B. Initial limit остаётся 307200 B; graph gate проходит. Подробности и поведение: [навигация таймлайна](timeline-navigation.md). Предыдущие таблицы сохраняют исторические измерения своих блоков.

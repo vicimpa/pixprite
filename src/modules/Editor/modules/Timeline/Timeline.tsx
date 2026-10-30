@@ -1,4 +1,6 @@
 import { columnOf, columnPosition, frameAtColumn, frameColumns, type FrameColumn } from '~/core/TimelineFolding';
+import { activeTag, adjacentTag, anchorScroll, clipColumns, fitFrameWidth, orderedTags, reconcileTag, timelineWindow } from '~/core/TimelineNavigation';
+import { Minimap } from './Minimap';
 import { t } from "~/core/i18n";
 import { runCommand } from "~/core/Commands";
 import { parentOf, subtreeStart, type Range } from "~/core/Sprite";
@@ -21,9 +23,11 @@ type Hit =
   | { kind: 'cel'; l: number; f: number; };
 
 /** A drag in the timeline: extending a range, or moving/copying the selected block */
-type Drag =
+type DragLayout = { columns: FrameColumn[]; width: number; scrollLeft: number; left: number };
+type Drag = (
   | { mode: 'select'; anchor: Hit; }
-  | { mode: 'move'; range: Range; from: Hit; target: { l: number; f: number; } | null; };
+  | { mode: 'move'; range: Range; from: Hit; target: { l: number; f: number; } | null; }
+) & { layout: DragLayout };
 
 const LAYER_MENU = (): MenuItems => [
   item('layer.new'), item('layer.duplicate'), item('layer.delete'), '-',
@@ -173,14 +177,14 @@ function contrastText(hex: string) {
 }
 
 /** Tags laid out in as few rows as possible; a long name reserves the frames it covers too */
-function tagRows(columns: FrameColumn[], tags: typeof state.sprite.tags, cell: number) {
-  // Rough label width in frames (the label can stick out past a short tag)
-  const end = (i: number) => Math.max(columnOf(columns, tags[i].to), columnOf(columns, tags[i].from) + Math.ceil((tags[i].name.length * 7 + 30) / cell) - 1);
+function tagRows(columns: FrameColumn[], tags: typeof state.sprite.tags) {
+  const start = (i: number) => Math.max(0, columnOf(columns, tags[i].from));
+  const end = (i: number) => { const v = columnOf(columns, tags[i].to); return v < 0 ? columns.length - 1 : v; };
   const rows: number[][] = [];
   tags.forEach((t, i) => {
-    const row = rows.find(r => r.every(j => end(i) < columnOf(columns, tags[j].from) || columnOf(columns, t.from) > end(j)));
-    if (row) row.push(i);
-    else rows.push([i]);
+    if (!columns.length || t.to < columns[0].from || t.from > columns.at(-1)!.to) return;
+    const row = rows.find(r => r.every(j => end(i) < start(j) || start(i) > end(j)));
+    if (row) row.push(i); else rows.push([i]);
   });
   return rows;
 }
@@ -202,23 +206,84 @@ export const Timeline: FC = () => {
     return false;
   };
   const order = sprite.layers.map((_, i) => sprite.layers.length - 1 - i).filter(i => !folded(i));
-  const columns = useMemo(() => frameColumns(sprite.frames.length, sprite.tags, sprite.hiddenFrameRanges), [sprite.frames.length, sprite.tags, sprite.hiddenFrameRanges]);
-  const rows = useMemo(() => tagRows(columns, sprite.tags, cell), [columns, sprite.tags, cell]);
+  const previous = useRef<{ columns: FrameColumn[]; width: number; available: number; sprite: WeakRef<typeof sprite> } | null>(null);
+  const [navigation, setNavigation] = useState<{ sprite: WeakRef<typeof sprite>; tags: typeof sprite.tags; selected: number;
+    only: boolean; zoom: number; fit: 'all' | 'tag' | null; fitFrame: number; fitReveal: number }>({ sprite: new WeakRef(sprite), tags: sprite.tags, selected: -1, only: false, zoom: 1, fit: null, fitFrame: 0, fitReveal: 0 });
+  // Reconcile during render so no committed view can carry an index from a previous tag array/document.
+  let nav = navigation;
+  if (nav.sprite.deref() !== sprite) {
+    nav = { sprite: new WeakRef(sprite), tags: sprite.tags, selected: -1, only: false, zoom: 1, fit: null, fitFrame: 0, fitReveal: 0 }; setNavigation(nav);
+  } else if (nav.tags !== sprite.tags) {
+    nav = { ...nav, tags: sprite.tags, selected: reconcileTag(nav.tags, sprite.tags, nav.selected) }; setNavigation(nav);
+  }
+  if (nav.fit === 'tag' && nav.selected < 0) { nav = { ...nav, fit: null, zoom: (previous.current?.width ?? cell) / cell }; setNavigation(nav); }
+  const fitTarget = sprite.tags[nav.selected];
+  if (nav.fit === 'tag' && fitTarget && (sprite.frame !== nav.fitFrame || sprite.timelineReveal !== nav.fitReveal)
+    && (sprite.frame < fitTarget.from || sprite.frame > fitTarget.to)) {
+    nav = { ...nav, fit: null, zoom: (previous.current?.width ?? cell) / cell }; setNavigation(nav);
+  }
+  const selected = nav.selected >= 0 ? nav.selected : activeTag(sprite.tags, -1, sprite.frame);
+  const currentTag = activeTag(sprite.tags, nav.selected, sprite.frame);
+  const filter = nav.only && currentTag >= 0 ? sprite.tags[currentTag] : null;
+  const allColumns = useMemo(() => frameColumns(sprite.frames.length, sprite.tags, sprite.hiddenFrameRanges), [sprite.frames.length, sprite.tags, sprite.hiddenFrameRanges]);
+  const columns = useMemo(() => clipColumns(allColumns, filter ? [filter.from, filter.to] : null), [allColumns, filter]);
+  const leftWidth = cell * 3 + nameWidth;
+  const available = Math.max(1, viewport.width - leftWidth);
+  const fitTag = nav.fit === 'tag' && selected >= 0 ? sprite.tags[selected] : null;
+  const fitFrom = fitTag ? Math.max(0, columnOf(columns, fitTag.from)) : 0;
+  const fitTo = fitTag ? Math.max(fitFrom, columnOf(columns, fitTag.to)) : columns.length - 1;
+  const frameWidth = nav.fit ? fitFrameWidth(available, fitTo - fitFrom + 1, cell * 8) : cell * nav.zoom;
+  const rows = useMemo(() => tagRows(columns, sprite.tags), [columns, sprite.tags]);
   const r = sprite.range;
   const total = sprite.frames.reduce((a, f) => a + f.duration, 0);
   const headTop = rows.length * cell;
-  const frames = indices(visibleRange(columns.length, cell, viewport.left, viewport.width - cell * 3 - nameWidth));
+  const window = timelineWindow(columns.length, frameWidth, viewport.left, available);
+  const frames = window.map(c => c.from);
+  const endOf = new Map(window.map(c => [c.from, c.to]));
   const layerRows = indices(visibleRange(order.length, cell, viewport.top, viewport.height - headTop - cell));
+  const columnStyle = (v: number, end = endOf.get(v) ?? v) => ({ gridColumn: 5, justifySelf: 'start', marginLeft: v * frameWidth, width: (end - v + 1) * frameWidth });
+  const beforeLayoutLeft = scroll.current?.scrollLeft ?? 0;
+  useLayoutEffect(() => {
+    const el = scroll.current, before = previous.current;
+    if (!el || !viewport.width) return;
+    if (nav.fit) el.scrollLeft = fitFrom * frameWidth;
+    else if (before && before.sprite.deref() === sprite) {
+      el.scrollLeft = anchorScroll({ ...before, left: beforeLayoutLeft }, { columns, width: frameWidth, available }, sprite.frame);
+    }
+    previous.current = { columns, width: frameWidth, available, sprite: new WeakRef(sprite) };
+  }, [columns, frameWidth, available, fitFrom, fitTo, nav.fit, sprite, viewport.width]);
 
-  // Keep the current frame in view horizontally (also while playing)
+  // Manual transitions and playback keep the playhead visible. Geometry changes preserve the viewport anchor.
   useLayoutEffect(() => {
     const el = scroll.current;
     if (!el) return;
-    const left = cell * 3 + nameWidth;
-    const x = left + columnOf(columns, sprite.frame) * cell;
-    if (x < el.scrollLeft + left) el.scrollLeft = x - left;
-    else if (x + cell > el.scrollLeft + el.clientWidth) el.scrollLeft = x + cell - el.clientWidth;
-  }, [sprite.frame, sprite.frames.length, cell, viewport.width, columns]);
+    const x = columnOf(columns, sprite.frame) * frameWidth;
+    if (x < 0) return;
+    if (x < el.scrollLeft) el.scrollLeft = x;
+    else if (x + frameWidth > el.scrollLeft + available) el.scrollLeft = x + frameWidth - available;
+  }, [sprite, sprite.frame, sprite.timelineReveal]);
+
+  const setZoom = (zoom: number) => {
+    if (!Number.isFinite(zoom) || zoom <= 0) return;
+    setNavigation(n => ({ ...n, zoom: Math.max(.00001, Math.min(8, zoom)), fit: null }));
+  };
+  const selectTag = (index: number) => {
+    const tag = sprite.tags[index];
+    if (!tag) return;
+    state.playing = false; sprite.dropFloating();
+    setNavigation(n => ({ ...n, selected: index, fit: null, zoom: frameWidth / cell }));
+    sprite.range = { type: 'frames', layers: [0, sprite.layers.length - 1], frames: [tag.from, tag.to] };
+    sprite.goToFrame(tag.from);
+  };
+  const pointerHit = (el: Element | null, clientX: number): Hit | null => {
+    const hit = hitOf(el);
+    if (!hit || hit.kind === 'layer') return hit;
+    const box = scroll.current!.getBoundingClientRect();
+    const layout = drag?.layout ?? { columns, width: frameWidth, scrollLeft: scroll.current!.scrollLeft, left: box.left + leftWidth };
+    const position = (clientX - layout.left + layout.scrollLeft) / layout.width;
+    const f = Math.max(layout.columns[0].from, Math.min(layout.columns.at(-1)!.to, frameAtColumn(layout.columns, position)));
+    return { ...hit, f };
+  };
 
   // ...and the current layer vertically, only when the layer changes (playback leaves rows alone)
   useLayoutEffect(() => {
@@ -238,8 +303,9 @@ export const Timeline: FC = () => {
   };
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
-    const h = hitOf(e.target as Element);
+    const h = pointerHit(e.target as Element, e.clientX);
     if (!h || e.button === 1) return;
+    const layout: DragLayout = { columns, width: frameWidth, scrollLeft: scroll.current!.scrollLeft, left: scroll.current!.getBoundingClientRect().left + leftWidth };
     e.currentTarget.setPointerCapture(e.pointerId);
     const l = h.kind === 'frame' ? null : h.l, f = h.kind === 'layer' ? null : h.f;
     const sameKind = !!r && (h.kind === 'frame' ? r.type === 'frames' : h.kind === 'layer' ? r.type === 'layers' : r.type === 'cels');
@@ -256,23 +322,23 @@ export const Timeline: FC = () => {
 
     // Dragging inside the selection moves (or with Ctrl/Alt copies) it
     if (inside && r) {
-      setDrag({ mode: 'move', range: r, from: h, target: null });
+      setDrag({ mode: 'move', range: r, from: h, target: null, layout });
       return;
     }
     if (e.shiftKey && sameKind) {
       const anchor: Hit = h.kind === 'frame' ? { kind: 'frame', f: sprite.frame } : h.kind === 'layer' ? { kind: 'layer', l: sprite.layer } : { kind: 'cel', l: sprite.layer, f: sprite.frame };
       sprite.range = rangeOf(anchor, h);
-      setDrag({ mode: 'select', anchor });
+      setDrag({ mode: 'select', anchor, layout });
       return;
     }
     pick(h);
     sprite.range = rangeOf(h, h);
-    setDrag({ mode: 'select', anchor: h });
+    setDrag({ mode: 'select', anchor: h, layout });
   };
 
   const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     const target = document.elementFromPoint(e.clientX, e.clientY);
-    const h = hitOf(target);
+    const h = pointerHit(target, e.clientX);
     if (!drag) {
       // Status text for whatever is under the mouse
       if (!h) return;
@@ -313,7 +379,10 @@ export const Timeline: FC = () => {
     const box = target?.closest<HTMLElement>('[data-hit]')?.getBoundingClientRect();
     const kind = drag.range.type;
     let t: { l: number; f: number; } | null = null;
-    if (kind === 'frames' && h.kind !== 'layer' && box) t = { l: 0, f: h.f + (e.clientX > box.left + box.width / 2 ? 1 : 0) };
+    if (kind === 'frames' && h.kind !== 'layer' && box) {
+      const position = (e.clientX - drag.layout.left + drag.layout.scrollLeft) / drag.layout.width;
+      t = { l: 0, f: h.f + (position % 1 > .5 ? 1 : 0) };
+    }
     if (kind === 'layers' && h.kind !== 'frame' && box) t = { l: h.l + (e.clientY < box.top + box.height / 2 ? 1 : 0), f: 0 };
     if (kind === 'cels' && h.kind === 'cel' && drag.from.kind === 'cel') t = { l: h.l - drag.from.l, f: h.f - drag.from.f };
     // Hovering the start cell means "no move yet"
@@ -329,7 +398,7 @@ export const Timeline: FC = () => {
     const d = drag;
     setDrag(null);
     if (!d || d.mode !== 'move') return;
-    const h = hitOf(document.elementFromPoint(e.clientX, e.clientY));
+    const h = pointerHit(document.elementFromPoint(e.clientX, e.clientY), e.clientX);
     if (!d.target) {
       // A plain click inside a range selects just that cell
       if (h) { pick(h); sprite.range = rangeOf(h, h); }
@@ -346,7 +415,7 @@ export const Timeline: FC = () => {
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
-    const h = hitOf(e.target as Element);
+    const h = pointerHit(e.target as Element, e.clientX);
     if (h?.kind === 'frame') dialogs.frameProperties();
     if (h?.kind === 'cel') dialogs.celProperties();
   };
@@ -379,7 +448,24 @@ export const Timeline: FC = () => {
 
   return (
     <styled.Root>
-      <styled.Toolbar>
+      <styled.Toolbar aria-label={t('timeline.navigation')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}>
+        <Button aria-label={t('timeline.zoomOut')} onClick={() => setZoom(frameWidth / cell / 1.5)}>−</Button>
+        <Label>{t('timeline.zoom')} <styled.Num aria-label={t('timeline.zoom')} type="number" min={.001} max={800} step={10}
+          style={{ width: '5em' }} value={+(frameWidth / cell * 100).toFixed(3)} onChange={e => setZoom(+e.target.value / 100)} />%</Label>
+        <Button aria-label={t('timeline.zoomIn')} onClick={() => setZoom(frameWidth / cell * 1.5)}>+</Button>
+        <Button aria-pressed={nav.fit === 'all'} $active={nav.fit === 'all'} onClick={() => { state.playing = false; setNavigation(n => ({ ...n, only: false, fit: 'all' })); }}>{t('timeline.fitAll')}</Button>
+        <Button aria-pressed={nav.fit === 'tag'} $active={nav.fit === 'tag'} disabled={selected < 0} onClick={() => { state.playing = false; setNavigation(n => ({ ...n, only: false, fit: 'tag', selected, fitFrame: sprite.frame, fitReveal: sprite.timelineReveal })); }}>{t('timeline.fitTag')}</Button>
+        <Separator />
+        <Button disabled={!sprite.tags.length} onClick={() => selectTag(adjacentTag(sprite.tags, selected, sprite.frame, -1))}>{t('timeline.previousTag')}</Button>
+        <styled.TagSelect disabled={!sprite.tags.length} aria-label={t('timeline.jumpTag')} value={selected} style={{ maxWidth: 180 }} onChange={e => selectTag(+e.target.value)}>
+          <option value={-1} disabled>{t('timeline.jumpTag')}</option>
+          {orderedTags(sprite.tags).map(i => <option key={i} value={i}>{sprite.tags[i].name} ({sprite.tags[i].from + 1}–{sprite.tags[i].to + 1})</option>)}
+        </styled.TagSelect>
+        <Button disabled={!sprite.tags.length} onClick={() => selectTag(adjacentTag(sprite.tags, selected, sprite.frame, 1))}>{t('timeline.nextTag')}</Button>
+        <Label><Check aria-label={t('timeline.onlyTag')} checked={nav.only} disabled={!sprite.tags.length}
+          onChange={e => setNavigation(n => ({ ...n, only: e.target.checked, fit: null, zoom: frameWidth / cell }))} />{t('timeline.onlyTag')}</Label>
+        <Button onClick={() => runCommand('anim.goto')}>{t('common.goToFrame')}…</Button>
+        <Separator />
         <Button $square $active={state.playing} title={t('timeline.playStopEnterRight')}
           onClick={() => runCommand('anim.play')}
           onContextMenu={e => popupAt(e, 'play', 110)}>
@@ -423,7 +509,9 @@ export const Timeline: FC = () => {
         </Muted>
       </styled.Toolbar>
 
+      <Minimap scroll={scroll} columns={columns} width={frameWidth} available={available} left={viewport.left} frame={sprite.frame} tags={sprite.tags} />
       <styled.Scroll
+        data-testid="timeline-scroll" data-frame-width={frameWidth} data-column-count={columns.length}
         ref={scroll}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -437,36 +525,38 @@ export const Timeline: FC = () => {
       >
         <styled.Grid style={{
           gridTemplateRows: `repeat(${rows.length + 1 + order.length}, ${cell}px)`,
-          gridTemplateColumns: `${cell}px ${cell}px ${cell}px ${nameWidth}px repeat(${columns.length}, ${cell}px) 1fr`,
+          gridTemplateColumns: `${cell}px ${cell}px ${cell}px ${nameWidth}px ${columns.length * frameWidth}px minmax(0, 1fr)`,
         }}>
           {rows.map((row, ri) => (
             <div key={'tags' + ri} className="contents">
               <styled.Corner style={{ gridRow: ri + 1, gridColumn: '1 / 5', top: ri * cell }} />
-              {row.filter(i => columnOf(columns, sprite.tags[i].from) < frames.at(-1)! + 1 && Math.max(columnOf(columns, sprite.tags[i].to), columnOf(columns, sprite.tags[i].from) + Math.ceil((sprite.tags[i].name.length * 7 + 30) / cell) - 1) >= (frames[0] ?? 0)).map(i => {
+              {row.filter(i => Math.max(0, columnOf(columns, sprite.tags[i].from)) <= (window.at(-1)?.to ?? -1) && (columnOf(columns, sprite.tags[i].to) < 0 ? columns.length - 1 : columnOf(columns, sprite.tags[i].to)) >= (frames[0] ?? 0)).map(i => {
                 const tag = sprite.tags[i];
                 return (
-                  <styled.TagCell key={i} style={{ gridColumn: `${columnOf(columns, tag.from) + 5} / ${columnOf(columns, tag.to) + 6}`, gridRow: ri + 1, top: ri * cell }}>
+                  <styled.TagCell key={i} style={{ ...columnStyle(Math.max(0, columnOf(columns, tag.from)), columnOf(columns, tag.to) < 0 ? columns.length - 1 : columnOf(columns, tag.to)), gridRow: ri + 1, top: ri * cell }}>
                     <styled.Tag
                       style={{ borderColor: tag.color }}
                       title={`${tag.name}: frames ${tag.from + 1}–${tag.to + 1} (${tag.direction}). Click selects its frames, drag moves it, drag an end to resize, double click to edit`}
                       onPointerMove={e => {
                         // Half a frame at each end resizes
                         const r = e.currentTarget.getBoundingClientRect();
-                        const edge = Math.min(cell / 2, r.width / 3);
-                        e.currentTarget.style.cursor = e.clientX - r.left < edge || r.right - e.clientX < edge ? 'ew-resize' : 'grab';
+                        const edge = Math.min(frameWidth / 2, r.width / 3);
+                        e.currentTarget.style.cursor = (columnOf(columns, tag.from) >= 0 && e.clientX - r.left < edge) || (columnOf(columns, tag.to) >= 0 && r.right - e.clientX < edge) ? 'ew-resize' : 'grab';
                       }}
                       onPointerDown={e => {
                         e.stopPropagation();
                         if (e.button !== 0) return;
                         const r = e.currentTarget.getBoundingClientRect();
-                        const edge = Math.min(cell / 2, r.width / 3);
-                        const mode = e.clientX - r.left < edge ? 'from' : r.right - e.clientX < edge ? 'to' : 'move';
+                        const edge = Math.min(frameWidth / 2, r.width / 3);
+                        const mode = columnOf(columns, tag.from) >= 0 && e.clientX - r.left < edge ? 'from' : columnOf(columns, tag.to) >= 0 && r.right - e.clientX < edge ? 'to' : 'move';
                         const start = { ...tag }, sx = e.clientX, last = sprite.frames.length - 1;
+                        const box = scroll.current!.getBoundingClientRect();
+                        const moveAnchor = frameAtColumn(columns, (sx - box.left + scroll.current!.scrollLeft - leftWidth) / frameWidth);
                         let changed = false;
                         const move = (ev: globalThis.PointerEvent) => {
-                          const anchor = mode === 'to' ? start.to : start.from;
+                          const anchor = mode === 'to' ? start.to : mode === 'from' ? start.from : moveAnchor;
                           const origin = columnPosition(columns, anchor);
-                          const df = frameAtColumn(columns, origin + (ev.clientX - sx) / cell) - anchor;
+                          const df = frameAtColumn(columns, origin + (ev.clientX - sx) / frameWidth) - anchor;
                           let { from, to } = start;
                           if (mode === 'move') {
                             const d = Math.max(-from, Math.min(last - to, df));
@@ -485,8 +575,7 @@ export const Timeline: FC = () => {
                           removeEventListener('pointerup', up);
                           if (changed) return state.save();
                           // A plain click selects the tag's frames
-                          sprite.range = { type: 'frames', layers: [0, sprite.layers.length - 1], frames: [tag.from, tag.to] };
-                          sprite.goToFrame(tag.from);
+                          selectTag(i);
                         };
                         addEventListener('pointermove', move);
                         addEventListener('pointerup', up);
@@ -515,7 +604,7 @@ export const Timeline: FC = () => {
                 );
               })}
               {/* Opaque band under the whole row, so layer rows scrolling beneath don't show through */}
-              <styled.TagFill style={{ gridRow: ri + 1, gridColumn: `5 / ${columns.length + 6}`, top: ri * cell }} />
+              <styled.TagFill style={{ gridRow: ri + 1, gridColumn: '5 / 7', top: ri * cell }} />
             </div>
           ))}
 
@@ -533,12 +622,16 @@ export const Timeline: FC = () => {
             <Muted>{t('common.layers')}</Muted>
           </styled.Corner>
           {frames.map(v => {
-            const col = columns[v], f = col.from;
+            const col = columns[v], end = endOf.get(v)!, f = col.from;
+            if (end > v) return <styled.FrameHead key={f} data-hit="frame" data-f={f} data-aggregate-to={columns[end].to}
+              data-current={sprite.frame >= f && sprite.frame <= columns[end].to} data-selected={r?.type !== 'layers' && !!r && r.frames[0] <= columns[end].to && r.frames[1] >= f}
+              style={{ gridRow: rows.length + 1, ...columnStyle(v), top: headTop, overflow: 'hidden', fontSize: 9 }}
+              title={`${f + 1}–${columns[end].to + 1}`}>{f + 1}</styled.FrameHead>;
             if (col.folded) return <styled.FrameHead key={f} data-fold-from={f} data-fold-to={col.to}
               role="button" tabIndex={0} aria-label={`${t('timeline.hiddenFrames')}: ${col.to - f + 1} (${f + 1}–${col.to + 1})`}
               title={`${f + 1}–${col.to + 1}: ${t('timeline.expandAll')}`}
               data-current={sprite.frame >= f && sprite.frame <= col.to}
-              style={{ gridRow: rows.length + 1, gridColumn: v + 5, top: headTop, fontSize: 9 }}
+              style={{ gridRow: rows.length + 1, ...columnStyle(v), top: headTop, fontSize: 9 }}
               onPointerDown={e => e.stopPropagation()}
               onClick={() => { sprite.revealFrames([f, col.to]); state.save(); }}
               onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); sprite.revealFrames([f, col.to]); state.save(); } }}
@@ -578,7 +671,7 @@ export const Timeline: FC = () => {
                   const move = (ev: globalThis.PointerEvent) => {
                     const anchor = onionEdge === 'start' ? onionStart : onionEnd;
                     const origin = columnPosition(columns, anchor);
-                    const df = frameAtColumn(columns, origin + (ev.clientX - sx) / cell) - anchor;
+                    const df = frameAtColumn(columns, origin + (ev.clientX - sx) / frameWidth) - anchor;
                     const n = Math.max(0, base + (onionEdge === 'start' ? -df : df));
                     state.setPrefs(onionEdge === 'start' ? { onionBefore: n } : { onionAfter: n });
                     state.hint = `Onion skin: ${state.prefs.onionBefore} before, ${state.prefs.onionAfter} after`;
@@ -588,14 +681,14 @@ export const Timeline: FC = () => {
                   addEventListener('pointerup', up);
                 }}
                 data-drop={drop}
-                style={{ gridRow: rows.length + 1, gridColumn: v + 5, top: headTop }}
+                style={{ gridRow: rows.length + 1, ...columnStyle(v), top: headTop }}
                 title={`Frame ${f + 1}, ${frame.duration}ms`}
               >
-                {f + 1}
+                <span style={{ overflow: 'hidden' }}>{f + 1}</span>
               </styled.FrameHead>
             );
           })}
-          <styled.HeadFill style={{ gridRow: rows.length + 1, gridColumn: columns.length + 5, top: headTop }} />
+          <styled.HeadFill style={{ gridRow: rows.length + 1, gridColumn: 6, top: headTop }} />
 
           {/* Layer rows, topmost first */}
           {layerRows.map(k => {
@@ -634,15 +727,19 @@ export const Timeline: FC = () => {
                   <LayerName index={l} />
                 </styled.LayerCell>
                 {frames.map(v => {
-                  const col = columns[v], f = col.from;
+                  const col = columns[v], end = endOf.get(v)!, f = col.from;
+                  if (end > v) return <styled.Cel key={f} data-hit="cel" data-l={l} data-f={f} data-aggregate-to={columns[end].to}
+                    data-current={current && sprite.frame >= f && sprite.frame <= columns[end].to} data-cross={current}
+                    data-selected={!!r && inRange(r, l, null) && r.frames[0] <= columns[end].to && r.frames[1] >= f}
+                    style={{ gridRow, ...columnStyle(v), backgroundImage: 'linear-gradient(transparent 45%, var(--fg-dim) 45% 55%, transparent 55%)' }} title={`${f + 1}–${columns[end].to + 1}`} />;
                   if (col.folded) return <styled.Cel key={f} data-folded-frames data-current={current && sprite.frame >= f && sprite.frame <= col.to}
-                    style={{ gridRow, gridColumn: v + 5, color: 'var(--fg-dim)' }} title={`${f + 1}–${col.to + 1}`}
+                    style={{ gridRow, ...columnStyle(v), color: 'var(--fg-dim)' }} title={`${f + 1}–${col.to + 1}`}
                     onPointerDown={e => e.stopPropagation()} onClick={() => { sprite.revealFrames([f, col.to]); state.save(); }}>⋯</styled.Cel>;
                   const c = layer.cels[f];
                   if (layer.group) return (
                     <styled.Cel key={f} data-hit="cel" data-l={l} data-f={f} data-group
                       data-current={current && f === sprite.frame} data-selected={inRange(r, l, f)} data-cross={current || f === sprite.frame}
-                      style={{ gridRow, gridColumn: v + 5 }}>
+                      style={{ gridRow, ...columnStyle(v) }}>
                       {/* A folded group still shows which frames have something inside it */}
                       {layer.collapsed && groupHas(l, f) && <styled.Key data-folded />}
                     </styled.Cel>
@@ -658,7 +755,7 @@ export const Timeline: FC = () => {
                       data-cross={current || f === sprite.frame}
                       data-clip={!!clip && inRange(clip, l, f)}
                       data-drop={!!shifted && inRange(shifted, l, f)}
-                      style={{ gridRow, gridColumn: v + 5 }}
+                      style={{ gridRow, ...columnStyle(v) }}
                     >
                       {c ? (
                         <styled.Key
@@ -670,7 +767,7 @@ export const Timeline: FC = () => {
                     </styled.Cel>
                   );
                 })}
-                <styled.RowFill data-current={current} style={{ gridRow, gridColumn: columns.length + 5 }} />
+                <styled.RowFill data-current={current} style={{ gridRow, gridColumn: 6 }} />
               </div>
             );
           })}
