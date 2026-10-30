@@ -363,3 +363,56 @@ test('failed autosave reports quota exhaustion and retries the pending document'
   await page.locator('[draggable=true][title="Autosave · 32×32"]').click();
   await expect(page.locator('[data-hit=layer]')).toHaveCount(2);
 });
+
+test('storage controls show usage, request persistence, export backups and preserve the newest snapshot', async ({ page }) => {
+  await create(page, 'Backup');
+  await draw(page);
+  await command(page, 'file.save');
+  await expect(page.getByText('Saved: Backup', { exact: true })).toBeVisible();
+  await page.evaluate(async () => {
+    Object.defineProperty(navigator.storage, 'persisted', { value: async () => false, configurable: true });
+    Object.defineProperty(navigator.storage, 'persist', { value: async () => true, configurable: true });
+    Object.defineProperty(navigator.storage, 'estimate', { value: async () => ({ usage: 90, quota: 100 }), configurable: true });
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('pixprite'); r.onsuccess = () => resolve(r.result); });
+    const tx = db.transaction(['snapshots', 'snapshotData', 'data'], 'readwrite');
+    const r = tx.objectStore('data').getAll();
+    r.onsuccess = () => {
+      for (let i = 1; i <= 3; i++) {
+        const id = `storage-ui:${i}`;
+        tx.objectStore('snapshots').put({ id, owner: 'storage-ui', name: 'Backup', width: 32, height: 32, frames: 1, thumb: '', time: i });
+        tx.objectStore('snapshotData').put(r.result[0], id);
+      }
+    };
+    await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onabort = () => reject(tx.error); });
+    db.close();
+  });
+  await page.locator('[data-home]').click();
+  const panel = page.getByRole('region', { name: 'Storage and backups', exact: true });
+  await expect(panel.getByText('Storage may be cleared by the browser.', { exact: true })).toBeVisible();
+  await expect(panel.getByRole('alert')).toContainText('85%');
+  await expect(page.locator('[data-key^="p:"]', { hasText: 'Backup' })).toContainText(/(?:B|KiB|MiB)/);
+  await panel.getByRole('button', { name: 'Request persistent storage', exact: true }).click();
+  await expect(panel.getByText('Persistent storage is enabled.', { exact: true })).toBeVisible();
+  const allDownload = page.waitForEvent('download');
+  await panel.getByRole('button', { name: 'Back up all projects (ZIP)', exact: true }).click();
+  const archive = await allDownload;
+  expect(archive.suggestedFilename()).toBe('pixprite-backup.zip');
+  expect((await readFile((await archive.path())!)).subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  await panel.getByRole('button', { name: 'Clean older snapshots', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Clean older snapshots', exact: true }).getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect(panel.getByRole('button', { name: 'Clean older snapshots', exact: true })).toBeEnabled();
+  const remaining = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('pixprite'); r.onsuccess = () => resolve(r.result); });
+    try {
+      return await new Promise<string[]>(resolve => {
+        const r = db.transaction('snapshots').objectStore('snapshots').index('owner').getAll('storage-ui');
+        r.onsuccess = () => resolve(r.result.map(s => s.id));
+      });
+    } finally { db.close(); }
+  });
+  expect(remaining).toEqual(['storage-ui:3']);
+  const individualDownload = page.waitForEvent('download');
+  await page.locator('[data-key^="p:"]', { hasText: 'Backup' }).getByTitle('Download (.pixprite)').click();
+  const individual = await individualDownload;
+  expect(JSON.parse(await readFile((await individual.path())!, 'utf8'))).toMatchObject({ format: 'pixprite', name: 'Backup' });
+});

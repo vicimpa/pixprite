@@ -4,6 +4,7 @@
  * Folders only group the meta records; documents never move.
  */
 
+import { serializedBytes } from "~/core/Storage";
 import type { ProjectInfo } from "~/core/Sprite";
 import { signal } from "@preact/signals-react";
 
@@ -19,6 +20,8 @@ export type ProjectMeta = {
   colorMode: string;
   /** Small PNG preview as a data URL */
   thumb: string;
+  /** UTF-8 bytes of the serialized document, excluding database overhead. */
+  bytes?: number;
   /** Containing folder; the root when absent */
   folderId?: string | null;
   /** Description, tags, genre, author (a copy of the document's, for the home page) */
@@ -92,12 +95,20 @@ export const newProjectId = () => crypto.randomUUID?.() ?? `${Date.now().toStrin
 export async function listProjects(): Promise<ProjectMeta[]> {
   const tx = (await db()).transaction(META, 'readonly');
   const all = await request(tx.objectStore(META).getAll() as IDBRequest<ProjectMeta[]>);
+  const missing = all.filter(p => p.bytes === undefined);
+  if (missing.length) {
+    const store = (await db()).transaction(DATA, 'readonly').objectStore(DATA);
+    await Promise.all(missing.map(async p => {
+      const data = await request(store.get(p.id));
+      if (data !== undefined) p.bytes = serializedBytes(data);
+    }));
+  }
   return all.sort((a, b) => b.updated - a.updated);
 }
 
 export async function saveProjectData(meta: ProjectMeta, data: unknown) {
   const tx = (await db()).transaction([META, DATA], 'readwrite');
-  tx.objectStore(META).put(meta);
+  tx.objectStore(META).put({ ...meta, bytes: serializedBytes(data) });
   tx.objectStore(DATA).put(data, meta.id);
   await done(tx);
 }
@@ -294,18 +305,20 @@ export type SnapshotMeta = {
   height: number;
   frames: number;
   thumb: string;
+  bytes?: number;
 };
 
 /** How many snapshots are kept per project */
 export const SNAPSHOTS_KEPT = 10;
+let lastSnapshotTime = 0;
 
 /** Adds a snapshot and drops the oldest ones beyond `keep` */
 export async function saveSnapshot(meta: Omit<SnapshotMeta, 'id' | 'time'>, data: unknown, keep = SNAPSHOTS_KEPT) {
-  const time = Date.now();
-  const id = `${meta.owner}:${time}`;
+  const time = lastSnapshotTime = Math.max(Date.now(), lastSnapshotTime + 1);
+  const id = `${meta.owner}:${time}:${newProjectId()}`;
   const d = await db();
   const tx = d.transaction([SNAP_META, SNAP_DATA], 'readwrite');
-  tx.objectStore(SNAP_META).put({ ...meta, id, time } satisfies SnapshotMeta);
+  tx.objectStore(SNAP_META).put({ ...meta, id, time, bytes: serializedBytes(data) } satisfies SnapshotMeta);
   tx.objectStore(SNAP_DATA).put(data, id);
   await done(tx);
   const old = (await listSnapshots(meta.owner)).slice(keep);
@@ -318,6 +331,14 @@ export async function listSnapshots(owner?: string): Promise<SnapshotMeta[]> {
   const store = tx.objectStore(SNAP_META);
   const req = owner === undefined ? store.getAll() : store.index('owner').getAll(owner);
   const all = await request(req as IDBRequest<SnapshotMeta[]>);
+  const missing = all.filter(s => s.bytes === undefined);
+  if (missing.length) {
+    const data = (await db()).transaction(SNAP_DATA, 'readonly').objectStore(SNAP_DATA);
+    await Promise.all(missing.map(async s => {
+      const value = await request(data.get(s.id));
+      if (value !== undefined) s.bytes = serializedBytes(value);
+    }));
+  }
   return all.sort((a, b) => b.time - a.time);
 }
 
@@ -330,6 +351,19 @@ async function deleteSnapshotIds(ids: string[]) {
   const tx = (await db()).transaction([SNAP_META, SNAP_DATA], 'readwrite');
   for (const id of ids) { tx.objectStore(SNAP_META).delete(id); tx.objectStore(SNAP_DATA).delete(id); }
   await done(tx);
+}
+
+/** Keep at least the newest copy of each owner, including unsaved documents. */
+export async function cleanOldSnapshots(keep = 1) {
+  if (!Number.isInteger(keep) || keep < 1) throw new Error('Keep at least one snapshot per project');
+  const counts = new Map<string, number>();
+  const old = (await listSnapshots()).filter(s => {
+    const count = (counts.get(s.owner) ?? 0) + 1;
+    counts.set(s.owner, count);
+    return count > keep;
+  });
+  await deleteSnapshotIds(old.map(s => s.id));
+  return old.length;
 }
 
 export async function deleteSnapshots(owner: string) {

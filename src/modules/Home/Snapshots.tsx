@@ -1,5 +1,6 @@
 import { listSnapshots, SNAPSHOTS_KEPT, type SnapshotMeta } from "~/core/Projects";
 import { state } from "~/core/State";
+import { formatBytes } from "~/core/Storage";
 import { t } from "~/core/i18n";
 import { Button, Muted } from "~/ui/Button";
 import { Dialog, openDialog } from "~/ui/Dialog";
@@ -46,7 +47,7 @@ export const SnapshotList: FC<{ owner?: string; limit?: number; onRestore?: () =
       {snaps.slice(0, limit).map(s => (
         <Item key={s.id} title={`${s.name} · ${s.width}×${s.height} · ${s.frames} ${t('common.framesLower')}`}>
           {s.thumb ? <img src={s.thumb} alt="" /> : null}
-          <div>{s.name}<br /><Muted>{new Date(s.time).toLocaleString()}</Muted></div>
+          <div>{s.name}<br /><Muted>{new Date(s.time).toLocaleString()}{s.bytes !== undefined ? ` · ${formatBytes(s.bytes)}` : ''}</Muted></div>
           <Button onClick={() => { void state.openSnapshot(s.id); onRestore?.(); }}>{t('home.restore')}</Button>
         </Item>
       ))}

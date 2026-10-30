@@ -1,3 +1,4 @@
+import { isQuotaError } from "~/core/Storage";
 import { Color } from "~/core/Color";
 import { PaletteMap } from "~/core/ColorMode";
 import { t } from "~/core/i18n";
@@ -717,7 +718,7 @@ export class State {
       } catch (e) {
         // Keep the version pending so a later autosave retries the same working copy.
         console.warn('Saving the working copy failed', e);
-        this.showTip(`${t('msg.couldNotSave')}: ${(e as Error).message}`, 4000);
+        this.showTip(`${t('msg.couldNotSave')}: ${isQuotaError(e) ? t('storage.quotaExceeded') : (e as Error).message}`, 4000);
       }
     }
     store('pixprite:session', {
@@ -769,7 +770,7 @@ export class State {
       await this.saveDocument(doc);
       this.showNotice(t('msg.savedName', { name: doc.name }));
     } catch (e) {
-      this.showTip(`${t('msg.couldNotSave')}: ${(e as Error).message}`, 3000);
+      this.showTip(`${t('msg.couldNotSave')}: ${isQuotaError(e) ? t('storage.quotaExceeded') : (e as Error).message}`, 3000);
     }
   }
 

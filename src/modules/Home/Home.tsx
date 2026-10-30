@@ -3,9 +3,11 @@ import { downloadProject, openFile } from "~/core/Files";
 import { prettyCombo } from "~/core/Hotkeys";
 import {
   createFolder, deleteFolder, deleteProject, duplicateProject, folderPath, folderSubtree, homeFolder, listFolders, listProjects, moveFolder, moveProject,
-  getProjectMeta, renameProject, saveFolder, updateProjectInfo, setHomeFolder, storageEstimate, type FolderMeta, type ProjectMeta,
+  getProjectMeta, renameProject, saveFolder, updateProjectInfo, setHomeFolder, type FolderMeta, type ProjectMeta,
 } from "~/core/Projects";
 import { state } from "~/core/State";
+import { StoragePanel } from "./StoragePanel";
+import { formatBytes } from "~/core/Storage";
 import { openSnapshots, SnapshotList } from "./Snapshots";
 import { checker, openPreview } from "./Preview";
 import { keyNames, t } from "~/core/i18n";
@@ -245,7 +247,6 @@ function ago(ms: number) {
   return new Date(ms).toLocaleDateString();
 }
 
-const bytes = (n: number) => n > 1 << 20 ? `${(n / (1 << 20)).toFixed(1)} MB` : `${Math.ceil(n / 1024)} KB`;
 
 const SIZES: [number, number][] = [[16, 16], [32, 32], [64, 64], [128, 128], [256, 144], [320, 180]];
 
@@ -358,7 +359,6 @@ function dragImage(e: React.DragEvent, cards: HTMLElement[], count: number) {
 export const Home: FC = () => {
   useSignals();
   const [projects, setProjects] = useState<ProjectMeta[] | null>(null);
-  const [usage, setUsage] = useState<{ used: number; quota: number; } | null>(null);
   const [folders, setFolders] = useState<FolderMeta[]>([]);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>(loadSort);
@@ -380,7 +380,6 @@ export const Home: FC = () => {
     let alive = true;
     listProjects().then(p => { if (alive) setProjects(p); }).catch(() => setProjects([]));
     listFolders().then(f => { if (alive) setFolders(f); }).catch(() => setFolders([]));
-    storageEstimate().then(u => { if (alive) setUsage(u); });
     return () => { alive = false; };
   }, [state.projectsVersion]);
 
@@ -691,9 +690,9 @@ export const Home: FC = () => {
           <Card>
             <H>{t('home.summary')}</H>
             <Muted>{t('home.nProjects').replace('{n}', String(projects?.length ?? 0))} · {t('dialog.importSheet.nFrames').replace('{n}', String(totalFrames))}</Muted>
-            {usage && <Muted>{t('home.storage')}: {bytes(usage.used)}{usage.quota ? ` / ${bytes(usage.quota)}` : ''}</Muted>}
             <Muted>{t('home.nOpenTabs').replace('{n}', String(state.docs.length))}</Muted>
           </Card>
+          <Card><StoragePanel projects={projects} /></Card>
           <Card>
             <H>{t('home.handyKeys')}</H>
             <Keys>
@@ -798,7 +797,7 @@ export const Home: FC = () => {
                   }} />}</Thumb>
                   <Download title={t('home.downloadPixprite')} onClick={e => { e.stopPropagation(); void downloadProject(p.id); }}><Icon name="download" scale="glyph" /></Download>
                   <Name>{p.name}</Name>
-                  <Name><Muted>{p.width}×{p.height} · {p.frames} {t('home.fr')} · {ago(p.updated)}</Muted></Name>
+                  <Name><Muted>{p.width}×{p.height} · {p.frames} {t('home.fr')} · {ago(p.updated)}{p.bytes !== undefined ? ` · ${formatBytes(p.bytes)}` : ''}</Muted></Name>
                   {q && <Reveal type="button" title={t('home.goToFolder')} onClick={e => { e.stopPropagation(); goTo(item); }}>{where(p.folderId)}</Reveal>}
                 </Project>
               );

@@ -1,3 +1,4 @@
+import { projectBackup, recordBackup } from "~/core/Backups";
 import { decodeAseprite, encodeAseprite } from "~/core/formats/Aseprite";
 import { decodeGif } from "~/core/formats/GifDecode";
 import { parsePalette, serializePalette, type PaletteFormat } from "~/core/formats/Palette";
@@ -338,6 +339,14 @@ export function asepriteLosses(doc: Sprite): string[] {
 }
 
 export async function downloadProject(id: string, format: ProjectFormat = 'pixprite') {
+  if (format === 'pixprite') {
+    try {
+      const backup = await projectBackup(id);
+      download(backup.blob, backup.name);
+      recordBackup(id, backup.savedAt);
+    } catch (e) { state.showTip(`${t('storage.failed')}: ${(e as Error).message}`, 4000); }
+    return;
+  }
   const data = await loadProjectData(id);
   if (!data) return state.showTip(t('msg.theProjectCouldNot'));
   const doc = new Sprite(32, 32);
