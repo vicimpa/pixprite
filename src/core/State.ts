@@ -1,4 +1,5 @@
-import { runTask } from './BackgroundTask';
+import { IncrementalDocument } from './IncrementalDocument';
+import { Cancelled, isCancelled, runTask } from './BackgroundTask';
 import { isQuotaError } from "~/core/Storage";
 import { Color } from "~/core/Color";
 import { PaletteMap } from "~/core/ColorMode";
@@ -653,14 +654,30 @@ export class State {
   // Persistence
 
   private saveTimer = 0;
-  private persistQueue: Promise<void> = Promise.resolve();
+  private persistQueue: Promise<void> | null = null;
+  private persistRequested = false;
+  private autosaveReadyAt = 0;
+  private preparations = new Map<Sprite, { version: number; controller: AbortController }>();
+  private incremental = new WeakMap<Sprite, IncrementalDocument>();
+
+  private preparationFor(doc: Sprite) {
+    let cache = this.incremental.get(doc);
+    if (!cache) this.incremental.set(doc, cache = new IncrementalDocument());
+    return cache;
+  }
+
+  private cancelObsoletePreparations() {
+    for (const [doc, job] of this.preparations) if (doc.version !== job.version || !this.docs.includes(doc)) job.controller.abort();
+  }
   private documentSaves = new WeakMap<Sprite, Promise<void>>();
   private failedSessions = new Set<string>();
 
   /** Autosave of the open editors (not the project files) shortly after the last change */
   save() {
     store('pixprite:palette', this.palette);
+    this.cancelObsoletePreparations();
     if (!this.prefs.autosave) return;
+    this.autosaveReadyAt = performance.now() + 300;
     clearTimeout(this.saveTimer);
     this.saveTimer = window.setTimeout(() => void this.persist(), 300);
   }
@@ -680,10 +697,25 @@ export class State {
    * Project files are not touched here; they change only on save.
    */
   persist(): Promise<void> {
-    // Serialize flushes so an older completion cannot overwrite a newer working copy.
-    const next = this.persistQueue.then(() => this.persistEditors());
-    this.persistQueue = next.catch(() => {});
-    return next;
+    this.persistRequested = true;
+    this.cancelObsoletePreparations();
+    if (!this.persistQueue) {
+      this.persistQueue = (async () => {
+        try {
+          // Calls during a flush request one latest pass, rather than enqueueing every edit.
+          let again = false;
+          while (this.persistRequested) {
+            // A cancelled preparation waits for the edit burst to settle before capturing again.
+            if (again) while (performance.now() < this.autosaveReadyAt)
+              await new Promise(resolve => setTimeout(resolve, this.autosaveReadyAt - performance.now()));
+            this.persistRequested = false;
+            await this.persistEditors();
+            again = true;
+          }
+        } finally { this.persistQueue = null; }
+      })();
+    }
+    return this.persistQueue;
   }
 
   private async persistEditors() {
@@ -699,10 +731,18 @@ export class State {
         const head = { projectId: doc.projectId, name: doc.name } satisfies SessionHead;
         const now = Date.now();
         const snapshot = changed && now - (lastSnapshot.get(doc) ?? 0) >= SNAPSHOT_MS;
-        const raw = changed ? doc.captureDocument() : null;
-        const prepared = raw ? await runTask('prepareDocument', { raw, preview: snapshot }) : null;
+        const capture = changed ? this.preparationFor(doc).capture(doc, snapshot) : null;
+        const raw = capture?.raw;
+        const controller = new AbortController();
+        this.preparations.set(doc, { version, controller });
+        let prepared: Awaited<ReturnType<typeof runTask<'prepareDocument'>>> | null = null;
+        try {
+          prepared = capture ? await runTask('prepareDocument', { raw: capture.raw, preview: capture.preview }, { signal: controller.signal }) : null;
+        } finally { this.preparations.delete(doc); }
+        const thumb = prepared && capture ? capture.accept(prepared.data, prepared.thumb) : '';
         const data = prepared?.data ?? null;
         if (!this.docs.includes(doc)) continue;
+        if (doc.version !== version) { this.persistRequested = true; continue; }
         await saveSessionRecord(sid, { head, data, editor }, changed);
         // A tab switch may have captured newer view/tool state while the worker was running.
         if (doc.editor === rememberedEditor) doc.editor = editor;
@@ -711,7 +751,7 @@ export class State {
         if (snapshot && raw && prepared && this.docs.includes(doc)) {
           try {
             await saveSnapshot({
-              owner: head.projectId ?? sid, name: raw.name ?? 'untitled', width: raw.width, height: raw.height, frames: raw.frames.length, thumb: prepared.thumb,
+              owner: head.projectId ?? sid, name: raw.name ?? 'untitled', width: raw.width, height: raw.height, frames: raw.frames.length, thumb,
             }, data);
             lastSnapshot.set(doc, now);
             this.projectsVersion++;
@@ -720,6 +760,7 @@ export class State {
           }
         }
       } catch (e) {
+        if (isCancelled(e)) { if (this.docs.includes(doc)) this.persistRequested = true; continue; }
         console.warn('Saving the working copy failed', e);
         this.showTip(`${t('msg.couldNotSave')}: ${isQuotaError(e) ? t('storage.quotaExceeded') : (e as Error).message}`, 4000);
       }
@@ -738,17 +779,20 @@ export class State {
   }
 
   private async writeDocument(doc: Sprite) {
+    const wasOpen = this.docs.includes(doc);
     const now = Date.now(), id = doc.projectId ?? newProjectId();
     const meta = await getProjectMeta(id);
     const version = doc.version;
-    const raw = doc.captureDocument();
+    const capture = this.preparationFor(doc).capture(doc, true), raw = capture.raw;
     const editor = structuredClone(this.editorOf(doc));
     const folderId = meta ? meta.folderId ?? null : homeFolder.value;
-    const prepared = await runTask('prepareDocument', { raw, preview: true });
+    const prepared = await runTask('prepareDocument', { raw, preview: capture.preview });
+    const thumb = capture.accept(prepared.data, prepared.thumb);
+    if (wasOpen && !this.docs.includes(doc)) throw new Cancelled();
     await saveProjectData({
       id, name: raw.name ?? 'untitled', created: meta?.created ?? now, updated: now,
       width: raw.width, height: raw.height, frames: raw.frames.length, layers: raw.layers.length,
-      colorMode: raw.colorMode ?? 'rgb', thumb: prepared.thumb, info: raw.info as Sprite['info'],
+      colorMode: raw.colorMode ?? 'rgb', thumb, info: raw.info as Sprite['info'],
       folderId,
     }, prepared.data, editor ? { ...editor, doc: { ...(editor.doc as object), unsaved: false } } : undefined);
     doc.projectId = id;
@@ -780,6 +824,7 @@ export class State {
       await this.saveDocument(doc);
       this.showNotice(t('msg.savedName', { name: doc.name }));
     } catch (e) {
+      if (isCancelled(e)) return;
       this.showTip(`${t('msg.couldNotSave')}: ${isQuotaError(e) ? t('storage.quotaExceeded') : (e as Error).message}`, 3000);
     }
   }

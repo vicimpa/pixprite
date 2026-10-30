@@ -209,7 +209,8 @@ const SpriteProperties: FC<{ close: () => void; }> = ({ close }) => {
   const [info, setInfo] = useState(sprite.info);
   const total = sprite.frames.reduce((s, f) => s + f.duration, 0);
   const submit = () => {
-    sprite.name = name || 'untitled';
+    const nextName = name || 'untitled';
+    if (sprite.name !== nextName) { sprite.name = nextName; sprite.touch(); }
     if (JSON.stringify(cleanInfo(info)) !== JSON.stringify(sprite.info)) sprite.setInfo(info);
     state.save();
   };

@@ -7,8 +7,9 @@ import { convertPixels, PaletteMap, type ColorMode, type Dither } from "~/core/C
 import { encodeGif } from "~/core/Gif";
 import { paletteFromPixels, remapToPalette } from "~/core/Quantize";
 
+import { hydrateDocument, splitDocument, type Resource, type StoredDocument } from './DocumentResources';
 import { asepriteDocument, decodeCapture, inspectDocument, prepareDocument } from './BackgroundDocument';
-import type { DocumentCapture } from './SpriteSerialization';
+import type { DocumentCapture, StorageCapture } from './SpriteSerialization';
 import { encodeAseprite } from './formats/Aseprite';
 import { encodeZip } from './formats/Zip';
 import { prepareExport, type ExportRequest, type PreparedExport } from './ExportPreparation';
@@ -23,7 +24,9 @@ export type Ops = {
     result: { png: Blob; map?: Blob };
   };
   export: { args: ExportRequest; result: PreparedExport };
-  prepareDocument: { args: { raw: DocumentCapture; preview?: boolean }; result: Awaited<ReturnType<typeof prepareDocument>> };
+  splitStorageDocument: { args: { data: unknown }; result: Awaited<ReturnType<typeof splitDocument>> };
+  hydrateStorageDocument: { args: { data: StoredDocument; resources: [string, Resource][] }; result: Awaited<ReturnType<typeof hydrateDocument>> };
+  prepareDocument: { args: { raw: DocumentCapture | StorageCapture; preview?: boolean }; result: Awaited<ReturnType<typeof prepareDocument>> };
   decodeDocument: { args: { data: unknown }; result: DocumentCapture };
   inspectDocument: { args: { data: unknown }; result: number };
   stringify: { args: { data: unknown }; result: string };
@@ -71,6 +74,11 @@ export async function compute<K extends OpName>(
       return { png, map } as Ops[K]['result'];
     }
     case 'export': return await prepareExport(args as ExportRequest) as Ops[K]['result'];
+    case 'splitStorageDocument': return await splitDocument((args as Ops['splitStorageDocument']['args']).data) as Ops[K]['result'];
+    case 'hydrateStorageDocument': {
+      const a = args as Ops['hydrateStorageDocument']['args'];
+      return await hydrateDocument(a.data, a.resources) as Ops[K]['result'];
+    }
     case 'prepareDocument': {
       const a = args as Ops['prepareDocument']['args'];
       return await prepareDocument(a.raw, a.preview) as Ops[K]['result'];

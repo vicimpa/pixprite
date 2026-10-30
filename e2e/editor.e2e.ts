@@ -95,11 +95,28 @@ async function documentNamed(page: Page, name: string): Promise<DocumentData | n
       r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error);
     });
     try {
-      return await new Promise<DocumentData | null>((resolve, reject) => {
-        const r = db.transaction('sessions').objectStore('sessions').getAll();
-        r.onsuccess = () => resolve(r.result.find(v => v?.format === 'pixprite' && v.name === name) ?? null);
-        r.onerror = () => reject(r.error);
-      });
+      const tx = db.transaction(['sessions', 'resources']);
+      const request = <T,>(r: IDBRequest<T>) => new Promise<T>((resolve, reject) => { r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
+      const [sessions, keys, payloads] = await Promise.all([
+        request(tx.objectStore('sessions').getAll()), request(tx.objectStore('resources').getAllKeys()), request(tx.objectStore('resources').getAll()),
+      ]);
+      const value = sessions.find(v => (v?.document ?? v)?.format === 'pixprite' && (v.document ?? v).name === name);
+      if (!value) return null;
+      if (!value.storage) return value;
+      // Resolve internal pointers independently; pixel assertions below still decode/composite the file themselves.
+      const resources = new Map(keys.map((key, i) => [key, payloads[i].payload]));
+      const document = structuredClone(value.document);
+      const hydrate = (owner: any, field: string) => {
+        const ref = owner[field]?.$resource;
+        if (ref !== undefined) {
+          if (!resources.has(ref)) throw new Error(`Missing test resource ${ref}`);
+          owner[field] = resources.get(ref);
+        }
+      };
+      for (const image of document.images ?? []) hydrate(image, 'd');
+      for (const tileset of document.tilesets ?? []) hydrate(tileset, 'd');
+      for (const layer of document.layers) for (const cel of layer.cels) if (cel && !('link' in cel)) { hydrate(cel, 'd'); hydrate(cel, 't'); }
+      return document;
     } finally { db.close(); }
   }, name);
 }
@@ -459,7 +476,7 @@ test('damaged saved project recovers its previous version as a separate unsaved 
   });
   await expect.poll(() => page.evaluate(async id => {
     const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('pixprite'); r.onsuccess = () => resolve(r.result); });
-    try { return await new Promise<number>(resolve => { const r = db.transaction('data').objectStore('data').get(id); r.onsuccess = () => resolve(r.result.layers.length); }); }
+    try { return await new Promise<number>(resolve => { const r = db.transaction('data').objectStore('data').get(id); r.onsuccess = () => resolve((r.result.document ?? r.result).layers.length); }); }
     finally { db.close(); }
   }, projectId)).toBe(2);
   await page.evaluate(async id => {
@@ -566,12 +583,13 @@ test('large autosave sends raw pixels to a real worker and accepts drawing befor
   await page.addInitScript(() => {
     const monitor = window as unknown as {
       holdPreparation: boolean; preparationStarted: boolean; workerCompleted: boolean; rawPixels: boolean;
-      releasePreparation?: () => void; firstSessionLayers?: number; backgroundOps: string[];
+      releasePreparation?: () => void; firstSessionLayers?: number; backgroundOps: string[]; heldTerminated: boolean; writtenLayers: number[];
     };
-    monitor.holdPreparation = false; monitor.preparationStarted = false; monitor.workerCompleted = false; monitor.rawPixels = false; monitor.backgroundOps = [];
+    monitor.holdPreparation = false; monitor.preparationStarted = false; monitor.workerCompleted = false; monitor.rawPixels = false; monitor.backgroundOps = []; monitor.heldTerminated = false; monitor.writtenLayers = [];
     const NativeWorker = Worker;
     class ObservedWorker extends NativeWorker {
       private hold = false;
+      override terminate() { if (this.hold) monitor.heldTerminated = true; super.terminate(); }
       override set onmessage(handler: ((this: Worker, event: MessageEvent) => unknown) | null) {
         super.onmessage = event => {
           if (this.hold && event.data.type !== 'progress') {
@@ -594,8 +612,11 @@ test('large autosave sends raw pixels to a real worker and accepts drawing befor
     window.Worker = ObservedWorker;
     const put = IDBObjectStore.prototype.put;
     IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore['put']>) {
-      if (this.name === 'sessions' && String(args[1]).startsWith('data:') && monitor.preparationStarted && monitor.firstSessionLayers === undefined)
-        monitor.firstSessionLayers = (args[0] as any).layers.length;
+      if (this.name === 'sessions' && String(args[1]).startsWith('data:') && monitor.preparationStarted) {
+        const layers = ((args[0] as any).document ?? args[0]).layers.length;
+        monitor.writtenLayers.push(layers);
+        monitor.firstSessionLayers ??= layers;
+      }
       return put.apply(this, args);
     };
   });
@@ -624,10 +645,10 @@ test('large autosave sends raw pixels to a real worker and accepts drawing befor
   const box = await page.getByTestId('sprite-canvas').boundingBox();
   if (!box) throw new Error('Missing drawing surface');
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await expect.poll(() => page.evaluate(() => (window as any).workerCompleted)).toBe(true);
-  expect(await page.evaluate(() => (window as any).firstSessionLayers)).toBeUndefined();
-  await page.evaluate(() => (window as any).releasePreparation());
-  await expect.poll(() => page.evaluate(() => (window as any).firstSessionLayers)).toBe(1);
+  await expect.poll(() => page.evaluate(() => (window as any).heldTerminated)).toBe(true);
+  // A result already delivered by the real worker can arrive late; its cancelled promise cannot commit.
+  await page.evaluate(() => (window as any).releasePreparation?.());
+  expect(await page.evaluate(() => (window as any).writtenLayers)).not.toContain(1);
   await expect.poll(async () => {
     const saved = await documentNamed(page, 'Large background');
     return saved?.layers.length === 2 && !!saved.layers[1].cels[0];
@@ -651,8 +672,9 @@ test('large autosave sends raw pixels to a real worker and accepts drawing befor
     try {
       const tx = db.transaction(['meta', 'data']);
       const request = <T,>(r: IDBRequest<T>) => new Promise<T>(resolve => { r.onsuccess = () => resolve(r.result); });
-      const [metas, data] = await Promise.all([request(tx.objectStore('meta').getAll()), request(tx.objectStore('data').getAll())]);
-      return { metaLayers: metas[0].layers, dataLayers: data[0].layers.length, metaWidth: metas[0].width, dataWidth: data[0].width };
+      const [metas, values] = await Promise.all([request(tx.objectStore('meta').getAll()), request(tx.objectStore('data').getAll())]);
+      const data = values[0].document ?? values[0];
+      return { metaLayers: metas[0].layers, dataLayers: data.layers.length, metaWidth: metas[0].width, dataWidth: data.width };
     } finally { db.close(); }
   })).toEqual({ metaLayers: 2, dataLayers: 2, metaWidth: 2048, dataWidth: 2048 });
   await expect.poll(async () => (await documentNamed(page, 'Large background'))?.layers.length).toBe(3);
@@ -660,4 +682,80 @@ test('large autosave sends raw pixels to a real worker and accepts drawing befor
   await expect(page.getByTestId('sprite-canvas')).toBeVisible();
   await expect(page.locator('[data-hit=layer]')).toHaveCount(3);
   expect((await documentNamed(page, 'Large background'))?.layers[1].cels[0]).toBeTruthy();
+});
+
+test('incremental autosave reuses pixels and previews, coalesces bursts and cancels obsolete preparation', async ({ page }) => {
+  await create(page, 'Incremental');
+  await draw(page);
+  await command(page, 'file.save');
+  await expect(page.getByText('Saved: Incremental', { exact: true })).toBeVisible();
+  const original = await documentNamed(page, 'Incremental');
+  await page.evaluate(() => {
+    const monitor = (window as any).incremental = { prepares: 0, rawImages: 0, previews: 0, resources: 0, previewWrites: 0, dataWrites: 0, holdNext: false, held: false, cancelled: false };
+    const NativeWorker = Worker;
+    class ObservedWorker extends NativeWorker {
+      private held = false;
+      override terminate() { if (this.held) monitor.cancelled = true; super.terminate(); }
+      override set onmessage(handler: ((this: Worker, event: MessageEvent) => unknown) | null) {
+        super.onmessage = event => {
+          if (this.held && event.data.type !== 'progress') monitor.held = true;
+          else handler?.call(this, event);
+        };
+      }
+      override get onmessage() { return super.onmessage; }
+      override postMessage(message: any, options?: any) {
+        if (message.op === 'prepareDocument') {
+          monitor.prepares++;
+          monitor.rawImages += message.args.raw.images.filter((image: any) => image.d instanceof Uint32Array).length;
+          if (message.args.preview) monitor.previews++;
+          if (monitor.holdNext) { this.held = true; monitor.holdNext = false; }
+        }
+        super.postMessage(message, options);
+      }
+    }
+    window.Worker = ObservedWorker;
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore['put']>) {
+      if (this.name === 'resources') monitor.resources++;
+      if (this.name === 'previews') monitor.previewWrites++;
+      if (this.name === 'sessions' && String(args[1]).startsWith('data:')) monitor.dataWrites++;
+      return put.apply(this, args);
+    };
+  });
+  await command(page, 'image.properties');
+  const properties = page.getByRole('dialog', { name: 'Image properties', exact: true });
+  await properties.getByRole('textbox').nth(1).fill('Incremental author');
+  await properties.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect.poll(async () => (await documentNamed(page, 'Incremental') as any)?.info?.author).toBe('Incremental author');
+  await command(page, 'file.save');
+  await expect.poll(() => page.locator('[draggable=true][data-active=true] [data-modified=true]').count()).toBe(0);
+  expect(await page.evaluate(() => {
+    const m = (window as any).incremental;
+    return { rawImages: m.rawImages, resources: m.resources, previews: m.previews, previewWrites: m.previewWrites };
+  })).toEqual({ rawImages: 0, resources: 0, previews: 0, previewWrites: 0 });
+
+  await page.evaluate(() => Object.assign((window as any).incremental, { holdNext: true, prepares: 0, dataWrites: 0 }));
+  await command(page, 'layer.new');
+  await expect.poll(() => page.evaluate(() => (window as any).incremental.held)).toBe(true);
+  // Eight rapid keyboard edits request one latest save behind the cancelled worker.
+  for (let i = 0; i < 8; i++) await page.keyboard.press('Alt+n');
+  await expect(page.locator('[data-hit=frame]')).toHaveCount(9);
+  await expect.poll(async () => {
+    const saved = await documentNamed(page, 'Incremental');
+    return { frames: saved?.frames.length, layers: saved?.layers.length };
+  }).toEqual({ frames: 9, layers: 2 });
+  const counts = await page.evaluate(() => {
+    const m = (window as any).incremental;
+    return { prepares: m.prepares, dataWrites: m.dataWrites, cancelled: m.cancelled, resources: m.resources };
+  });
+  expect(counts).toEqual({ prepares: 2, dataWrites: 1, cancelled: true, resources: 0 });
+  expect((await documentNamed(page, 'Incremental') as any).images).toEqual((original as any).images);
+  await draw(page, 20);
+  expect(await page.evaluate(() => (window as any).incremental.resources)).toBe(1);
+  const final = await documentNamed(page, 'Incremental');
+  await page.reload();
+  await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  await expect(page.locator('[data-hit=frame]')).toHaveCount(9);
+  await expect(page.locator('[data-hit=layer]')).toHaveCount(2);
+  expect(await documentNamed(page, 'Incremental')).toEqual(final);
 });

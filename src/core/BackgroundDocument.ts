@@ -2,7 +2,7 @@
 import { createCelInstance, createImage } from './DocumentModel';
 import { cleanInfo, newLayer, parentOf, type Cel } from './SpriteModel';
 import type { SpriteContext } from './SpriteContext';
-import { captureDocument, load, toDocument, type DocumentCapture } from './SpriteSerialization';
+import { captureDocument, load, toDocument, type DocumentCapture, type StorageCapture } from './SpriteSerialization';
 import * as rendering from './SpriteRenderer';
 import type { SheetContext } from './SpriteSheet';
 import type { DocumentExportContext } from './SpriteSerialization';
@@ -16,13 +16,14 @@ export function base64(data: Uint32Array) {
   return btoa(out);
 }
 
-export function encodeCapture(raw: DocumentCapture): PixpriteData {
+export function encodeCapture(raw: DocumentCapture | StorageCapture): PixpriteData {
   return {
     ...raw,
-    images: raw.images.map(image => ({ ...image, d: base64(image.d) })),
+    images: raw.images.map(image => ({ ...image, d: typeof image.d === 'string' ? image.d : base64(image.d) })),
     tilesets: raw.tilesets.map(ts => {
-      const all = new Uint32Array(ts.count * ts.tw * ts.th);
-      ts.d.forEach((tile, i) => all.set(tile, i * ts.tw * ts.th));
+      if (typeof ts.d === 'string') return { ...ts, d: ts.d };
+      const all = ts.d instanceof Uint32Array ? ts.d : new Uint32Array(ts.count * ts.tw * ts.th);
+      if (Array.isArray(ts.d)) ts.d.forEach((tile, i) => all.set(tile, i * ts.tw * ts.th));
       return { ...ts, d: base64(all) };
     }),
     layers: raw.layers.map(layer => ({ ...layer, cels: layer.cels.map(cel => cel?.t instanceof Uint32Array ? { ...cel, t: base64(cel.t) } : cel) })),
@@ -81,13 +82,13 @@ export function inspectDocument(data: unknown) {
   return serializedBytes(data);
 }
 
-export async function prepareDocument(raw: DocumentCapture, preview = false) {
+export async function prepareDocument(raw: DocumentCapture | StorageCapture, preview = false) {
   // Match the existing file/autosave JSON semantics (including omitted optional fields).
   const data = JSON.parse(JSON.stringify(encodeCapture(raw))) as PixpriteData;
   const bytes = inspectDocument(data);
   let thumb = '';
   if (preview && typeof OffscreenCanvas !== 'undefined') {
-    const ctx = documentContext(raw);
+    const ctx = documentContext(decodeCapture(data));
     const size = 96, k = Math.max(1, Math.floor(size / Math.max(raw.width, raw.height)));
     const canvas = new OffscreenCanvas(Math.min(size, raw.width * k) || 1, Math.min(size, raw.height * k) || 1);
     const painter = canvas.getContext('2d')!;

@@ -4,6 +4,7 @@
  * Folders only group the meta records; documents never move.
  */
 
+import { hydrateStored, PREVIEWS, referencedResources, RESOURCES, writePreview, writeResources } from "./DocumentStorage";
 import { BackgroundWorkerError, runTask } from "~/core/BackgroundTask";
 import { Sprite, type ProjectInfo } from "~/core/Sprite";
 import { signal } from "@preact/signals-react";
@@ -61,10 +62,12 @@ let opening: Promise<IDBDatabase> | null = null;
 
 function db() {
   opening ??= new Promise<IDBDatabase>((resolve, reject) => {
-    // 7: compare-and-write tokens; existing documents and recovery copies remain untouched.
-    const req = indexedDB.open(DB, 7);
+    // 8: immutable resources and previews; inline v3-v5 records migrate lazily on write.
+    const req = indexedDB.open(DB, 8);
     req.onupgradeneeded = () => {
       const d = req.result;
+      if (!d.objectStoreNames.contains(RESOURCES)) d.createObjectStore(RESOURCES);
+      if (!d.objectStoreNames.contains(PREVIEWS)) d.createObjectStore(PREVIEWS);
       if (!d.objectStoreNames.contains(REVISIONS)) d.createObjectStore(REVISIONS);
       if (!d.objectStoreNames.contains(META)) d.createObjectStore(META, { keyPath: 'id' });
       if (!d.objectStoreNames.contains(DATA)) d.createObjectStore(DATA);
@@ -88,7 +91,7 @@ function db() {
 function done(tx: IDBTransaction) {
   return new Promise<void>((resolve, reject) => {
     tx.oncomplete = () => resolve();
-    tx.onerror = tx.onabort = () => reject(tx.error);
+    tx.onerror = tx.onabort = () => reject(tx.error ?? new DOMException('Storage transaction aborted', 'AbortError'));
   });
 }
 
@@ -97,6 +100,78 @@ function request<T>(req: IDBRequest<T>) {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+}
+
+/** Hydration requests are queued in the IDB callback, in the same readonly snapshot. */
+function documentRequest(tx: IDBTransaction, store: string, key: string) {
+  return new Promise<any>((resolve, reject) => {
+    const req = tx.objectStore(store).get(key);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => { hydrateStored(req.result, tx.objectStore(RESOURCES)).then(resolve, reject); };
+  });
+}
+
+async function readDocument(store: string, key: string) {
+  const tx = (await db()).transaction([store, RESOURCES], 'readonly');
+  return documentRequest(tx, store, key);
+}
+
+function withoutThumb<T extends { thumb: string }>(meta: T) {
+  const { thumb: _, ...rest } = meta;
+  return rest;
+}
+
+/** Metadata and its separately stored preview are read in the same database snapshot. */
+async function readMetadata<T extends { id: string; thumb: string }>(store: string, prefix: string, owner?: string): Promise<T[]> {
+  const tx = (await db()).transaction([store, PREVIEWS], 'readonly');
+  return new Promise((resolve, reject) => {
+    const records = owner === undefined ? tx.objectStore(store).getAll() : tx.objectStore(store).index('owner').getAll(owner);
+    records.onerror = () => reject(records.error);
+    records.onsuccess = () => {
+      const all = records.result as T[];
+      Promise.all(all.map(async meta => {
+        meta.thumb = (await request(tx.objectStore(PREVIEWS).get(`${prefix}:${meta.id}`))) ?? meta.thumb ?? '';
+      })).then(() => resolve(all), reject);
+    };
+  });
+}
+
+let resourceCleanupPending = false;
+/** Deferred maintenance is independent of successful save/dirty markers and owns no Sprite. */
+function scheduleResourceCleanup() {
+  if (typeof window === 'undefined' || resourceCleanupPending) return;
+  resourceCleanupPending = true;
+  window.setTimeout(() => {
+    const clean = () => {
+      void collectUnusedResources().catch(error => console.warn('Resource cleanup failed', error))
+        .finally(() => { resourceCleanupPending = false; });
+    };
+    if (window.requestIdleCallback) window.requestIdleCallback(clean, { timeout: 5000 });
+    else clean();
+  }, 1000);
+}
+
+/** One transaction scans all owners, so concurrent saves and deletion cannot race collection. */
+export async function collectUnusedResources() {
+  const owners = [DATA, GOOD_DATA, SESSIONS, SNAP_DATA];
+  const tx = (await db()).transaction([...owners, RESOURCES], 'readwrite');
+  const committed = done(tx), live = new Set<string>();
+  let remaining = owners.length;
+  for (const owner of owners) {
+    const req = tx.objectStore(owner).getAll();
+    req.onsuccess = () => {
+      for (const value of req.result) referencedResources(value, live);
+      if (--remaining) return;
+      const resources = tx.objectStore(RESOURCES), cursor = resources.openKeyCursor();
+      cursor.onsuccess = () => {
+        const item = cursor.result;
+        if (!item) return;
+        if (!live.has(String(item.key))) resources.delete(item.primaryKey);
+        item.continue();
+      };
+    };
+  }
+  await committed;
 }
 
 export class DeletedDocumentError extends Error {
@@ -108,15 +183,15 @@ export const newProjectId = () => crypto.randomUUID?.() ?? `${Date.now().toStrin
 
 /** All projects, most recently changed first */
 export async function listProjects(): Promise<ProjectMeta[]> {
-  const tx = (await db()).transaction(META, 'readonly');
-  const all = await request(tx.objectStore(META).getAll() as IDBRequest<ProjectMeta[]>);
+  const all = await readMetadata<ProjectMeta>(META, 'project');
   const missing = all.filter(p => p.bytes === undefined);
   if (missing.length) {
-    const store = (await db()).transaction(DATA, 'readonly').objectStore(DATA);
-    const values = missing.map(p => request(store.get(p.id)));
+    const values = missing.map(p => readDocument(DATA, p.id));
     await Promise.all(missing.map(async (p, i) => {
-      const data = await values[i];
-      if (data !== undefined) { try { p.bytes = await runTask('inspectDocument', { data }); } catch { /* isolate damaged records */ } }
+      try {
+        const data = await values[i];
+        if (data !== undefined) p.bytes = await runTask('inspectDocument', { data });
+      } catch { /* isolate damaged manifests, missing resources and malformed inline records */ }
     }));
   }
   return all.sort((a, b) => b.updated - a.updated);
@@ -142,76 +217,89 @@ async function validDocument(data: unknown) {
 
 /** Read payload and token in one snapshot, validate off-thread, then compare the token atomically. */
 async function previousRevision(store: string, key: string, revision: string) {
-  const tx = (await db()).transaction([store, REVISIONS], 'readonly');
-  const [data, token] = await Promise.all([request(tx.objectStore(store).get(key)), request(tx.objectStore(REVISIONS).get(revision))]);
+  const tx = (await db()).transaction([store, REVISIONS, RESOURCES], 'readonly');
+  const stored = request(tx.objectStore(store).get(key));
+  const decoded = documentRequest(tx, store, key).then(data => ({ data }), error => ({ data: undefined, error }));
+  const [payload, token, original] = await Promise.all([decoded, request(tx.objectStore(REVISIONS).get(revision)), stored]);
+  if ('error' in payload && payload.error instanceof BackgroundWorkerError) throw payload.error;
+  const data = payload.data;
   if (deletedRevision(token)) throw new DeletedDocumentError();
-  return { data, token, valid: await validDocument(data) };
+  return { data: original, token, valid: await validDocument(data) };
 }
 
 export async function saveProjectData(meta: ProjectMeta, data: unknown, editor?: unknown) {
   const copy = structuredClone(data), nextMeta = structuredClone(meta), nextEditor = structuredClone(editor);
   const id = nextMeta.id;
   const next = { ...nextMeta, bytes: await validateStoredDocumentAsync(copy) };
+  const bundle = await runTask('splitStorageDocument', { data: copy });
   const revision = `project:${id}`;
   for (;;) {
     const previous = await previousRevision(DATA, id, revision);
-    const tx = (await db()).transaction([META, DATA, GOOD_META, GOOD_DATA, STATE, REVISIONS], 'readwrite');
+    const tx = (await db()).transaction([META, DATA, GOOD_META, GOOD_DATA, STATE, REVISIONS, RESOURCES, PREVIEWS], 'readwrite');
     const committed = done(tx);
     let retry = false, deleted = false;
     const oldMeta = tx.objectStore(META).get(id);
+    const oldPreview = tx.objectStore(PREVIEWS).get(`project:${id}`);
     const token = tx.objectStore(REVISIONS).get(revision);
     token.onsuccess = () => {
       if (deletedRevision(token.result)) { deleted = true; return; }
       if (token.result !== previous.token) { retry = true; return; }
       if (oldMeta.result && previous.valid) {
-        tx.objectStore(GOOD_META).put(oldMeta.result);
+        tx.objectStore(GOOD_META).put(withoutThumb(oldMeta.result));
+        writePreview(tx, `good:${id}`, oldPreview.result ?? oldMeta.result.thumb ?? '');
         tx.objectStore(GOOD_DATA).put(previous.data, id);
       } else if (previous.data === undefined) {
-        tx.objectStore(GOOD_META).put(next);
-        tx.objectStore(GOOD_DATA).put(copy, id);
+        tx.objectStore(GOOD_META).put(withoutThumb(next));
+        writePreview(tx, `good:${id}`, next.thumb);
+        tx.objectStore(GOOD_DATA).put(bundle.manifest, id);
       }
-      tx.objectStore(META).put(next);
-      tx.objectStore(DATA).put(copy, id);
+      writeResources(tx, bundle);
+      writePreview(tx, `project:${id}`, next.thumb);
+      tx.objectStore(META).put(withoutThumb(next));
+      tx.objectStore(DATA).put(bundle.manifest, id);
       tx.objectStore(REVISIONS).put(newProjectId(), revision);
       if (nextEditor !== undefined) tx.objectStore(STATE).put(nextEditor, id);
     };
     await committed;
     if (deleted) throw new DeletedDocumentError();
-    if (!retry) return;
+    if (!retry) { scheduleResourceCleanup(); return; }
   }
 }
 
 /** Explicit recovery only: callers open this as a new unsaved document. */
 export async function loadLastGoodProject(id: string) {
-  const tx = (await db()).transaction([GOOD_META, GOOD_DATA], 'readonly');
-  const [meta, data] = await Promise.all([
-    request(tx.objectStore(GOOD_META).get(id)), request(tx.objectStore(GOOD_DATA).get(id)),
+  const tx = (await db()).transaction([GOOD_META, GOOD_DATA, RESOURCES, PREVIEWS], 'readonly');
+  const [meta, data, thumb] = await Promise.all([
+    request(tx.objectStore(GOOD_META).get(id)), documentRequest(tx, GOOD_DATA, id), request(tx.objectStore(PREVIEWS).get(`good:${id}`)),
   ]);
   if (!meta || !data) return null;
   await validateStoredDocumentAsync(data);
-  return { meta: meta as ProjectMeta, data: data as unknown };
+  return { meta: { ...meta, thumb: thumb ?? meta.thumb ?? '' } as ProjectMeta, data: data as unknown };
 }
 
 export async function loadProjectData(id: string): Promise<unknown | null> {
-  const tx = (await db()).transaction(DATA, 'readonly');
-  return (await request(tx.objectStore(DATA).get(id))) ?? null;
+  return (await readDocument(DATA, id)) ?? null;
 }
 
 export async function getProjectMeta(id: string): Promise<ProjectMeta | null> {
-  const tx = (await db()).transaction(META, 'readonly');
-  return (await request(tx.objectStore(META).get(id) as IDBRequest<ProjectMeta | undefined>)) ?? null;
+  const tx = (await db()).transaction([META, PREVIEWS], 'readonly');
+  const [meta, thumb] = await Promise.all([request(tx.objectStore(META).get(id) as IDBRequest<ProjectMeta | undefined>), request(tx.objectStore(PREVIEWS).get(`project:${id}`))]);
+  return meta ? { ...meta, thumb: thumb ?? meta.thumb ?? '' } : null;
 }
 
 export async function deleteProject(id: string) {
-  const tx = (await db()).transaction([META, DATA, STATE, GOOD_META, GOOD_DATA, REVISIONS], 'readwrite');
+  const tx = (await db()).transaction([META, DATA, STATE, GOOD_META, GOOD_DATA, REVISIONS, PREVIEWS], 'readwrite');
   tx.objectStore(REVISIONS).put(`deleted:${newProjectId()}`, `project:${id}`);
   tx.objectStore(META).delete(id);
   tx.objectStore(DATA).delete(id);
   tx.objectStore(STATE).delete(id);
   tx.objectStore(GOOD_META).delete(id);
   tx.objectStore(GOOD_DATA).delete(id);
+  tx.objectStore(PREVIEWS).delete(`project:${id}`);
+  tx.objectStore(PREVIEWS).delete(`good:${id}`);
   await done(tx);
   await deleteSnapshots(id).catch(() => { });
+  await collectUnusedResources();
 }
 
 /** A copy of a stored project next to it, under a new name; returns the new id */
@@ -305,7 +393,7 @@ export async function moveProject(id: string, folderId: string | null) {
   const meta = await getProjectMeta(id);
   if (!meta) return;
   const tx = (await db()).transaction(META, 'readwrite');
-  tx.objectStore(META).put({ ...meta, folderId });
+  tx.objectStore(META).put(withoutThumb({ ...meta, folderId }));
   await done(tx);
 }
 
@@ -330,7 +418,7 @@ export async function deleteFolder(id: string, mode: 'lift' | 'all') {
   if (mode === 'lift') {
     const tx = (await db()).transaction([FOLDERS, META], 'readwrite');
     for (const f of folders) if (f.parentId === id) tx.objectStore(FOLDERS).put({ ...f, parentId: folder.parentId });
-    for (const p of projects) if (p.folderId === id) tx.objectStore(META).put({ ...p, folderId: folder.parentId });
+    for (const p of projects) if (p.folderId === id) tx.objectStore(META).put(withoutThumb({ ...p, folderId: folder.parentId }));
     tx.objectStore(FOLDERS).delete(id);
     await done(tx);
     return [];
@@ -352,10 +440,11 @@ export type SessionRecord = { head?: SessionHead; data: unknown; editor: Record<
 export async function saveSessionRecord(id: string, value: SessionRecord, changed = true) {
   const copy = structuredClone(value);
   if (changed) await validateStoredDocumentAsync(copy.data);
+  const bundle = changed ? await runTask('splitStorageDocument', { data: copy.data }) : null;
   const revision = `session:${id}`;
   for (;;) {
     const previous = changed ? await previousRevision(SESSIONS, `data:${id}`, revision) : null;
-    const tx = (await db()).transaction([SESSIONS, REVISIONS], 'readwrite');
+    const tx = (await db()).transaction([SESSIONS, REVISIONS, RESOURCES], 'readwrite');
     const committed = done(tx), store = tx.objectStore(SESSIONS);
     let retry = false, deleted = false;
     const head = store.get(`head:${id}`), editor = store.get(`editor:${id}`);
@@ -364,33 +453,42 @@ export async function saveSessionRecord(id: string, value: SessionRecord, change
       if (deletedRevision(token.result)) { deleted = true; return; }
       if (previous && token.result !== previous.token) { retry = true; return; }
       if (previous?.valid) store.put({ head: head.result, data: previous.data, editor: editor.result ?? null }, `good:${id}`);
-      else if (previous && previous.data === undefined) store.put(copy, `good:${id}`);
+      else if (previous && previous.data === undefined) store.put({ ...copy, data: bundle!.manifest }, `good:${id}`);
       store.put(copy.head, `head:${id}`);
       if (changed) {
-        store.put(copy.data, `data:${id}`);
+        writeResources(tx, bundle!);
+        store.put(bundle!.manifest, `data:${id}`);
         tx.objectStore(REVISIONS).put(newProjectId(), revision);
       }
       store.put(copy.editor, `editor:${id}`);
     };
     await committed;
     if (deleted) throw new DeletedDocumentError();
-    if (!retry) return;
+    if (!retry) { if (changed) scheduleResourceCleanup(); return; }
   }
 }
 
 export async function loadLastGoodSession(id: string): Promise<SessionRecord | null> {
-  const tx = (await db()).transaction(SESSIONS, 'readonly');
-  const record = await request(tx.objectStore(SESSIONS).get(`good:${id}`));
+  const tx = (await db()).transaction([SESSIONS, RESOURCES], 'readonly');
+  const record = await new Promise<any>((resolve, reject) => {
+    const req = tx.objectStore(SESSIONS).get(`good:${id}`);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      if (!req.result) return resolve(null);
+      const record = req.result;
+      hydrateStored(record.data, tx.objectStore(RESOURCES)).then(data => resolve({ ...record, data }), reject);
+    };
+  });
   if (!record) return null;
   await validateStoredDocumentAsync(record.data);
   return record;
 }
 
 export async function loadSession(id: string) {
-  const tx = (await db()).transaction(SESSIONS, 'readonly');
+  const tx = (await db()).transaction([SESSIONS, RESOURCES], 'readonly');
   const s = tx.objectStore(SESSIONS);
   const [head, data, editor] = await Promise.all([
-    request(s.get(`head:${id}`)), request(s.get(`data:${id}`)), request(s.get(`editor:${id}`)),
+    request(s.get(`head:${id}`)), documentRequest(tx, SESSIONS, `data:${id}`), request(s.get(`editor:${id}`)),
   ]);
   return data ? { head: head as SessionHead | undefined, data: data as unknown, editor: (editor ?? null) as Record<string, unknown> | null } : null;
 }
@@ -401,6 +499,7 @@ export async function deleteSession(id: string) {
   const s = tx.objectStore(SESSIONS);
   for (const part of ['head', 'data', 'editor', 'good']) s.delete(`${part}:${id}`);
   await done(tx);
+  await collectUnusedResources();
 }
 
 /** Storage used and available (when the browser reports it) */
@@ -432,52 +531,54 @@ let lastSnapshotTime = 0;
 export async function saveSnapshot(meta: Omit<SnapshotMeta, 'id' | 'time'>, data: unknown, keep = SNAPSHOTS_KEPT) {
   const copy = structuredClone(data), capturedMeta = structuredClone(meta);
   const bytes = await validateStoredDocumentAsync(copy);
+  const bundle = await runTask('splitStorageDocument', { data: copy });
   const time = lastSnapshotTime = Math.max(Date.now(), lastSnapshotTime + 1);
   const id = `${capturedMeta.owner}:${time}:${newProjectId()}`;
   const d = await db();
-  const tx = d.transaction([SNAP_META, SNAP_DATA, REVISIONS], 'readwrite');
+  const tx = d.transaction([SNAP_META, SNAP_DATA, REVISIONS, RESOURCES, PREVIEWS], 'readwrite');
   const committed = done(tx);
   let deleted = false;
   const project = tx.objectStore(REVISIONS).get(`project:${capturedMeta.owner}`);
   const session = tx.objectStore(REVISIONS).get(`session:${capturedMeta.owner}`);
   session.onsuccess = () => {
     if (deletedRevision(project.result) || deletedRevision(session.result)) { deleted = true; return; }
-    tx.objectStore(SNAP_META).put({ ...capturedMeta, id, time, bytes } satisfies SnapshotMeta);
-    tx.objectStore(SNAP_DATA).put(copy, id);
+    tx.objectStore(SNAP_META).put(withoutThumb({ ...capturedMeta, id, time, bytes } satisfies SnapshotMeta));
+    writeResources(tx, bundle);
+    writePreview(tx, `snapshot:${id}`, capturedMeta.thumb);
+    tx.objectStore(SNAP_DATA).put(bundle.manifest, id);
   };
   await committed;
   if (deleted) throw new DeletedDocumentError();
+  scheduleResourceCleanup();
   const old = (await listSnapshots(capturedMeta.owner)).slice(keep);
   if (old.length) await deleteSnapshotIds(old.map(s => s.id));
 }
 
 /** Snapshots of one owner (or all), newest first */
 export async function listSnapshots(owner?: string): Promise<SnapshotMeta[]> {
-  const tx = (await db()).transaction(SNAP_META, 'readonly');
-  const store = tx.objectStore(SNAP_META);
-  const req = owner === undefined ? store.getAll() : store.index('owner').getAll(owner);
-  const all = await request(req as IDBRequest<SnapshotMeta[]>);
+  const all = await readMetadata<SnapshotMeta>(SNAP_META, 'snapshot', owner);
   const missing = all.filter(s => s.bytes === undefined);
   if (missing.length) {
-    const data = (await db()).transaction(SNAP_DATA, 'readonly').objectStore(SNAP_DATA);
-    const values = missing.map(s => request(data.get(s.id)));
+    const values = missing.map(s => readDocument(SNAP_DATA, s.id));
     await Promise.all(missing.map(async (s, i) => {
-      const value = await values[i];
-      if (value !== undefined) { try { s.bytes = await runTask('inspectDocument', { data: value }); } catch { /* isolate damaged records */ } }
+      try {
+        const value = await values[i];
+        if (value !== undefined) s.bytes = await runTask('inspectDocument', { data: value });
+      } catch { /* isolate damaged manifests, missing resources and malformed inline records */ }
     }));
   }
   return all.sort((a, b) => b.time - a.time);
 }
 
 export async function loadSnapshot(id: string): Promise<unknown | null> {
-  const tx = (await db()).transaction(SNAP_DATA, 'readonly');
-  return (await request(tx.objectStore(SNAP_DATA).get(id))) ?? null;
+  return (await readDocument(SNAP_DATA, id)) ?? null;
 }
 
 async function deleteSnapshotIds(ids: string[]) {
-  const tx = (await db()).transaction([SNAP_META, SNAP_DATA], 'readwrite');
-  for (const id of ids) { tx.objectStore(SNAP_META).delete(id); tx.objectStore(SNAP_DATA).delete(id); }
+  const tx = (await db()).transaction([SNAP_META, SNAP_DATA, PREVIEWS], 'readwrite');
+  for (const id of ids) { tx.objectStore(SNAP_META).delete(id); tx.objectStore(SNAP_DATA).delete(id); tx.objectStore(PREVIEWS).delete(`snapshot:${id}`); }
   await done(tx);
+  await collectUnusedResources();
 }
 
 /** Keep at least the newest copy of each owner, including unsaved documents. */

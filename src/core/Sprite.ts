@@ -1385,6 +1385,10 @@ export class Sprite {
     return SpriteSerialization.savedLayers.call(this.operationContext);
   }
 
+  captureStorageDocument(resource: SpriteSerialization.CaptureResource) {
+    return SpriteSerialization.captureStorageDocument.call(this.operationContext, resource);
+  }
+
   captureDocument() {
     return SpriteSerialization.captureDocument.call(this.operationContext);
   }

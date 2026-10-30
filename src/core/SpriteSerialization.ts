@@ -20,11 +20,17 @@ export type DocumentCapture = Omit<PixpriteData, 'images' | 'tilesets'> & {
   tilesets: (Omit<NonNullable<PixpriteData['tilesets']>[number], 'd'> & { d: Uint32Array[] })[];
 };
 
-function serialize(this: SpriteContext, binary = false) {
+export type StorageCapture = Omit<DocumentCapture, 'images' | 'tilesets'> & {
+  images: { id: string; w: number; h: number; d: Uint32Array | string }[];
+  tilesets: (Omit<DocumentCapture['tilesets'][number], 'd'> & { d: Uint32Array[] | Uint32Array | string })[];
+};
+export type CaptureResource = (owner: object, pixels: () => Uint32Array, immutable?: boolean) => Uint32Array | string;
+
+function serialize(this: SpriteContext, binary = false, resource?: CaptureResource) {
   const images: any[] = [];
   const resources = new Map<string, Image>();
   const b64 = (data: Uint32Array): any => {
-    if (binary) return data;
+    if (binary) return resource ? resource(data, () => data) : data;
     const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     let s = '';
     for (let i = 0; i < bytes.length; i += 0x8000)
@@ -39,7 +45,7 @@ function serialize(this: SpriteContext, binary = false) {
     if (known && known !== image) throw new Error('Conflicting image resource ID');
     if (!known) {
       resources.set(image.id, image);
-      images.push({ id: image.id, w: image.w, h: image.h, d: b64(image.data) });
+      images.push({ id: image.id, w: image.w, h: image.h, d: resource ? resource(image, () => image.data, true) : b64(image.data) });
     }
     const transform = isCelInstance(cel) ? cel.transform : null;
     return { x: cel.x, y: cel.y, image: { kind: 'image' as const, id: image.id },
@@ -63,10 +69,10 @@ function serialize(this: SpriteContext, binary = false) {
     guides: this.guides,
     framePalettes: this.framePalettes,
     tilesets: this.tilesets.map(ts => {
-      if (binary) return { name: ts.name, tw: ts.tw, th: ts.th, baseIndex: ts.baseIndex, count: ts.tiles.length, d: ts.tiles, ...(ts.userData ? { userData: ts.userData } : {}) };
+      if (binary && !resource) return { name: ts.name, tw: ts.tw, th: ts.th, baseIndex: ts.baseIndex, count: ts.tiles.length, d: ts.tiles, ...(ts.userData ? { userData: ts.userData } : {}) };
       const all = new Uint32Array(ts.tiles.length * ts.tw * ts.th);
       ts.tiles.forEach((tile, i) => all.set(tile, i * ts.tw * ts.th));
-      return { name: ts.name, tw: ts.tw, th: ts.th, baseIndex: ts.baseIndex, count: ts.tiles.length, d: b64(all), ...(ts.userData ? { userData: ts.userData } : {}) };
+      return { name: ts.name, tw: ts.tw, th: ts.th, baseIndex: ts.baseIndex, count: ts.tiles.length, d: resource ? resource(ts, () => all) : b64(all), ...(ts.userData ? { userData: ts.userData } : {}) };
     }),
     loop: this.loop,
     ...(Object.keys(this.ext).length ? { ext: this.ext } : {}),
@@ -89,6 +95,11 @@ export function toJSON(this: SpriteContext): PixpriteData & { images: NonNullabl
 /** Capture raw pixels and metadata together, before any asynchronous work or encoding. */
 export function captureDocument(this: SpriteContext): DocumentCapture {
   return structuredClone(serialize.call(this, true)) as DocumentCapture;
+}
+
+/** Reconciles legacy mutable bitmaps, then omits raw buffers for clean cached resources. */
+export function captureStorageDocument(this: SpriteContext, resource: CaptureResource): StorageCapture {
+  return serialize.call(this, true, resource) as StorageCapture;
 }
 
 export function load(this: SpriteContext, data: unknown): void {
