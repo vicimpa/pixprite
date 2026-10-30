@@ -22,8 +22,11 @@ export function installPwa(ready: Promise<unknown>) {
   const link = Object.assign(document.createElement('link'), { rel: 'manifest', href: './manifest.webmanifest' });
   document.head.append(link);
 
-  if (import.meta.env.PROD && 'serviceWorker' in navigator)
-    addEventListener('load', () => void navigator.serviceWorker.register('./sw.js').catch(err => console.error('Service worker failed', err)));
+  if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+    const register = () => void navigator.serviceWorker.register('./sw.js').catch(err => console.error('Service worker failed', err));
+    if (document.readyState === 'complete') register();
+    else addEventListener('load', register, { once: true });
+  }
 
   const queue = (window as { launchQueue?: LaunchQueue; }).launchQueue;
   queue?.setConsumer(async ({ files }) => {

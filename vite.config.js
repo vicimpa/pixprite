@@ -4,6 +4,7 @@ import paths from "vite-tsconfig-paths";
 import glsl from "vite-plugin-glsl";
 import { fileURLToPath } from "url";
 import { bundleGraph } from "./scripts/vite-bundle-graph.js";
+import { serviceWorker } from "./scripts/vite-service-worker.js";
 import { extensionsCatalog } from "./scripts/vite-extensions.js";
 
 // The extension API package (also in tsconfig paths; spelled out here so the dev server never misses it)
@@ -47,5 +48,6 @@ export default defineConfig({
     glsl({ minify: process.argv.includes('build') }),
     extensionsCatalog(),
     bundleGraph(),
+    serviceWorker(),
   ],
 });

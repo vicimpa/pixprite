@@ -1,8 +1,9 @@
 /** Production assets plus deterministic deployment/extension fixtures, bound to loopback only. */
 import { resolve, sep } from 'node:path';
+import { pwaFixtures } from './pwa-fixtures';
 
 const root = resolve(import.meta.dir, '../dist');
-let revision = 1;
+const pwa = await pwaFixtures(root);
 const manifest = {
   id: 'e2e-permissions', name: 'E2E permissions', version: '1.0.0', apiVersion: 1,
   entry: 'main.js', permissions: [],
@@ -30,21 +31,13 @@ Bun.serve({
   hostname: '127.0.0.1', port: 4173,
   async fetch(request) {
     const url = new URL(request.url);
-    if (url.pathname === '/__e2e__/deploy' && request.method === 'POST') {
-      revision++;
-      return Response.json({ revision });
-    }
+    const fixtureResponse = await pwa(request);
+    if (fixtureResponse) return fixtureResponse;
     if (url.pathname === '/__e2e__/registry.json')
       return Response.json([{ ...manifest, path: 'extension/', files: hashes }]);
     const fixture = fixtureFiles[url.pathname.replace('/__e2e__/extension/', '')];
     if (url.pathname.startsWith('/__e2e__/extension/') && fixture)
       return new Response(fixture, { headers: { 'Content-Type': url.pathname.endsWith('.json') ? 'application/json' : 'text/javascript' } });
-    if (url.pathname === '/sw.js') {
-      const source = await Bun.file(resolve(root, 'sw.js')).text();
-      return new Response(source.replace('pixprite-v1', `pixprite-e2e-${revision}`), {
-        headers: { 'Content-Type': 'text/javascript', 'Cache-Control': 'no-store' },
-      });
-    }
     const path = resolve(root, '.' + decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname));
     if (!path.startsWith(root + sep)) return new Response('Forbidden', { status: 403 });
     const file = Bun.file(path);

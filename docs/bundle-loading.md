@@ -41,17 +41,19 @@ Vite пишет `.vite/manifest.json`, `.vite/main-graph.json` и `.vite/worker-
 
 Gate проверяет статические транзитивные графы initial, фактического Home bootstrap, editor UI и worker bootstrap. Он запрещает в них неподходящие редкие UI/кодеки, проверяет наличие настоящих dynamic entries в Vite manifest, сохранение ядра restore и отсутствие пересечений static/dynamic imports одних модулей внутри каждого графа сборки. Worker и browser — независимые entry graphs; их общие модули допустимы. E2E дополнительно наблюдает реальные production HTTP requests с заблокированным SW, чтобы кеш не скрывал лишние загрузки.
 
-Измерение 2026-10-30, gzip level 9, байты JavaScript:
+Измерение 2026-10-30 после bundle split и Service Worker, gzip level 9, байты JavaScript:
 
 | Метрика | До (`e3d052b`) | После | Неизменённый budget |
 | --- | ---: | ---: | ---: |
-| Initial: HTML entry + static imports | 283092 | 183781 | 307200 |
-| Весь emitted JS, включая workers | 394653 | 407746 | 409600 |
-| Home bootstrap: initial + Home + запускаемый host/compiler | не измерялся отдельно | 276629 | — |
-| Дополнительный editor UI относительно Home bootstrap | не измерялся отдельно | 57702 | — |
+| Initial: HTML entry + static imports | 283092 | 183809 | 307200 |
+| Весь emitted JS, включая workers | 394653 | 408109 | 409600 |
+| Home bootstrap: initial + Home + запускаемый host/compiler | не измерялся отдельно | 276659 | — |
+| Дополнительный editor UI относительно Home bootstrap | не измерялся отдельно | 57695 | — |
 
-Initial уменьшился примерно на 35%. Суммарный gzip вырос примерно на 3.3%: отдельные chunks сжимаются независимо, demand exports собираются для main fallback и Worker, появились loading/error UI. Budget не повышен; до total budget остаётся 1854 байта. Статическая initial-метрика не выдаётся за полную сетевую стоимость первого экрана: дополнительный startup host явно учтён строкой Home bootstrap. JSON graph artifacts не являются JS и не входят в JS budgets.
+Initial уменьшился примерно на 35%. Суммарный gzip вырос примерно на 3.4%: отдельные chunks сжимаются независимо, demand exports собираются для main fallback и Worker, появились loading/error UI. Budget не повышен; до total budget остаётся 1491 байт. Статическая initial-метрика не выдаётся за полную сетевую стоимость первого экрана: дополнительный startup host явно учтён строкой Home bootstrap. JSON graph artifacts и precache manifest не являются JS и не входят в JS budgets; сам SW входит в total.
 
-## Offline-граница
+## Offline и обновления
 
-Существующий E2E подтверждает offline reload уже открытого и закешированного редактора, рисование и сохранение после reconnect, затем update SW. Новые проверки подтверждают понятную ошибку для ещё не закешированного dialog chunk и успешный Retry после reconnect. Открытие всех никогда не использовавшихся функций offline не гарантируется: действующий SW кеширует запрошенные ресурсы, а не весь набор динамических chunks. Precache/versioning/mixed deployments относятся к следующему отдельному блоку Service Worker в `PLAN.md`; его пункты здесь не закрываются.
+Production SW теперь precache-ит полный build, включая все ленивые chunks, Worker imports и шрифты. После успешной установки и первого controlled открытия встроенные функции можно впервые вызвать offline. Precache не исполняет модули; graph/network E2E запускаются с заблокированным SW, сохраняя проверку demand loading. Тест ошибки offline/retry в этом наборе проверяет поведение загрузчика без SW.
+
+Версионирование снимка, SHA-256 integrity, естественная активация после закрытия всех controlled вкладок, сохранность проектов, изоляция cache scope и граница первого HTTP-открытия описаны в [service-worker.md](service-worker.md). Отдельный production E2E использует два реальных HTML/assets snapshots, offline Worker/fallback и ошибочные deployments; прежнее ограничение «работают только ранее вызванные функции» устранено.
