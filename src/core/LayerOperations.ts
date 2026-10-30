@@ -2,7 +2,7 @@ import { unionRect, type Rect } from "~/core/Image";
 import * as rendering from './SpriteRenderer';
 import type { LayerFX } from './DocumentModel';
 import type { SpriteContext } from "./SpriteContext";
-import { bakeCel, copyEffectScope, createCelInstance, effectsForFrame, imageOf, isCelInstance, layerFXOpacity, validateLayerFX } from './DocumentModel';
+import { bakeCel, copyEffectScope, createCelInstance, effectsForFrame, imageOf, isCelInstance, hasPixelEffects, hasColorEffects, validateLayerFX } from './DocumentModel';
 import {
   celRect, cloneCel, newLayer, normalizeDepths, parentOf, rootsOf, span, subtreeStart, trimCel, type Cel,
   type CelImage, type Layer, type RefImage,
@@ -22,14 +22,19 @@ export function bakeLayerEffects(this: SpriteContext, scope: 'layer' | 'frame' |
   const start = subtreeStart(this.layers, index);
   if (target.group && (this.layers.slice(start, index).some((l, i) => this.lockedDeep(start + i))
     || this.refuse('layers', 'create'))) return false;
-  if (target.group) chosen.forEach(frame => rendering.groupBounds.call(this, index, frame));
+  const proposed = { ...this, layers: this.layers.map((l, i) => i === index ? target : l), effectsPreview: null };
+  rendering.validateEffectBounds(proposed, chosen, [index]);
+  if (target.group) chosen.forEach(frame => {
+    rendering.groupBounds.call(proposed, index, frame);
+    rendering.nodeBounds(proposed, index, frame);
+  });
   this.dropFloating();
   const source = { ...this.layers[index], effects: target.effects };
   const ids = new Set(source.effects.map(effect => effect.id));
   const bakedEffects = this.frames.map((_, f) => selected.has(f) ? [...ids]
     : (source.bakedEffects?.[f] ?? []).filter(id => ids.has(id)));
   const complete = bakedEffects.every(baked => [...ids].every(id => baked.includes(id)));
-  let alpha = false;
+  let alpha = false, color = false;
   let layers = this.layers.slice();
   if (source.group) {
     const child = newLayer(`${source.name} FX`, this.frames.length);
@@ -37,7 +42,8 @@ export function bakeLayerEffects(this: SpriteContext, scope: 'layer' | 'frame' |
     const context = { ...this, ...rendering, layers: layers.map((l, i) => i === index ? source : l), floating: null, effectsPreview: null };
     child.cels = this.frames.map((_, f) => {
       if (!selected.has(f)) return null;
-      alpha ||= layerFXOpacity(effectsForFrame(source, f)) !== 1;
+      alpha ||= hasPixelEffects(effectsForFrame(source, f)) || layers.slice(start, index).some(layer => hasPixelEffects(effectsForFrame(layer, f)));
+      color ||= hasColorEffects(effectsForFrame(source, f)) || layers.slice(start, index).some(layer => hasColorEffects(effectsForFrame(layer, f)));
       return rendering.groupCel.call(context, index, f);
     });
     layers = layers.map((layer, i) => i >= start && i < index ? {
@@ -51,7 +57,8 @@ export function bakeLayerEffects(this: SpriteContext, scope: 'layer' | 'frame' |
     const cels = source.cels.map((cel, frame) => {
       if (!cel) return null;
       const effects = selected.has(frame) ? effectsForFrame(source, frame) : [];
-      alpha ||= layerFXOpacity(effects) !== 1;
+      alpha ||= hasPixelEffects(effects);
+      color ||= hasColorEffects(effects);
       const key = JSON.stringify(effects.map(effect => effect.id));
       const variants = cache.get(cel) ?? new Map<string, Cel>();
       cache.set(cel, variants);
@@ -70,7 +77,7 @@ export function bakeLayerEffects(this: SpriteContext, scope: 'layer' | 'frame' |
       effects: complete ? [] : source.effects, bakedEffects: complete ? undefined : bakedEffects };
   }
   this.checkpoint('Bake layer effects');
-  if (alpha && this.colorMode === 'indexed') { this.colorMode = 'rgb'; this.transparentIndex = -1; }
+  if ((alpha && this.colorMode === 'indexed') || (color && this.colorMode === 'gray')) { this.colorMode = 'rgb'; this.transparentIndex = -1; }
   this.layers = layers;
   this.layer = source.group ? index + 1 : index;
   this.range = null;
@@ -286,6 +293,7 @@ export function updateLayer(this: SpriteContext, index: number, patch: Partial<O
   if (patch.effects !== undefined) {
     validateLayerFX(patch.effects);
     patch = { ...patch, effects: patch.effects.map(effect => ({ ...effect })) };
+    rendering.validateEffectChange(this, index, patch.effects!, this.frames.map((_, f) => f));
   }
   if (patch.name !== undefined && patch.name !== this.layers[index].name && this.refuse('layers', 'rename')) return false;
   this.checkpoint(label);

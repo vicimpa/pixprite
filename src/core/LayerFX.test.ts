@@ -1,6 +1,7 @@
 import { beforeAll, expect, mock, test } from 'bun:test';
 import { canvasPixels, installSoftwareCanvas } from './Canvas.test-helper';
 import { packRgba } from './Image';
+import { Mask } from './Mask';
 import { createCelInstance, createImage, effectsForFrame, imageOf } from './DocumentModel';
 import { tinted } from './OnionTint';
 import { newLayer } from './SpriteModel';
@@ -283,4 +284,304 @@ test('GIF and video preparation bake residual FX per frame, including disabled e
   const decoded = decodeGif(new Uint8Array(await gif[0].blob.arrayBuffer()));
   expect(decoded.frames.map(frame => frame.data[0] >>> 24)).toEqual([255, 0, 0, 0]);
   expect(sprite.captureDocument()).toEqual(args.raw);
+});
+
+const outline = (patch: Partial<Extract<import('./DocumentModel').LayerFX, { type: 'outline' }>> = {}) => ({
+  id: 'outline', type: 'outline' as const, enabled: true, color: BLUE, thickness: 1,
+  position: 'outside' as const, join: 'round' as const, ...patch,
+});
+const { bakeCel } = await import('./DocumentModel');
+const glyph = (cel: NonNullable<ReturnType<typeof bakeCel>>) => Array.from({ length: cel.h }, (_, y) =>
+  Array.from(cel.data.subarray(y * cel.w, (y + 1) * cel.w), pixel => pixel === RED ? 'R' : pixel === BLUE ? 'B' : '.').join(''));
+
+test('outline golden geometry distinguishes Euclidean round, Chebyshev miter and Manhattan bevel at thickness 3', () => {
+  const cel = { x: -7, y: 4, w: 1, h: 1, data: new Uint32Array([RED]) };
+  const expected = {
+    round: ['...B...', '.BBBBB.', '.BBBBB.', 'BBBRBBB', '.BBBBB.', '.BBBBB.', '...B...'],
+    miter: ['BBBBBBB', 'BBBBBBB', 'BBBBBBB', 'BBBRBBB', 'BBBBBBB', 'BBBBBBB', 'BBBBBBB'],
+    bevel: ['...B...', '..BBB..', '.BBBBB.', 'BBBRBBB', '.BBBBB.', '..BBB..', '...B...'],
+  };
+  for (const join of ['round', 'miter', 'bevel'] as const) {
+    const result = bakeCel(cel, [outline({ thickness: 3, join })])!;
+    expect(result).toMatchObject({ x: -10, y: 1, w: 7, h: 7 });
+    expect(glyph(result)).toEqual(expected[join]);
+  }
+  expect([...cel.data]).toEqual([RED]);
+});
+
+test('inside uses exterior transparent space and hole edges; odd center allocates floor inside and ceil outside', () => {
+  const filled = { x: 5, y: -5, w: 9, h: 9, data: new Uint32Array(81).fill(RED) };
+  const inner = bakeCel(filled, [outline({ position: 'inside', thickness: 3 })])!;
+  expect(inner).toMatchObject({ x: 5, y: -5, w: 9, h: 9 });
+  expect(glyph(inner)).toEqual(['BBBBBBBBB', 'BBBBBBBBB', 'BBBBBBBBB', 'BBBRRRBBB', 'BBBRRRBBB', 'BBBRRRBBB', 'BBBBBBBBB', 'BBBBBBBBB', 'BBBBBBBBB']);
+  const center = bakeCel({ ...filled, w: 5, h: 5, data: new Uint32Array(25).fill(RED) }, [outline({ position: 'center', thickness: 3, join: 'miter' })])!;
+  expect(center).toMatchObject({ x: 3, y: -7, w: 9, h: 9 });
+  expect(glyph(center)).toEqual(['BBBBBBBBB', 'BBBBBBBBB', 'BBBBBBBBB', 'BBBRRRBBB', 'BBBRRRBBB', 'BBBRRRBBB', 'BBBBBBBBB', 'BBBBBBBBB', 'BBBBBBBBB']);
+  const ring = { x: 0, y: 0, w: 5, h: 5, data: new Uint32Array(25).fill(RED) }; ring.data[12] = 0x000000ff;
+  expect(bakeCel(ring, [outline({ position: 'inside' })])!.data[11]).toBe(BLUE);
+  expect(bakeCel(ring, [outline()])!.data[3 * 7 + 3]).toBe(BLUE);
+});
+
+test('RGBA outline preserves semitransparent sources, ignores hidden RGB, and uses source-atop inside', () => {
+  const redHalf = packRgba(255, 0, 0, 128), blueHalf = packRgba(0, 0, 255, 128);
+  const source = createImage(2, 1, new Uint32Array([redHalf, 0x0000ffff]));
+  const cel = createCelInstance(source);
+  const result = bakeCel(cel, [outline({ color: blueHalf })])!;
+  expect(result.data[1 * 4 + 1]).toBe(redHalf);
+  expect(result.data[1 * 4 + 2]).toBe(blueHalf);
+  expect(result.data[0]).toBe(0);
+  const inner = bakeCel(cel, [outline({ color: blueHalf, position: 'inside' })])!;
+  expect(inner.data[0]).toBe(packRgba(127, 0, 128, 128));
+  expect(inner.data[1]).toBe(0x0000ffff);
+  expect([...source.data]).toEqual([redHalf, 0x0000ffff]);
+  expect(bakeCel(cel, [outline({ color: 0x00ff00ff })])!).toMatchObject({ x: 0, y: 0, w: 2, h: 1 });
+  expect(bakeCel({ ...cel, data: new Uint32Array(2) }, [outline()])!.data.every(pixel => pixel === 0)).toBe(true);
+});
+
+test('outline and opacity execute in stored order; disable, reorder and partial bake preserve the residual stack', async () => {
+  const sprite = new Sprite(7, 7), source = createImage(1, 1, new Uint32Array([RED]));
+  const cel = createCelInstance(source, { x: 3, y: 3 });
+  sprite.frames = [{ duration: 100 }, { duration: 100 }]; sprite.layers[0].cels = [cel, cel]; sprite.layers[0].celOpacity = [1, 1];
+  sprite.setLayerEffects([fx(), outline()]);
+  const alphaBefore = pixels(sprite);
+  expect(alphaBefore[0][3 * 7 + 2]).toBe(BLUE);
+  sprite.setLayerEffects([outline(), fx()]);
+  const alphaAfter = pixels(sprite);
+  expect(alphaAfter[0][3 * 7 + 2]).toBe(packRgba(0, 0, 255, 128));
+  expect(alphaAfter).not.toEqual(alphaBefore);
+  sprite.setLayerEffects([outline({ enabled: false }), fx()]);
+  expect(pixels(sprite)[0][3 * 7 + 2]).toBe(0);
+  sprite.setLayerEffects([outline(), fx()]);
+  const saved = sprite.toJSON(), depth = sprite.undoDepth;
+  sprite.bakeLayerEffects('frame');
+  expect(sprite.undoDepth).toBe(depth + 1); expect(pixels(sprite)).toEqual(alphaAfter);
+  expect(sprite.layers[0].cels[0]).toMatchObject({ x: 2, y: 2, w: 3, h: 3 });
+  expect(sprite.layers[0].cels[1]).toBe(cel);
+  sprite.undo(); expect(sprite.toJSON()).toEqual(saved);
+  sprite.redo(); expect(pixels(sprite)).toEqual(alphaAfter);
+  const baked = sprite.toJSON();
+  sprite.setLayerEffects([fx('alpha', .25), outline({ thickness: 2, color: RED })]);
+  expect(pixels(sprite)[0]).toEqual(alphaAfter[0]); expect(pixels(sprite)[1]).not.toEqual(alphaAfter[1]);
+  sprite.load(baked);
+  const loaded = new Sprite(); loaded.load(sprite.toJSON()); expect(pixels(loaded)).toEqual(alphaAfter);
+  const exported = new Sprite(); exported.fromDocument(await decodeAseprite(await encodeAseprite(sprite.toDocument())));
+  expect(pixels(exported)).toEqual(alphaAfter);
+  expect([...source.data]).toEqual([RED]);
+});
+
+test('off-canvas nested group composites include expanded children before group FX, with matching export and partial bake', async () => {
+  const sprite = new Sprite(5, 3);
+  sprite.frames = [{ duration: 100 }, { duration: 100 }];
+  const cel = createCelInstance(createImage(1, 1, new Uint32Array([RED])), { x: -2, y: 1 });
+  const child = { ...newLayer('Off-canvas', 2), depth: 2, cels: [cel, cel], effects: [outline({ id: 'child' })] };
+  const nested = { ...newLayer('Nested', 2), depth: 1, group: true, effects: [outline({ id: 'nested' })] };
+  const outer = { ...newLayer('Outer', 2), group: true, effects: [outline({ id: 'outer' })] };
+  sprite.layers = [child, nested, outer]; sprite.layer = 2;
+  const before = pixels(sprite), saved = sprite.toJSON();
+  expect(before[0][5]).toBe(BLUE); expect(before[0][6]).toBe(BLUE); expect(before[0][7]).toBe(0);
+  expect(canvasPixels(documentContext(sprite.captureDocument()).render())).toEqual(before[0]);
+  const exported = new Sprite(); exported.fromDocument(await decodeAseprite(await encodeAseprite(sprite.toDocument())));
+  expect(pixels(exported)).toEqual(before);
+  sprite.bakeLayerEffects('frame'); expect(pixels(sprite)).toEqual(before);
+  expect(sprite.layers[0].cels).toEqual([null, cel]);
+  sprite.undo(); expect(sprite.toJSON()).toEqual(saved);
+});
+
+test('floating composition and transformed linked instances retain their source and render/bake placement', () => {
+  const sprite = new Sprite(7, 7), image = createImage(2, 1, new Uint32Array([RED, BLUE]));
+  const cel = createCelInstance(image, { x: 2, y: 2, rotation: 90, flipX: true });
+  sprite.layers[0].cels[0] = cel; sprite.setLayerEffects([outline()]);
+  const before = canvasPixels(sprite.render());
+  sprite.paste({ w: 1, h: 1, data: new Uint32Array([RED]) }, { x: 5, y: 5 });
+  const preview = canvasPixels(sprite.render());
+  expect(preview).not.toEqual(before);
+  sprite.dropFloating(); expect(canvasPixels(sprite.render())).toEqual(preview);
+  sprite.bakeLayerEffects(); expect(canvasPixels(sprite.render())).toEqual(preview);
+  expect([...image.data]).toEqual([RED, BLUE]);
+});
+
+test('outline honors group blend and clipping, selection does not limit layer FX baking', () => {
+  const { sprite } = groupFixture();
+  sprite.setLayerEffects([outline(), fx('outer-alpha', .5)]);
+  sprite.mask = Mask.rect(sprite.width, sprite.height, { x: 0, y: 0, w: 1, h: 1 });
+  const before = pixels(sprite), source = sprite.toJSON();
+  sprite.bakeLayerEffects('range'); expect(pixels(sprite)).toEqual(before);
+  sprite.undo(); expect(sprite.toJSON()).toEqual(source);
+});
+
+test('outline custom RGBA in indexed tilemaps promotes export/bake to RGB and rasterizes geometry, retaining editable sources', async () => {
+  const sprite = new Sprite(5, 5), cel = createCelInstance(createImage(1, 1, new Uint32Array([RED])), { x: 2, y: 2 });
+  cel.tiles = { cols: 1, rows: 1, refs: new Uint32Array([1]) };
+  sprite.layers[0].cels[0] = cel; sprite.layers[0].tileset = 0;
+  sprite.tilesets = [{ name: 'T', tw: 1, th: 1, baseIndex: 1, tiles: [new Uint32Array(1), new Uint32Array([RED])] }];
+  sprite.colorMode = 'indexed'; sprite.transparentIndex = 0; sprite.framePalettes = [{ frame: 0, colors: ['#00000000', '#ff0000'] }];
+  sprite.setLayerEffects([outline({ color: packRgba(10, 20, 30, 120) })]);
+  const before = pixels(sprite), saved = sprite.toJSON(), doc = sprite.toDocument();
+  expect(doc.colorMode).toBe('rgb'); expect(doc.layers[0].tileset).toBe(-1);
+  expect(doc.layers[0].cels[0]).toMatchObject({ x: 1, y: 1, w: 3, h: 3 }); expect(doc.layers[0].cels[0]).not.toHaveProperty('tiles');
+  const exported = new Sprite(); exported.fromDocument(await decodeAseprite(await encodeAseprite(doc)));
+  expect(pixels(exported)).toEqual(before); expect(sprite.toJSON()).toEqual(saved);
+  sprite.bakeLayerEffects(); expect(String(sprite.colorMode)).toBe('rgb'); expect(pixels(sprite)).toEqual(before);
+  sprite.undo(); expect(sprite.toJSON()).toEqual(saved);
+});
+
+test('outline bounds preflight refuses cumulative expansion, distant/nested groups and floating before history or pixels change', () => {
+  const sprite = new Sprite(4096, 1);
+  sprite.layers[0].cels[0] = createCelInstance(createImage(4096, 1, new Uint32Array(4096).fill(RED)));
+  const before = sprite.toJSON(), depth = sprite.undoDepth;
+  expect(() => sprite.previewLayerEffects([outline()])).toThrow(RangeError);
+  expect(() => sprite.setLayerEffects([outline()])).toThrow(RangeError);
+  expect(() => sprite.bakeLayerEffects('layer', 0, [outline()])).toThrow(RangeError);
+  expect(sprite.toJSON()).toEqual(before); expect(sprite.undoDepth).toBe(depth);
+  const malformedBounds = structuredClone(before); malformedBounds.layers[0].effects = [outline()];
+  sprite.load(malformedBounds); expect(sprite.effectsBoundsNotice).toBe(true);
+  expect(() => sprite.toDocument()).toThrow(RangeError); sprite.load(before);
+  sprite.layers[0].cels[0] = { x: -4000, y: 0, w: 1, h: 1, data: new Uint32Array([RED]) };
+  sprite.paste({ w: 1, h: 1, data: new Uint32Array([RED]) }, { x: 4000, y: 0 });
+  const floating = sprite.floating, history = sprite.undoDepth;
+  expect(() => sprite.bakeLayerEffects('layer', 0, [outline()])).toThrow(RangeError);
+  expect(sprite.floating).toBe(floating); expect(sprite.undoDepth).toBe(history);
+  const { sprite: grouped } = groupFixture();
+  grouped.layers[1].cels[0] = { x: -3000, y: 0, w: 1, h: 1, data: new Uint32Array([RED]) };
+  grouped.layers.splice(2, 0, { ...newLayer('Far', 4), depth: 1, cels: [{ x: 3000, y: 0, w: 1, h: 1, data: new Uint32Array([RED]) }, null, null, null] });
+  grouped.layer = 3;
+  const groupedSaved = grouped.toJSON();
+  expect(() => grouped.setLayerEffects([outline()])).toThrow(RangeError);
+  expect(() => grouped.toDocument()).toThrow(RangeError);
+  expect(() => grouped.render()).not.toThrow(); expect(grouped.effectsBoundsNotice).toBe(true);
+  expect(grouped.toJSON()).toEqual(groupedSaved);
+});
+
+test('outline malformed discriminants and parameters refuse atomically; maximum thickness remains bounded on large cels', () => {
+  const sprite = new Sprite(1, 1), saved = sprite.toJSON();
+  for (const patch of [{ type: 'shadow' }, { color: -1 }, { color: 2 ** 32 }, { color: NaN }, { thickness: 0 }, { thickness: 129 },
+    { thickness: 1.5 }, { position: 'elsewhere' }, { join: 'sharp' }, { enabled: 1 }, { color: undefined }]) {
+    const malformed = structuredClone(saved); malformed.layers[0].effects = [{ ...outline(), ...patch } as any];
+    expect(() => sprite.load(malformed)).toThrow('effect'); expect(sprite.toJSON()).toEqual(saved);
+  }
+  const cel = { x: 0, y: 0, w: 768, h: 512, data: new Uint32Array(768 * 512).fill(RED) };
+  const start = performance.now();
+  for (const join of ['round', 'miter', 'bevel'] as const) {
+    const result = bakeCel(cel, [outline({ thickness: 128, join })])!;
+    expect(result).toMatchObject({ x: -128, y: -128, w: 1024, h: 768 });
+    expect(result.data[128 * 1024]).toBe(BLUE);
+  }
+  // A quadratic-in-radius scan would require ~150 billion neighbor visits here.
+  expect(performance.now() - start).toBeLessThan(5000);
+});
+
+
+test('opacity-only v5/v6 stacks retain single-rounding alpha, including disabled gaps', () => {
+  const cel = { x: 0, y: 0, w: 1, h: 1, data: new Uint32Array([packRgba(255, 0, 0, 1)]) };
+  expect(bakeCel(cel, [fx('a'), outline({ enabled: false }), fx('b')])!.data[0]).toBe(0);
+  expect(bakeCel(cel, [fx('a'), outline({ color: 0x00ff0000 }), fx('b')])!.data[0]).toBe(0);
+  expect(bakeCel(cel, [fx('a'), outline(), fx('b')])!.data[4]).toBe(packRgba(255, 0, 0, 1));
+});
+
+
+test('growing source geometry pauses FX with a notice, survives save/reload, and resumes automatically after shrink/undo', () => {
+  const sprite = new Sprite(4096, 3);
+  const cel = createCelInstance(createImage(4094, 1, new Uint32Array(4094).fill(RED)), { x: 1, y: 1 });
+  sprite.layers[0].cels[0] = cel; sprite.setLayerEffects([outline()]);
+  expect(sprite.effectsBoundsNotice).toBe(false);
+  const original = sprite.toJSON(), visible = pixels(sprite);
+  sprite.checkpoint('Grow');
+  sprite.setCel({ x: 0, y: 1, w: 4096, h: 1, data: new Uint32Array(4096).fill(RED) });
+  expect(sprite.effectsBoundsNotice).toBe(true);
+  expect(canvasPixels(sprite.render())[0]).toBe(0);
+  expect(sprite.layers[0].effects).toEqual([outline()]);
+  const grown = sprite.toJSON(), loaded = new Sprite(); loaded.load(grown);
+  expect(loaded.effectsBoundsNotice).toBe(true); expect(pixels(loaded)).toEqual(pixels(sprite));
+  expect(canvasPixels(documentContext(sprite.captureDocument()).render())).toEqual(pixels(sprite)[0]);
+  expect(() => sprite.bakeLayerEffects()).toThrow(RangeError); expect(() => sprite.toDocument()).toThrow(RangeError);
+  expect(sprite.toJSON()).toEqual(grown);
+  loaded.setCel(cel); expect(loaded.effectsBoundsNotice).toBe(false); expect(pixels(loaded)).toEqual(visible);
+  sprite.undo(); expect(sprite.toJSON()).toEqual(original); expect(sprite.effectsBoundsNotice).toBe(false); expect(pixels(sprite)).toEqual(visible);
+});
+
+test('paused stacks do not block repairing another layer, or fixing children one at a time under a paused ancestor', () => {
+  const sprite = new Sprite(4096, 1), large = () => ({ x: 0, y: 0, w: 4096, h: 1, data: new Uint32Array(4096).fill(RED) });
+  sprite.layers = [
+    { ...newLayer('A', 1), depth: 1, cels: [large()], effects: [outline({ id: 'a' })] },
+    { ...newLayer('B', 1), depth: 1, cels: [large()], effects: [outline({ id: 'b' })] },
+    { ...newLayer('Parent', 1), group: true, effects: [outline({ id: 'p' })] },
+    { ...newLayer('Independent', 1), cels: [{ x: 0, y: 0, w: 1, h: 1, data: new Uint32Array([RED]) }] },
+  ];
+  expect(() => sprite.setLayerEffects([outline()], 3)).not.toThrow();
+  sprite.layer = 3; expect(sprite.bakeLayerEffects()).toBe(true);
+  expect(() => sprite.previewLayerEffects([outline({ id: 'a', enabled: false })], 0)).not.toThrow();
+  sprite.previewLayerEffects(null);
+  expect(() => sprite.setLayerEffects([outline({ id: 'a', enabled: false })], 0)).not.toThrow();
+  expect(() => sprite.setLayerEffects([outline({ id: 'b', enabled: false })], 1)).not.toThrow();
+  expect(() => sprite.setLayerEffects([outline({ id: 'p', enabled: false })], 2)).not.toThrow();
+  expect(sprite.effectsBoundsNotice).toBe(false);
+});
+
+test('distant floating unions with disabled or identity stacks render in a bounded window', () => {
+  for (const effects of [[outline({ enabled: false })], [fx('identity', 1)]]) {
+    const sprite = new Sprite(4096, 1);
+    sprite.layers[0].cels[0] = { x: -4000, y: 0, w: 1, h: 1, data: new Uint32Array([RED]) };
+    sprite.layers[0].effects = effects;
+    sprite.paste({ w: 1, h: 1, data: new Uint32Array([BLUE]) }, { x: 4000, y: 0 });
+    expect(() => sprite.render()).not.toThrow();
+    expect(canvasPixels(sprite.render())[4000]).toBe(BLUE);
+  }
+});
+
+
+test('canvas-sized brush overrides use trimmed content bounds, including groups and temporary oversized previews', () => {
+  const sprite = new Sprite(4096, 1);
+  sprite.layers[0].cels[0] = { x: 2, y: 0, w: 1, h: 1, data: new Uint32Array([RED]) };
+  sprite.setLayerEffects([outline()]);
+  const data = new Uint32Array(4096); data[2] = RED; data[3] = RED;
+  expect(() => sprite.render(0, undefined, { layer: 0, data })).not.toThrow();
+  expect(canvasPixels(sprite.render(0, undefined, { layer: 0, data }))[4]).toBe(BLUE);
+  data[0] = RED; data[4095] = RED; // proposed stroke exceeds FX output; preview uses bounded source fallback
+  expect(() => sprite.render(0, undefined, { layer: 0, data })).not.toThrow();
+  expect(canvasPixels(sprite.render(0, undefined, { layer: 0, data }))[4]).toBe(0);
+  sprite.layers[0].depth = 1;
+  sprite.layers.push({ ...newLayer('Group', 1), group: true, effects: [outline({ id: 'group' })] });
+  data[0] = 0; data[4095] = 0;
+  expect(() => sprite.render(0, undefined, { layer: 0, data })).not.toThrow();
+  expect(canvasPixels(sprite.render(0, undefined, { layer: 0, data }))[5]).toBe(BLUE);
+  data[0] = RED; data[4095] = RED;
+  expect(() => sprite.render(0, undefined, { layer: 0, data })).not.toThrow();
+  data.fill(0); expect(canvasPixels(sprite.render(0, undefined, { layer: 0, data })).every(pixel => pixel === 0)).toBe(true);
+});
+
+
+test('GIF/video exports include ordered Outline pixels and match bounded live fallback after source growth', async () => {
+  const sprite = new Sprite(5, 5);
+  sprite.layers[0].cels[0] = { x: 2, y: 2, w: 1, h: 1, data: new Uint32Array([RED]) };
+  sprite.setLayerEffects([fx('before', .5), outline()]);
+  const args = { raw: sprite.captureDocument(), base: 'Outline', frames: [0], areas: { 0: sprite.canvasRect }, grid: { gridW: 1, gridH: 1, gridX: 0, gridY: 0 } };
+  const video = await prepareExport({ ...args, opts: { kind: 'webm', scale: 1 } }) as VideoExport;
+  expect(Array.from(video.frames[0].data)).toEqual(Array.from(new Uint8ClampedArray(pixels(sprite)[0].buffer)));
+  const gif = await prepareExport({ ...args, opts: { kind: 'gif', scale: 1 } });
+  if (!Array.isArray(gif)) throw new Error('Expected GIF');
+  const decoded = decodeGif(new Uint8Array(await gif[0].blob.arrayBuffer()));
+  expect(decoded.frames[0].data[2 * 5 + 1]).toBe(BLUE);
+  sprite.width = 4096; sprite.height = 1;
+  sprite.setCel({ x: 0, y: 0, w: 4096, h: 1, data: new Uint32Array(4096).fill(RED) });
+  const fallback = await prepareExport({ ...args, raw: sprite.captureDocument(), areas: { 0: sprite.canvasRect }, opts: { kind: 'webm', scale: 1 } }) as VideoExport;
+  expect(Array.from(fallback.frames[0].data)).toEqual(Array.from(new Uint8ClampedArray(pixels(sprite)[0].buffer)));
+});
+
+test('colored Outline promotes grayscale bake/export to RGB while opacity-only grayscale retains its mode', async () => {
+  for (const group of [false, true]) for (const colored of [false, true]) {
+    const sprite = new Sprite(5, 5), gray = packRgba(120, 120, 120, 255);
+    sprite.layers[0].cels[0] = createCelInstance(createImage(1, 1, new Uint32Array([gray])), { x: 2, y: 2 });
+    if (group) {
+      sprite.layers[0].depth = 1;
+      sprite.layers.push({ ...newLayer('Group', 1), group: true }); sprite.layer = 1;
+    }
+    sprite.colorMode = 'gray';
+    sprite.setLayerEffects(colored ? [outline()] : [fx()]);
+    const saved = sprite.toJSON(), expected = pixels(sprite), doc = sprite.toDocument();
+    expect(doc.colorMode).toBe(colored ? 'rgb' : 'gray');
+    const exported = new Sprite(); exported.fromDocument(await decodeAseprite(await encodeAseprite(doc)));
+    expect(pixels(exported)).toEqual(expected); expect(sprite.toJSON()).toEqual(saved);
+    sprite.bakeLayerEffects(); expect(String(sprite.colorMode)).toBe(colored ? 'rgb' : 'gray'); expect(pixels(sprite)).toEqual(expected);
+    sprite.undo(); expect(sprite.toJSON()).toEqual(saved);
+  }
 });

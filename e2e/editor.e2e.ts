@@ -951,3 +951,232 @@ test('Layer FX controls preview/cancel/reorder/play, persist editable stacks, an
   await expect(dialog.getByRole('checkbox', { name: 'Effect enabled' }).nth(0)).not.toBeChecked();
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 });
+
+/** Independent small-fixture oracle: distances are computed by enumeration, not editor transforms. */
+function outlinedPixels(source: { width: number; height: number; data: number[] }, thickness: number, position: 'inside' | 'center' | 'outside', join: 'round' | 'miter' | 'bevel', alpha = 128) {
+  const { width: w, height: h } = source, data = source.data.slice();
+  const inner = position === 'outside' ? 0 : position === 'inside' ? thickness : Math.floor(thickness / 2);
+  const outer = position === 'inside' ? 0 : position === 'outside' ? thickness : Math.ceil(thickness / 2);
+  const metric = (dx: number, dy: number) => join === 'round' ? Math.hypot(dx, dy) : join === 'miter' ? Math.max(Math.abs(dx), Math.abs(dy)) : Math.abs(dx) + Math.abs(dy);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4, solid = source.data[i + 3] > 0;
+    let distance = Infinity;
+    for (let sy = -1; sy <= h; sy++) for (let sx = -1; sx <= w; sx++) {
+      const candidate = sx >= 0 && sy >= 0 && sx < w && sy < h && source.data[(sy * w + sx) * 4 + 3] > 0;
+      if (candidate !== solid) distance = Math.min(distance, metric(x - sx, y - sy));
+    }
+    if (solid && distance <= inner) {
+      data[i] = Math.round(source.data[i] * (1 - alpha / 255));
+      data[i + 1] = Math.round(source.data[i + 1] * (1 - alpha / 255));
+      data[i + 2] = Math.round(255 * alpha / 255 + source.data[i + 2] * (1 - alpha / 255));
+    } else if (!solid && distance <= outer) data.splice(i, 4, 0, 0, 255, alpha);
+  }
+  return { width: w, height: h, data };
+}
+
+async function openFixture(page: Page, fixture: { name: string }) {
+  const chooser = page.waitForEvent('filechooser');
+  await command(page, 'file.open');
+  await (await chooser).setFiles({ name: fixture.name + '.pixprite', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) });
+  await page.locator('[data-key^="p:"]', { hasText: fixture.name }).dblclick();
+  await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+}
+
+const canvasFingerprint = (page: Page) => page.getByTestId('sprite-canvas').locator('canvas').evaluate(canvas => {
+  const c = canvas as HTMLCanvasElement, pixels = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+  let hash = 2166136261;
+  for (const value of pixels) hash = Math.imul(hash ^ value, 16777619);
+  return hash >>> 0;
+});
+
+test('Outline UI previews color/alpha/geometry, updates after real drawing and erasing, and bakes without changing sources early', async ({ page }) => {
+  const source = Buffer.from(Array.from({ length: 9 }, () => [255, 0, 0, 255]).flat()).toString('base64');
+  const fixture = {
+    format: 'pixprite', version: 6, name: 'Outline drawing', width: 9, height: 9,
+    frames: [{ duration: 100 }], images: [{ id: 'red-source', w: 3, h: 3, d: source }],
+    layers: [{ name: 'Paint', cels: [{ x: 3, y: 3, image: { kind: 'image', id: 'red-source' } }] }],
+  };
+  await openFixture(page, fixture);
+  const original = await canvasFingerprint(page);
+  await command(page, 'layer.effects');
+  let dialog = page.getByRole('dialog', { name: 'Layer FX', exact: true });
+  await dialog.getByRole('button', { name: 'Add outline', exact: true }).click();
+  await dialog.getByLabel('Outline color', { exact: true }).fill('#0000ff');
+  await dialog.getByRole('spinbutton', { name: 'Outline alpha', exact: true }).fill('128');
+  await dialog.getByRole('spinbutton', { name: 'Outline thickness', exact: true }).fill('3');
+  await dialog.getByRole('button', { name: 'Outside', exact: true }).click();
+  await page.getByText('Center', { exact: true }).click();
+  await dialog.getByRole('button', { name: 'Round', exact: true }).click();
+  await page.getByText('Miter', { exact: true }).click();
+  await expect.poll(() => canvasFingerprint(page)).not.toEqual(original);
+  const miter = await canvasFingerprint(page);
+  await dialog.getByRole('button', { name: 'Miter', exact: true }).click();
+  await page.getByText('Bevel', { exact: true }).click();
+  await expect.poll(() => canvasFingerprint(page)).not.toEqual(miter);
+  await dialog.getByRole('checkbox', { name: 'Preview', exact: true }).uncheck();
+  await expect.poll(() => canvasFingerprint(page)).toEqual(original);
+  await dialog.getByRole('checkbox', { name: 'Preview', exact: true }).check();
+  await dialog.getByRole('button', { name: 'Bevel', exact: true }).click();
+  await page.getByText('Round', { exact: true }).click();
+  await dialog.getByRole('button', { name: 'Apply', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.layers[0].effects?.[0]).toMatchObject({
+    type: 'outline', enabled: true, color: 0x80ff0000, thickness: 3, position: 'center', join: 'round',
+  });
+  const committed = await documentNamed(page, fixture.name) as any;
+  expect(committed.images).toEqual(fixture.images);
+  const sourcePixels = async (doc: any) => documentPixels(page, { ...doc, layers: doc.layers.map((layer: any) => ({ ...layer, effects: [] })) });
+  const expected = outlinedPixels(await sourcePixels(committed), 3, 'center', 'round');
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(expected);
+
+  const box = await page.getByTestId('sprite-canvas').boundingBox();
+  if (!box) throw new Error('Missing canvas');
+  const paint = async (key: string) => {
+    await page.keyboard.press(key);
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.move(box.x + 4, box.y + 4);
+    await command(page, 'file.save');
+  };
+  const appliedVisual = await canvasFingerprint(page);
+  await paint('b');
+  await expect.poll(() => canvasFingerprint(page)).not.toEqual(appliedVisual);
+  await expect.poll(async () => (await sourcePixels(await documentNamed(page, fixture.name))).data).not.toEqual((await sourcePixels(committed)).data);
+  const drawn = await documentNamed(page, fixture.name) as any;
+  expect(drawn.layers[0].effects).toEqual(committed.layers[0].effects);
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(outlinedPixels(await sourcePixels(drawn), 3, 'center', 'round'));
+  const drawnVisual = await canvasFingerprint(page);
+  await paint('e');
+  await expect.poll(() => canvasFingerprint(page)).not.toEqual(drawnVisual);
+  const solidCount = (pixels: { data: number[] }) => pixels.data.filter((v, i) => i % 4 === 3 && v > 0).length;
+  await expect.poll(async () => solidCount(await sourcePixels(await documentNamed(page, fixture.name)))).toBeLessThan(solidCount(await sourcePixels(drawn)));
+  const erased = await documentNamed(page, fixture.name) as any;
+  const erasedPixels = outlinedPixels(await sourcePixels(erased), 3, 'center', 'round');
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(erasedPixels);
+  await command(page, 'edit.undo');
+  await expect.poll(() => documentNamed(page, fixture.name)).toEqual(drawn);
+  await command(page, 'edit.redo');
+  await expect.poll(() => documentNamed(page, fixture.name)).toEqual(erased);
+  await command(page, 'layer.effects');
+  dialog = page.getByRole('dialog', { name: 'Layer FX', exact: true });
+  await dialog.getByRole('button', { name: 'Bake effects', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.layers[0].effects).toEqual([]);
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(erasedPixels);
+  await command(page, 'edit.undo'); await expect.poll(() => documentNamed(page, fixture.name)).toEqual(erased);
+  await page.reload(); await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(erasedPixels);
+});
+
+test('native canvas retains off-canvas nested group outlines through PNG, partial bake, undo and reload', async ({ page }) => {
+  const effect = (id: string) => ({ id, type: 'outline', enabled: true, color: 0xffff0000, thickness: 1, position: 'outside', join: 'round' });
+  const fixture = {
+    format: 'pixprite', version: 6, name: 'Off-canvas outline', width: 5, height: 3,
+    frames: [{ duration: 100 }, { duration: 100 }], images: [{ id: 'red', w: 1, h: 1, d: Buffer.from([255, 0, 0, 255]).toString('base64') }],
+    layers: [
+      { name: 'Child', depth: 2, effects: [effect('child')], cels: [{ x: -2, y: 1, image: { kind: 'image', id: 'red' } }, { link: 0 }] },
+      { name: 'Nested', depth: 1, group: true, effects: [effect('nested')], cels: [null, null] },
+      { name: 'Outer', depth: 0, group: true, effects: [effect('outer')], cels: [null, null] },
+    ],
+  };
+  await openFixture(page, fixture);
+  const expected = { width: 5, height: 3, data: Array.from({ length: 15 }, (_, i) => [0, 0, i === 0 || i === 5 || i === 6 || i === 10 ? 255 : 0, i === 0 || i === 5 || i === 6 || i === 10 ? 255 : 0]).flat() };
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(expected);
+  await page.locator('[data-hit=layer][data-l="2"]').click();
+  await command(page, 'layer.effects');
+  const dialog = page.getByRole('dialog', { name: 'Layer FX', exact: true });
+  await dialog.getByRole('button', { name: 'Entire layer', exact: true }).click();
+  await page.getByText('Current frame (1)', { exact: true }).click();
+  await dialog.getByRole('button', { name: 'Bake effects', exact: true }).click(); await expect(dialog).toBeHidden();
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(expected);
+  await command(page, 'edit.undo');
+  await expect.poll(async () => (await documentNamed(page, fixture.name))?.layers.length).toBe(3);
+  await page.reload(); await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(expected);
+});
+
+test('growing outlined geometry shows a localized pause, reloads safely, and resumes after shrinking with FX still enabled', async ({ page }) => {
+  const source = Buffer.from(Array.from({ length: 4094 }, () => [255, 0, 0, 255]).flat()).toString('base64');
+  const effect = { id: 'outline', type: 'outline', enabled: true, color: 0xffff0000, thickness: 1, position: 'outside', join: 'round' };
+  const fixture = {
+    format: 'pixprite', version: 6, name: 'Outline limits', width: 4094, height: 3,
+    frames: [{ duration: 100 }], images: [{ id: 'wide-red', w: 4094, h: 1, d: source }],
+    layers: [{ name: 'Wide', effects: [effect], cels: [{ x: 0, y: 1, image: { kind: 'image', id: 'wide-red' } }] }],
+  };
+  await openFixture(page, fixture);
+  const original = await pngPixels(page, await download(page, 'file.exportPng'));
+  const scale = async (width: number) => {
+    await command(page, 'image.spriteSize');
+    const dialog = page.getByRole('dialog', { name: 'Scale image', exact: true });
+    await dialog.getByRole('spinbutton').nth(0).fill(String(width));
+    await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+    await expect(dialog).toBeHidden();
+  };
+  await scale(4096);
+  await expect(page.getByRole('alert').filter({ hasText: 'Layer FX paused' })).toBeVisible();
+  await expect.poll(async () => (await documentNamed(page, fixture.name))?.width).toBe(4096);
+  const grown = await documentNamed(page, fixture.name) as any;
+  expect(grown.layers[0].effects).toEqual([effect]); expect(grown.images[0].w).toBe(4096);
+  const paused = await pngPixels(page, await download(page, 'file.exportPng'));
+  expect(paused.data.slice(0, 4096 * 4).every(v => v === 0)).toBe(true);
+  expect(paused.data.slice(4096 * 4, 4096 * 8)).toEqual(Array.from({ length: 4096 }, () => [255, 0, 0, 255]).flat());
+  await page.reload(); await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Layer FX paused' })).toBeVisible();
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(paused);
+  await scale(4094);
+  await expect(page.getByRole('alert').filter({ hasText: 'Layer FX paused' })).toHaveCount(0);
+  await expect.poll(async () => (await documentNamed(page, fixture.name))?.width).toBe(4094);
+  expect((await documentNamed(page, fixture.name) as any).layers[0].effects).toEqual([effect]);
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(original);
+});
+
+test('native 4096-wide canvas previews a tiny outlined brush stroke and fully erases it without bounds errors', async ({ page }) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  const fixture = {
+    format: 'pixprite', version: 6, name: 'Outline wide preview', width: 4096, height: 3,
+    frames: [{ duration: 100 }], images: [{ id: 'red', w: 1, h: 1, d: Buffer.from([255, 0, 0, 255]).toString('base64') }],
+    layers: [{ name: 'Tiny', effects: [{ id: 'outline', type: 'outline', enabled: true, color: 0xffff0000, thickness: 1, position: 'outside', join: 'round' }],
+      cels: [{ x: 2048, y: 1, image: { kind: 'image', id: 'red' } }] }],
+  };
+  await openFixture(page, fixture);
+  const point = await page.getByTestId('sprite-canvas').locator('canvas').evaluate(canvas => {
+    const c = canvas as HTMLCanvasElement, box = c.getBoundingClientRect();
+    const pixels = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+    for (let i = 0; i < pixels.length; i += 4) if (pixels[i] === 255 && pixels[i + 1] === 0 && pixels[i + 2] === 0 && pixels[i + 3] === 255)
+      return { x: box.x + ((i / 4) % c.width + .5) * box.width / c.width, y: box.y + (Math.floor(i / 4 / c.width) + .5) * box.height / c.height };
+    throw new Error('Missing native red source pixel');
+  });
+  await page.keyboard.press('b'); await page.mouse.click(point.x, point.y); await page.mouse.move(10, 10);
+  await command(page, 'file.save');
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.images[0]?.d).not.toBe(fixture.images[0].d);
+  const drawn = await pngPixels(page, await download(page, 'file.exportPng'));
+  expect(drawn.data.slice((4096 + 2048) * 4, (4096 + 2048) * 4 + 4)).not.toEqual([255, 0, 0, 255]);
+  expect(drawn.data[(4096 + 2048) * 4 + 3]).toBe(255);
+  await page.keyboard.press('e'); await page.mouse.click(point.x, point.y); await page.mouse.move(10, 10);
+  await command(page, 'file.save');
+  await expect.poll(async () => (await documentNamed(page, fixture.name))?.layers[0].cels[0]).toBeNull();
+  const erased = await pngPixels(page, await download(page, 'file.exportPng'));
+  expect(erased.data.every(value => value === 0)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('grayscale Outline baking retains custom color by promoting to RGB, and undo restores editable grayscale sources', async ({ page }) => {
+  const effect = { id: 'outline', type: 'outline', enabled: true, color: 0xffff0000, thickness: 1, position: 'outside', join: 'round' };
+  const fixture = {
+    format: 'pixprite', version: 6, name: 'Grayscale outline', width: 5, height: 5, colorMode: 'gray',
+    frames: [{ duration: 100 }], images: [{ id: 'gray', w: 1, h: 1, d: Buffer.from([120, 120, 120, 255]).toString('base64') }],
+    layers: [{ name: 'Gray', effects: [effect], cels: [{ x: 2, y: 2, image: { kind: 'image', id: 'gray' } }] }],
+  };
+  await openFixture(page, fixture);
+  const before = await documentNamed(page, fixture.name);
+  const expected = await pngPixels(page, await download(page, 'file.exportPng'));
+  expect(expected.data.slice((2 * 5 + 1) * 4, (2 * 5 + 1) * 4 + 4)).toEqual([0, 0, 255, 255]);
+  await command(page, 'layer.effects');
+  const dialog = page.getByRole('dialog', { name: 'Layer FX', exact: true });
+  await expect(dialog.getByText('Baking Outline converts a grayscale document to RGB to preserve its color.', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Bake effects', exact: true }).click(); await expect(dialog).toBeHidden();
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.colorMode).toBe('rgb');
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(expected);
+  await command(page, 'edit.undo'); await expect.poll(() => documentNamed(page, fixture.name)).toEqual(before);
+  await page.reload(); await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(expected);
+});

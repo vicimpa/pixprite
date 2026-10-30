@@ -1,5 +1,6 @@
 import type { Bitmap } from './Image';
 import type { Cel, CelImage, ExtData, Layer } from './SpriteModel';
+import { applyOutline, effectBounds } from './LayerEffects';
 
 /** An immutable shared pixel resource. Its public data view is a defensive copy. */
 export type Image = Readonly<{ kind: 'image'; id: string; w: number; h: number; data: Uint32Array }>;
@@ -10,8 +11,11 @@ export type CelInstance = CelImage & {
   readonly asset: AssetRef;
   readonly transform: Readonly<CelTransform>;
 };
-/** The first processing primitive; further effects can extend this discriminated union. */
-export type LayerFX = Readonly<{ id: string; type: 'opacity'; enabled: boolean; amount: number }>;
+/** Ordered pixel processors; every new discriminant must be validated before decoding. */
+export type LayerFX = Readonly<{ id: string; enabled: boolean } & (
+  { type: 'opacity'; amount: number } |
+  { type: 'outline'; color: number; thickness: number; position: 'inside' | 'center' | 'outside'; join: 'round' | 'miter' | 'bevel' }
+)>;
 
 const sourcePixels = new WeakMap<Image, Uint32Array>();
 const bufferIdentities = new WeakMap<object, object>();
@@ -176,9 +180,17 @@ export function validateLayerFX(effects: unknown): asserts effects is LayerFX[] 
   if (!Array.isArray(effects) || effects.length > 64) throw new Error('Invalid layer effects');
   const ids = new Set<string>();
   for (const effect of effects) {
-    if (!effect || typeof effect.id !== 'string' || !effect.id || effect.id.length > 256 || ids.has(effect.id) || effect.type !== 'opacity'
-      || typeof effect.enabled !== 'boolean' || !Number.isFinite(effect.amount) || effect.amount < 0 || effect.amount > 1)
+    if (!effect || typeof effect.id !== 'string' || !effect.id || effect.id.length > 256 || ids.has(effect.id)
+      || typeof effect.enabled !== 'boolean')
       throw new Error('Invalid layer effect');
+    if (effect.type === 'opacity') {
+      if (!Number.isFinite(effect.amount) || effect.amount < 0 || effect.amount > 1) throw new Error('Invalid layer effect');
+    } else if (effect.type === 'outline') {
+      if (!Number.isInteger(effect.color) || effect.color < 0 || effect.color > 0xffffffff
+        || !Number.isInteger(effect.thickness) || effect.thickness < 1 || effect.thickness > 128
+        || !['inside', 'center', 'outside'].includes(effect.position) || !['round', 'miter', 'bevel'].includes(effect.join))
+        throw new Error('Invalid outline effect');
+    } else throw new Error('Invalid layer effect');
     ids.add(effect.id);
   }
 }
@@ -193,15 +205,30 @@ export function copyEffectScope(layer: Pick<Layer, 'bakedEffects'>) {
   return layer.bakedEffects?.map(ids => ids.slice());
 }
 
-export const layerFXOpacity = (effects: readonly LayerFX[] = []) => effects.reduce((alpha, effect) => effect.enabled ? alpha * effect.amount : alpha, 1);
+/** Custom colors cannot be represented by grayscale; indexed also cannot retain arbitrary alpha. */
+export const hasColorEffects = (effects: readonly LayerFX[] = []) => effects.some(effect => effect.enabled && effect.type === 'outline' && (effect.color >>> 24) > 0);
 
-/** Shared pipeline used by live layer rendering and format conversion. Source resources never change. */
+/** Conservative: arbitrary outline colors/alpha require RGB for indexed baking/export. */
+export const hasPixelEffects = (effects: readonly LayerFX[] = []) => effects.some(effect => effect.enabled && (effect.type === 'outline' ? (effect.color >>> 24) > 0 : effect.amount !== 1));
+
+/** Shared ordered pipeline for live rendering, baking and every export. Sources never change. */
 export function bakeCel(cel: Cel, effects: readonly LayerFX[] = []): Cel {
   if (!cel) return null;
-  const opacity = layerFXOpacity(effects);
-  const data = opacity === 1 ? cel.data : cel.data.map(pixel => {
-    const alpha = Math.round((pixel >>> 24) * opacity);
-    return alpha ? ((pixel & 0xffffff) | (alpha << 24)) >>> 0 : 0;
-  });
-  return { x: cel.x, y: cel.y, w: cel.w, h: cel.h, data, ...(cel.ext ? { ext: cel.ext } : {}), ...(cel.tiles && opacity === 1 && !hasCelTransform(cel) ? { tiles: cel.tiles } : {}) };
+  effectBounds(cel, effects); // Check the entire stack before any output allocation.
+  let result: CelImage = cel, opacity = 1;
+  const flushOpacity = () => {
+    if (opacity !== 1) result = { ...result, data: result.data.map(pixel => {
+      const alpha = Math.round((pixel >>> 24) * opacity);
+      return alpha ? ((pixel & 0xffffff) | (alpha << 24)) >>> 0 : 0;
+    }) };
+    opacity = 1;
+  };
+  for (const effect of effects) {
+    if (!effect.enabled) continue;
+    if (effect.type === 'opacity') opacity *= effect.amount;
+    else if (effect.color >>> 24) { flushOpacity(); result = applyOutline(result, effect); }
+  }
+  flushOpacity();
+  return { x: result.x, y: result.y, w: result.w, h: result.h, data: result.data,
+    ...(cel.ext ? { ext: cel.ext } : {}), ...(!hasPixelEffects(effects) && cel.tiles && !hasCelTransform(cel) ? { tiles: cel.tiles } : {}) };
 }

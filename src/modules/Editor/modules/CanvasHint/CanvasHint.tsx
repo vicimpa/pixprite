@@ -24,6 +24,7 @@ const Line = styled.div`
 /** How to use the current tool, in the bottom-right corner of the canvas */
 export const CanvasHint: FC = () => {
   useSignals();
+  if (state.sprite.effectsBoundsNotice) return <Line role="alert">{t('dialog.layerFX.bypassed')}</Line>;
   const notice = state.sprite.historyLimitNotice;
   if (notice) return <Line role="status">{t(notice === 'operation' ? 'dialog.history.operationExceeded' : 'dialog.history.memoryExceeded')}</Line>;
   if (!state.prefs.showHints || state.playing) return null;

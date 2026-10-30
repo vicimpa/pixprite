@@ -305,10 +305,10 @@ describe('History memory boundaries', () => {
     visitCelBuffers(a, (_, size) => { bytes += size; });
     expect(bytes).toBe(128 * 128 * 4);
     sprite.undo();
-    expect(sprite.layers[0].effects![0].amount).toBe(.5);
+    expect(sprite.layers[0].effects![0]).toMatchObject({ type: 'opacity', amount: .5 });
     expect(sprite.layers[0].cels[0]).toBe(sprite.layers[0].cels[2]);
     sprite.redo();
-    expect(sprite.layers[0].effects![0].amount).toBe(.75);
+    expect(sprite.layers[0].effects![0]).toMatchObject({ type: 'opacity', amount: .75 });
   });
 
   test('metadata payload, including UTF-8 extension strings, participates in total and operation budgets', () => {

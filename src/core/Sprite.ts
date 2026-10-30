@@ -656,8 +656,15 @@ export class Sprite {
     return true;
   }
 
+  /** Geometry can grow after Apply. Keep edits saveable, show a notice and resume FX on shrink. */
+  get effectsBoundsNotice(): boolean {
+    void this.version;
+    return SpriteRenderer.effectBoundsFailures(this.operationContext, [this.frame]).length > 0;
+  }
+
   previewLayerEffects(effects: readonly LayerFX[] | null, layer = this.layer) {
     if (effects) validateLayerFX(effects);
+    if (effects) SpriteRenderer.validateEffectChange(this.operationContext, layer, effects, this.frames.map((_, f) => f));
     this.effectsPreview = effects ? { layer, effects: effects.map(effect => ({ ...effect })) } : null;
     this.cache.clear();
     this.split = null;
@@ -667,6 +674,7 @@ export class Sprite {
     validateLayerFX(effects);
     const target = this.layers[layer];
     if (!target || target.reference || this.lockedDeep(layer)) return false;
+    SpriteRenderer.validateEffectChange(this.operationContext, layer, effects, this.frames.map((_, f) => f));
     this.checkpoint('Layer effects');
     this.layers = this.layers.map((item, i) => i === layer ? { ...item, effects: effects.map(effect => ({ ...effect })) } : item);
     this.touch();

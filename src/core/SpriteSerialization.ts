@@ -3,7 +3,7 @@ import type { AseDocument } from "~/core/formats/Aseprite";
 import type { SpriteContext } from "./SpriteContext";
 import { cleanInfo, lockOwners, subtreeStart, newLayer, TAG_COLORS, tagsByName, trimCel, type Cel, type CelImage, type Frame, type Layer } from "./SpriteModel";
 import { isExtData, isLocksRecord, migratePixpriteV3, migratePixpriteV4, migratePixpriteV5, PIXPRITE_VERSION, validateDocumentIntegrity, validatePixpriteShape, type PixpriteData } from "./SpriteValidation";
-import { bakeCel, copyEffectScope, effectsForFrame, createCelInstance, createImage, hasCelTransform, imageOf, isCelInstance, layerFXOpacity, type Image } from './DocumentModel';
+import { bakeCel, copyEffectScope, effectsForFrame, createCelInstance, createImage, hasCelTransform, imageOf, isCelInstance, hasPixelEffects, hasColorEffects, type Image } from './DocumentModel';
 
 // Serialization
 
@@ -185,9 +185,10 @@ export function toDocument(this: DocumentExportContext): AseDocument {
   const layers: Layer[] = [];
   const flattened = new Map<number, Layer>();
   const context = { ...this, ...rendering, layers: saved, floating: null, effectsPreview: null, canvasRect: { x: 0, y: 0, w: this.width, h: this.height } } satisfies rendering.DrawingContext;
+  rendering.validateEffectBounds(context, this.frames.map((_, f) => f));
   for (let i = saved.length - 1; i >= 0; i--) {
     const layer = saved[i];
-    if (layer.group && layer.effects?.some(effect => effect.enabled && effect.amount !== 1)) {
+    if (layer.group && hasPixelEffects(layer.effects)) {
       const start = subtreeStart(saved, i);
       flattened.set(start, { ...layer, group: false, collapsed: false, tileset: -1, effects: [], bakedEffects: undefined,
         celOpacity: this.frames.map(() => 1), cels: this.frames.map((_, f) => rendering.groupCel.call(context, i, f)) });
@@ -196,9 +197,10 @@ export function toDocument(this: DocumentExportContext): AseDocument {
   }
   for (const [, layer] of [...flattened].sort(([a], [b]) => a - b)) layers.push(layer);
   // Indexed pixel payloads cannot retain arbitrary baked alpha through palette lookup.
-  const trueColor = this.colorMode === 'indexed' && (saved.some(layer => layer.group && layer.effects?.some(effect => effect.enabled && effect.amount !== 1)) || layers.some(layer => !layer.group && (
-    layer.cels.some((_, f) => layerFXOpacity(effectsForFrame(layer, f)) !== 1) || layer.cels.some(cel => cel && isCelInstance(cel) && cel.transform.opacity !== 1)
-  )));
+  const customColor = saved.some(layer => layer.cels.some((_, f) => hasColorEffects(effectsForFrame(layer, f))));
+  const trueColor = (this.colorMode === 'gray' && customColor) || (this.colorMode === 'indexed' && (saved.some(layer => layer.group && hasPixelEffects(layer.effects)) || layers.some(layer => !layer.group && (
+    layer.cels.some((_, f) => hasPixelEffects(effectsForFrame(layer, f))) || layer.cels.some(cel => cel && isCelInstance(cel) && cel.transform.opacity !== 1)
+  ))));
   return {
     width: this.width,
     height: this.height,
@@ -222,10 +224,10 @@ export function toDocument(this: DocumentExportContext): AseDocument {
         if (!variants.has(key)) variants.set(key, bakeCel(cel, effects));
         return variants.get(key)!;
       });
-      const flattenTiles = l.tileset >= 0 && (l.cels.some((_, f) => layerFXOpacity(effectsForFrame(l, f)) !== 1) || l.cels.some(cel => cel && hasCelTransform(cel)));
+      const flattenTiles = l.tileset >= 0 && (l.cels.some((_, f) => hasPixelEffects(effectsForFrame(l, f))) || l.cels.some(cel => cel && hasCelTransform(cel)));
       return {
         name: l.name, visible: l.visible, locked: l.locked, background: l.background, continuous: l.continuous,
-        opacity: l.group ? l.opacity * layerFXOpacity(l.effects) : l.opacity, blend: l.blend,
+        opacity: l.opacity, blend: l.blend,
         cels: flattenTiles ? cels.map(cel => cel && ({ x: cel.x, y: cel.y, w: cel.w, h: cel.h, data: cel.data, ...(cel.ext ? { ext: cel.ext } : {}) })) : cels,
         celOpacity: l.celOpacity,
         group: l.group, depth: l.depth, collapsed: l.collapsed, tileset: flattenTiles ? -1 : l.tileset,

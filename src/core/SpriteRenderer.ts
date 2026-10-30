@@ -1,7 +1,8 @@
 import { bitmapToCanvas, unionRect } from "~/core/Image";
 import type { SpriteContext } from "./SpriteContext";
-import { celRect, childrenOf, rootsOf, subtreeStart, type Cel } from "./SpriteModel";
-import { bakeCel, effectsForFrame, type LayerFX } from './DocumentModel';
+import { celRect, childrenOf, rootsOf, parentOf, trimCel, type Cel } from "./SpriteModel";
+import { checkEffectBounds, effectBounds, LayerFXBoundsError } from './LayerEffects';
+import { bakeCel, effectsForFrame, hasPixelEffects, type LayerFX } from './DocumentModel';
 
 /** Drawing is independent of editor state, cache ownership and playback. */
 export type DrawingContext = Pick<SpriteContext, 'layers' | 'floating' | 'canvasRect' | 'drawLayer' | 'drawNode' | 'drawSiblings'> & {
@@ -13,28 +14,79 @@ export type RenderContext = DrawingContext & Pick<SpriteContext,
 const renderEffects = (context: DrawingContext, layer: number, frame: number) => effectsForFrame(
   context.effectsPreview?.layer === layer ? { ...context.layers[layer], effects: [...context.effectsPreview.effects] } : context.layers[layer], frame);
 
-/** Validate before allocation or document mutation, including pending floating pixels. */
-export function groupBounds(this: Pick<DrawingContext, 'layers' | 'floating'>, index: number, frame: number) {
-  let rect = null as ReturnType<typeof unionRect>;
-  const start = subtreeStart(this.layers, index);
-  for (let i = start; i < index; i++) {
-    const cel = this.layers[i].cels[frame];
-    if (cel) rect = unionRect(rect, celRect(cel));
-  }
-  const f = this.floating;
-  if (f && f.frame === frame && f.layer >= start && f.layer < index)
-    rect = unionRect(rect, { x: f.result.x, y: f.result.y, w: f.result.bmp.w, h: f.result.bmp.h });
-  if (rect && (rect.w > 4096 || rect.h > 4096 || rect.w * rect.h > 16_777_216)) throw new RangeError('Layer FX bounds exceed 4096 × 4096 pixels');
-  return rect;
+/** Brush previews are canvas-sized transport buffers, not source content bounds. */
+function overrideGeometry(context: DrawingContext, frame: number, override?: (i: number) => Uint32Array | undefined): DrawingContext {
+  if (!override) return context;
+  return { ...context, canvasRect: context.canvasRect, effectsPreview: context.effectsPreview, floating: context.floating,
+    layers: context.layers.map((layer, i) => {
+      const data = override(i);
+      return data ? { ...layer, cels: layer.cels.map((cel, f) => f === frame ? trimCel({ ...context.canvasRect, data }) : cel) } : layer;
+    }), drawLayer, drawNode, drawSiblings };
 }
 
-/** Isolated group pixels, retaining off-canvas content. Outer opacity/blend/clip are applied by its parent. */
-export function groupCel(this: DrawingContext, index: number, frame: number): Cel {
-  const rect = groupBounds.call(this, index, frame);
+/** Oversized geometry from later edits temporarily bypasses the affected stack, never its source. */
+function effectiveEffects(context: DrawingContext, index: number, frame: number): readonly LayerFX[] {
+  const effects = renderEffects(context, index, frame);
+  if (!hasPixelEffects(effects)) return effects;
+  try { nodeBounds(context, index, frame); return effects; }
+  catch (error) { if (error instanceof LayerFXBoundsError) return []; throw error; }
+}
+
+export function effectBoundsFailures(context: DrawingContext, frames: readonly number[]): number[] {
+  const failed = new Set<number>();
+  for (const frame of frames) for (let i = 0; i < context.layers.length; i++) if (hasPixelEffects(renderEffects(context, i, frame))) {
+    try { nodeBounds(context, i, frame); }
+    catch (error) { if (error instanceof LayerFXBoundsError) failed.add(i); else throw error; }
+  }
+  return [...failed];
+}
+
+/** Recursive content bounds include child FX and off-canvas pixels before group processing. */
+export function nodeBounds(context: DrawingContext, index: number, frame: number): ReturnType<typeof unionRect> {
+  const layer = context.layers[index];
+  let rect = layer.group ? groupBounds.call(context, index, frame) : layer.cels[frame] && celRect(layer.cels[frame]);
+  const f = context.floating;
+  if (!layer.group && f && f.frame === frame && f.layer === index)
+    rect = unionRect(rect, { x: f.result.x, y: f.result.y, w: f.result.bmp.w, h: f.result.bmp.h });
+  return rect ? effectBounds(rect, renderEffects(context, index, frame)) : null;
+}
+
+/** Validate before allocation or document mutation, including pending floating pixels. */
+export function groupBounds(this: DrawingContext, index: number, frame: number) {
+  let rect = null as ReturnType<typeof unionRect>;
+  for (const child of childrenOf(this.layers, index)) rect = unionRect(rect, nodeBounds(this, child, frame));
+  return rect && checkEffectBounds(rect);
+}
+
+/** Preflight the proposed stack, all frames, and active ancestors without materializing pixels. */
+export function validateEffectBounds(context: DrawingContext, frames: readonly number[], indices = context.layers.map((_, i) => i)) {
+  for (const frame of frames) for (const i of indices)
+    if (hasPixelEffects(renderEffects(context, i, frame))) nodeBounds(context, i, frame);
+}
+
+/** Existing unrelated pauses must not prevent repairing or disabling another stack. */
+export function validateEffectChange(context: DrawingContext, index: number, effects: readonly LayerFX[], frames: readonly number[]) {
+  const original = { ...context, effectsPreview: null };
+  const proposed = { ...context, effectsPreview: { layer: index, effects } };
+  validateEffectBounds(proposed, frames, [index]);
+  for (let parent = parentOf(context.layers, index); parent >= 0; parent = parentOf(context.layers, parent)) {
+    for (const frame of frames) {
+      // Keep previously valid ancestors valid; an existing pause can be repaired in stages.
+      if (!effectBoundsFailures(original, [frame]).includes(parent)) validateEffectBounds(proposed, [frame], [parent]);
+    }
+  }
+}
+
+/** Isolated group pixels; outer opacity/blend/clip are applied by its parent. */
+export function groupCel(this: DrawingContext, index: number, frame: number, override?: (i: number) => Uint32Array | undefined): Cel {
+  const geometry = overrideGeometry(this, frame, override);
+  const rect = groupBounds.call(geometry, index, frame);
   if (!rect) return null;
+  const effects = renderEffects(this, index, frame);
+  effectBounds(rect, effects);
   const canvas = new OffscreenCanvas(rect.w, rect.h), ctx = canvas.getContext('2d')!;
-  this.drawSiblings(ctx, childrenOf(this.layers, index), frame, undefined, rect.x, rect.y);
-  return bakeCel({ ...rect, data: new Uint32Array(ctx.getImageData(0, 0, rect.w, rect.h).data.buffer) }, renderEffects(this, index, frame));
+  this.drawSiblings(ctx, childrenOf(this.layers, index), frame, override, rect.x, rect.y);
+  return bakeCel({ ...rect, data: new Uint32Array(ctx.getImageData(0, 0, rect.w, rect.h).data.buffer) }, effects);
 }
 
 // Rendering
@@ -46,8 +98,8 @@ export function groupCel(this: DrawingContext, index: number, frame: number): Ce
 export function drawLayer(this: DrawingContext, ctx: OffscreenCanvasRenderingContext2D, index: number, frame: number, force = false, override?: Uint32Array, ox = 0, oy = 0): void {
   const layer = this.layers[index];
   if (!layer || (!force && !layer.visible)) return;
-  const cel: Cel = override ? { ...this.canvasRect, data: override } : layer.cels[frame];
-  const effects = renderEffects(this, index, frame);
+  const cel: Cel = override ? trimCel({ ...this.canvasRect, data: override }) : layer.cels[frame];
+  const effects = effectiveEffects(overrideGeometry(this, frame, override ? i => i === index ? override : undefined : undefined), index, frame);
   const f = this.floating;
   const hasFloating = f && f.layer === index && f.frame === frame;
   if (!cel && !hasFloating) return;
@@ -57,17 +109,26 @@ export function drawLayer(this: DrawingContext, ctx: OffscreenCanvasRenderingCon
   if (hasFloating) {
     // Drawn inside the layer so its opacity and blend apply: dropping causes no visual jump
     const r = unionRect(cel && celRect(cel), { x: f.result.x, y: f.result.y, w: f.result.bmp.w, h: f.result.bmp.h })!;
-    src = new OffscreenCanvas(r.w, r.h);
+    // A floating union can be arbitrarily distant after a transform. With bypassed FX,
+    // composite directly into the destination window instead of allocating that union.
+    const bounded = r.w <= 4096 && r.h <= 4096;
+    const window = bounded ? r : { x: ox, y: oy, w: ctx.canvas.width, h: ctx.canvas.height };
+    effectBounds(window, effects);
+    src = new OffscreenCanvas(window.w, window.h);
     const c = src.getContext('2d')!;
-    if (cel) c.drawImage(bitmapToCanvas(cel), cel.x - r.x, cel.y - r.y);
-    c.drawImage(bitmapToCanvas(f.result.bmp), f.result.x - r.x, f.result.y - r.y);
-    sx = r.x;
-    sy = r.y;
-    if (effects.length) {
-      const data = new Uint32Array(c.getImageData(0, 0, r.w, r.h).data.buffer);
-      src = bitmapToCanvas(bakeCel({ x: 0, y: 0, w: r.w, h: r.h, data }, effects)!);
+    if (cel) c.drawImage(bitmapToCanvas(cel), cel.x - window.x, cel.y - window.y);
+    c.drawImage(bitmapToCanvas(f.result.bmp), f.result.x - window.x, f.result.y - window.y);
+    sx = window.x;
+    sy = window.y;
+    if (hasPixelEffects(effects)) {
+      const data = new Uint32Array(c.getImageData(0, 0, window.w, window.h).data.buffer);
+      const baked = bakeCel({ ...window, data }, effects)!;
+      src = bitmapToCanvas(baked); sx = baked.x; sy = baked.y;
     }
-  } else src = bitmapToCanvas(bakeCel(cel, effects)!);
+  } else {
+    const baked = bakeCel(cel, effects)!;
+    src = bitmapToCanvas(baked); sx = baked.x; sy = baked.y;
+  }
   ctx.globalAlpha = layer.opacity * (layer.celOpacity[frame] ?? 1);
   ctx.globalCompositeOperation = layer.blend;
   ctx.drawImage(src, sx - ox, sy - oy);
@@ -80,15 +141,19 @@ export function drawNode(this: DrawingContext, ctx: OffscreenCanvasRenderingCont
   const l = this.layers[i];
   if (!l || (!force && !l.visible)) return;
   if (!l.group) return this.drawLayer(ctx, i, frame, true, override?.(i), ox, oy);
-  const can = new OffscreenCanvas(ctx.canvas.width, ctx.canvas.height);
-  const c = can.getContext('2d')!;
-  this.drawSiblings(c, childrenOf(this.layers, i), frame, override, ox, oy);
-  const effects = renderEffects(this, i, frame);
-  const pixels = effects.some(effect => effect.enabled && effect.amount !== 1)
-    ? bitmapToCanvas(bakeCel({ x: 0, y: 0, w: can.width, h: can.height, data: new Uint32Array(c.getImageData(0, 0, can.width, can.height).data.buffer) }, effects)!) : can;
+  const effects = effectiveEffects(overrideGeometry(this, frame, override), i, frame);
+  let pixels: OffscreenCanvas, x = 0, y = 0;
+  if (hasPixelEffects(effects)) {
+    const cel = groupCel.call(this, i, frame, override);
+    if (!cel) return;
+    pixels = bitmapToCanvas(cel); x = cel.x - ox; y = cel.y - oy;
+  } else {
+    pixels = new OffscreenCanvas(ctx.canvas.width, ctx.canvas.height);
+    this.drawSiblings(pixels.getContext('2d')!, childrenOf(this.layers, i), frame, override, ox, oy);
+  }
   ctx.globalAlpha = l.opacity;
   ctx.globalCompositeOperation = l.blend;
-  ctx.drawImage(pixels, 0, 0);
+  ctx.drawImage(pixels, x, y);
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = 'source-over';
 }
