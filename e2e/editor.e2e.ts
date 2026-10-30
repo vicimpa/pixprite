@@ -560,3 +560,104 @@ test('v5 shared image instances and layer effects retain source pixels across im
   expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual({ width: 3, height: 3, data: expected });
   await expect.poll(() => documentNamed(page, 'Placed model')).toEqual(saved);
 });
+
+test('large autosave sends raw pixels to a real worker and accepts drawing before completion without losing later edits', async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.addInitScript(() => {
+    const monitor = window as unknown as {
+      holdPreparation: boolean; preparationStarted: boolean; workerCompleted: boolean; rawPixels: boolean;
+      releasePreparation?: () => void; firstSessionLayers?: number; backgroundOps: string[];
+    };
+    monitor.holdPreparation = false; monitor.preparationStarted = false; monitor.workerCompleted = false; monitor.rawPixels = false; monitor.backgroundOps = [];
+    const NativeWorker = Worker;
+    class ObservedWorker extends NativeWorker {
+      private hold = false;
+      override set onmessage(handler: ((this: Worker, event: MessageEvent) => unknown) | null) {
+        super.onmessage = event => {
+          if (this.hold && event.data.type !== 'progress') {
+            monitor.workerCompleted = event.data.type === 'done';
+            // Keep the real worker result pending until the test has sent editor input.
+            monitor.releasePreparation = () => { this.hold = false; handler?.call(this, event); };
+          } else handler?.call(this, event);
+        };
+      }
+      override get onmessage() { return super.onmessage; }
+      override postMessage(message: any, options?: any) {
+        monitor.backgroundOps.push(message.op);
+        if (message.op === 'prepareDocument' && message.args.raw.width === 2048 && message.args.raw.images[0]?.d.length >= 2048 * 2048 && monitor.holdPreparation) {
+          monitor.holdPreparation = false; monitor.preparationStarted = true; this.hold = true;
+          monitor.rawPixels = message.args.raw.images[0]?.d instanceof Uint32Array && options === undefined;
+        }
+        super.postMessage(message, options);
+      }
+    }
+    window.Worker = ObservedWorker;
+    const put = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (...args: Parameters<IDBObjectStore['put']>) {
+      if (this.name === 'sessions' && String(args[1]).startsWith('data:') && monitor.preparationStarted && monitor.firstSessionLayers === undefined)
+        monitor.firstSessionLayers = (args[0] as any).layers.length;
+      return put.apply(this, args);
+    };
+  });
+  await page.reload();
+  await command(page, 'file.new');
+  const dialog = page.getByRole('dialog', { name: 'New sprite', exact: true });
+  await dialog.getByRole('textbox').fill('Large background');
+  await dialog.getByRole('spinbutton').nth(0).fill('2048');
+  await dialog.getByRole('spinbutton').nth(1).fill('2048');
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  const surface = await page.getByTestId('sprite-canvas').boundingBox();
+  if (!surface) throw new Error('Missing drawing surface');
+  await page.mouse.click(surface.x + surface.width / 2, surface.y + surface.height / 2);
+  await page.evaluate(() => { (window as any).holdPreparation = true; });
+  await command(page, 'select.all');
+  await command(page, 'edit.fill');
+  await expect.poll(() => page.evaluate(() => (window as any).preparationStarted), { intervals: [10, 20, 50] }).toBe(true);
+  expect(await page.evaluate(() => (window as any).rawPixels)).toBe(true);
+
+  // Real keyboard input and timeline mutation while the autosave operation is pending.
+  await command(page, 'select.none');
+  await command(page, 'layer.new');
+  await expect(page.locator('[data-hit=layer]')).toHaveCount(2);
+  await page.keyboard.press('b');
+  const box = await page.getByTestId('sprite-canvas').boundingBox();
+  if (!box) throw new Error('Missing drawing surface');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect.poll(() => page.evaluate(() => (window as any).workerCompleted)).toBe(true);
+  expect(await page.evaluate(() => (window as any).firstSessionLayers)).toBeUndefined();
+  await page.evaluate(() => (window as any).releasePreparation());
+  await expect.poll(() => page.evaluate(() => (window as any).firstSessionLayers)).toBe(1);
+  await expect.poll(async () => {
+    const saved = await documentNamed(page, 'Large background');
+    return saved?.layers.length === 2 && !!saved.layers[1].cels[0];
+  }).toBe(true);
+  expect(await page.evaluate(() => (window as any).backgroundOps)).toContain('inspectDocument');
+
+  // Explicit saves keep captured project metadata and dirty flags consistent with the same snapshot.
+  await page.evaluate(() => {
+    Object.assign(window, { holdPreparation: true, preparationStarted: false, workerCompleted: false, releasePreparation: undefined });
+  });
+  await command(page, 'file.save');
+  await expect.poll(() => page.evaluate(() => (window as any).preparationStarted)).toBe(true);
+  await command(page, 'layer.new');
+  await expect(page.locator('[data-hit=layer]')).toHaveCount(3);
+  await expect.poll(() => page.evaluate(() => (window as any).workerCompleted)).toBe(true);
+  await page.evaluate(() => (window as any).releasePreparation());
+  await expect(page.getByText('Saved: Large background', { exact: true })).toBeVisible();
+  await expect(page.locator('[draggable=true][data-active=true] [data-modified=true]')).toHaveCount(1);
+  expect(await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('pixprite'); r.onsuccess = () => resolve(r.result); });
+    try {
+      const tx = db.transaction(['meta', 'data']);
+      const request = <T,>(r: IDBRequest<T>) => new Promise<T>(resolve => { r.onsuccess = () => resolve(r.result); });
+      const [metas, data] = await Promise.all([request(tx.objectStore('meta').getAll()), request(tx.objectStore('data').getAll())]);
+      return { metaLayers: metas[0].layers, dataLayers: data[0].layers.length, metaWidth: metas[0].width, dataWidth: data[0].width };
+    } finally { db.close(); }
+  })).toEqual({ metaLayers: 2, dataLayers: 2, metaWidth: 2048, dataWidth: 2048 });
+  await expect.poll(async () => (await documentNamed(page, 'Large background'))?.layers.length).toBe(3);
+  await page.reload();
+  await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  await expect(page.locator('[data-hit=layer]')).toHaveCount(3);
+  expect((await documentNamed(page, 'Large background'))?.layers[1].cels[0]).toBeTruthy();
+});

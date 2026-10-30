@@ -1,19 +1,16 @@
 import { projectBackup, recordBackup } from "~/core/Backups";
-import { decodeAseprite, encodeAseprite } from "~/core/formats/Aseprite";
+import { decodeAseprite } from "~/core/formats/Aseprite";
 import { decodeGif } from "~/core/formats/GifDecode";
 import { parsePalette, serializePalette, type PaletteFormat } from "~/core/formats/Palette";
-import { encodeGifInBackground, isCancelled } from "~/core/Work";
-import { bitmapToCanvas, opaqueBounds, type Bitmap, type Rect } from "~/core/Image";
-import { encodeApng } from "~/core/formats/Apng";
-import { encodeZip } from "~/core/formats/Zip";
-import { encodeIco } from "~/core/formats/Ico";
+import { runTask, withProgress, isCancelled } from "~/core/Work";
+import { bitmapToCanvas, type Bitmap, type Rect } from "~/core/Image";
 import { sliceKey } from "~/core/Sprite";
 import { state } from "~/core/State";
 import { t } from "~/core/i18n";
 import { Sprite } from "~/core/Sprite";
 import { loadProjectData } from "~/core/Projects";
-import { buildSheet, sheetData, type SheetOptions } from "~/core/SpriteSheet";
-import { mapCsv, mapGrid, mapJson, tilesetImage, tilesFromImage, type TileRefs } from "~/core/Tilemap";
+import { type SheetOptions } from "~/core/SpriteSheet";
+import { tilesFromImage } from "~/core/Tilemap";
 
 
 export type ExportKind = 'png' | 'sheet' | 'gif' | 'apng' | 'webm' | 'frames' | 'zip' | 'ico' | 'cur';
@@ -52,15 +49,6 @@ export function download(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function scaled(source: OffscreenCanvas, scale: number) {
-  if (scale === 1) return source;
-  const out = new OffscreenCanvas(source.width * scale, source.height * scale);
-  const ctx = out.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(source, 0, 0, out.width, out.height);
-  return out;
-}
-
 export function exportFrames(tag?: number) {
   const { sprite } = state;
   if (tag === -1) return sprite.selectedFrames;
@@ -90,57 +78,6 @@ export function areaRect(opts: ExportOptions, f: number): Rect | null {
     return k && { x: k.x, y: k.y, w: k.w, h: k.h };
   }
   return { x: 0, y: 0, w: sprite.width, h: sprite.height };
-}
-
-/** Bounds of the used pixels of the frames inside their areas (canvas coordinates) */
-function contentBounds(opts: ExportOptions, frames: number[]): Rect | null {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const f of frames) {
-    const r = areaRect(opts, f);
-    if (!r || r.w < 1 || r.h < 1) continue;
-    const ctx = frameCanvas(f, exportLayer(opts)).getContext('2d')!;
-    const data = new Uint32Array(ctx.getImageData(r.x, r.y, r.w, r.h).data.buffer);
-    const b = opaqueBounds({ w: r.w, h: r.h, data });
-    if (!b) continue;
-    x0 = Math.min(x0, r.x + b.x); y0 = Math.min(y0, r.y + b.y);
-    x1 = Math.max(x1, r.x + b.x + b.w); y1 = Math.max(y1, r.y + b.y + b.h);
-  }
-  return x1 > x0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
-}
-
-/** Per-frame source rectangles, trimmed when asked; frames without one are left out */
-function exportRects(opts: ExportOptions, frames: number[]) {
-  const out = new Map<number, Rect>();
-  const box = opts.trim ? contentBounds(opts, frames) : null;
-  for (const f of frames) {
-    let r = areaRect(opts, f);
-    if (!r) continue;
-    if (box) {
-      const x = Math.max(r.x, box.x), y = Math.max(r.y, box.y);
-      const w = Math.min(r.x + r.w, box.x + box.w) - x, h = Math.min(r.y + r.h, box.y + box.h) - y;
-      // Nothing of the content inside: a single empty pixel keeps the frame timing
-      r = w > 0 && h > 0 ? { x, y, w, h } : { x: r.x, y: r.y, w: 1, h: 1 };
-    }
-    out.set(f, r);
-  }
-  return out;
-}
-
-/** Output size: the largest exported rectangle (frames sit at its top-left) */
-function rectsSize(rects: Map<number, Rect>) {
-  const all = [...rects.values()];
-  return { w: Math.max(1, ...all.map(r => r.w)), h: Math.max(1, ...all.map(r => r.h)) };
-}
-
-/** A frame cropped to its export rectangle and scaled */
-function cropCanvas(opts: ExportOptions, f: number, r: Rect, size: { w: number; h: number; }) {
-  const out = new OffscreenCanvas(size.w, size.h);
-  out.getContext('2d')!.drawImage(frameCanvas(f, exportLayer(opts)), r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
-  return scaled(out, opts.scale);
-}
-
-function frameCanvas(f: number, layer?: number) {
-  return state.sprite.render(f, layer);
 }
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -174,83 +111,7 @@ async function encodeWebm(frames: OffscreenCanvas[], delays: number[], loops: nu
   return new Blob(chunks, { type: 'video/webm' });
 }
 
-const png = (can: OffscreenCanvas) => can.convertToBlob({ type: 'image/png' });
-
-type Output = { name: string; blob: Blob; };
-
-async function renderExport(opts: ExportOptions, base: string): Promise<Output[]> {
-  const { sprite } = state;
-  const frames = opts.kind === 'png' ? [sprite.frame] : exportFrames(opts.tag);
-
-  if (opts.kind === 'sheet' && opts.sheet) {
-    const so = sheetOptions(opts, frames);
-    if (opts.trim && so.trim === 'none') so.trim = 'sprite';
-    const sheet = buildSheet(so);
-    const image = `${base}-sheet.png`;
-    const out = [{ name: image, blob: await png(scaled(sheet.canvas, opts.scale)) }];
-    if (opts.json && opts.json !== 'none')
-      out.push({ name: `${base}-sheet.json`, blob: new Blob([sheetData(sheet, base, image, opts.json)], { type: 'application/json' }) });
-    return out;
-  }
-
-  // Frames where the slice is hidden are left out
-  const rects = exportRects(opts, frames);
-  const shown = frames.filter(f => rects.has(f));
-  if (!shown.length) return [];
-
-  if (opts.kind === 'png') {
-    const r = rects.get(shown[0])!;
-    return [{ name: `${base}.png`, blob: await png(cropCanvas(opts, shown[0], r, r)) }];
-  }
-
-  if (opts.kind === 'ico' || opts.kind === 'cur') {
-    const r = rects.get(shown[0])!;
-    const src = cropCanvas({ ...opts, scale: 1 }, shown[0], r, r);
-    const sizes = [...new Set(opts.icoSizes?.length ? opts.icoSizes : [16, 32, 48])].sort((a, b) => a - b);
-    const images = await Promise.all(sizes.map(async s => {
-      const can = new OffscreenCanvas(s, s);
-      const ctx = can.getContext('2d')!;
-      // Whole-number zoom when it fits, otherwise shrink; centered
-      const k = Math.min(s / r.w, s / r.h), z = k >= 1 ? Math.floor(k) : k;
-      const w = Math.max(1, Math.round(r.w * z)), h = Math.max(1, Math.round(r.h * z));
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(src, (s - w) >> 1, (s - h) >> 1, w, h);
-      return { width: s, height: s, png: new Uint8Array(await (await png(can)).arrayBuffer()) };
-    }));
-    const bytes = encodeIco(images, opts.kind === 'cur' ? { x: 0, y: 0 } : undefined);
-    return [{ name: `${base}.${opts.kind}`, blob: new Blob([bytes as BlobPart], { type: 'image/x-icon' }) }];
-  }
-
-  if (opts.kind === 'frames' || opts.kind === 'zip') {
-    // Numbered files keep their zero padding
-    const pad = Math.max(2, String(sprite.frames.length).length);
-    const size = rectsSize(rects);
-    const out: Output[] = [];
-    for (const f of shown) {
-      const r = rects.get(f)!;
-      out.push({ name: `${base}${String(f + 1).padStart(pad, '0')}.png`, blob: await png(cropCanvas(opts, f, r, opts.trim ? size : r)) });
-    }
-    return out;
-  }
-
-  const size = rectsSize(rects);
-  const w = size.w * opts.scale, h = size.h * opts.scale;
-  const canvases = shown.map(f => cropCanvas(opts, f, rects.get(f)!, size));
-  const delays = shown.map(f => sprite.frames[f].duration);
-
-  if (opts.kind === 'apng') {
-    const bytes = await encodeApng(w, h, canvases.map((c, i) => ({ data: c.getContext('2d')!.getImageData(0, 0, w, h).data, delay: delays[i] })), opts.loop ?? true ? 0 : 1);
-    return [{ name: `${base}.png`, blob: new Blob([bytes as BlobPart], { type: 'image/apng' }) }];
-  }
-
-  if (opts.kind === 'webm') {
-    state.showNotice(t('msg.recordingVideo'), 3000);
-    return [{ name: `${base}.webm`, blob: await encodeWebm(canvases, delays, 1) }];
-  }
-
-  const gifFrames = canvases.map((c, i) => ({ data: c.getContext('2d')!.getImageData(0, 0, w, h).data, delay: delays[i] }));
-  return [{ name: `${base}.gif`, blob: new Blob([await encodeGifInBackground(w, h, gifFrames, opts.loop ?? true) as BlobPart], { type: 'image/gif' }) }];
-}
+type Output = { name: string; blob: Blob };
 
 const safeName = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_').trim() || '_';
 
@@ -274,7 +135,7 @@ function splitParts(opts: ExportOptions, base: string): [ExportOptions, string][
 
 async function zipOutputs(outs: Output[], name: string) {
   const entries = await Promise.all(outs.map(async o => ({ name: o.name, data: new Uint8Array(await o.blob.arrayBuffer()) })));
-  download(new Blob([encodeZip(entries) as BlobPart], { type: 'application/zip' }), name);
+  download(new Blob([await runTask('zip', { entries }) as BlobPart], { type: 'application/zip' }), name);
 }
 
 const LAST_EXPORT_KEY = 'pixprite:lastExport';
@@ -288,8 +149,29 @@ export async function exportFile(opts: ExportOptions) {
     const split = opts.split && opts.split !== 'none';
     const parts = splitParts(opts, base);
     if (split && !parts.length) return state.showTip(t('msg.nothingToExport'));
+    const raw = state.sprite.captureDocument();
+    const grid = { gridX: state.prefs.gridX, gridY: state.prefs.gridY, gridW: state.prefs.gridW, gridH: state.prefs.gridH };
+    const requests = parts.map(([o, name]) => {
+      const frames = o.kind === 'png' ? [state.sprite.frame] : exportFrames(o.tag);
+      return { raw, opts: { ...o, layer: exportLayer(o) }, base: name, frames, grid,
+        areas: Object.fromEntries(frames.map(f => [f, areaRect(o, f)])) };
+    });
     const outs: Output[] = [];
-    for (const [o, name] of parts) outs.push(...await renderExport(o, name));
+    for (const request of requests) {
+      const prepared = request.opts.kind === 'gif'
+        ? await withProgress(t('progress.encodingGif'), (onProgress, signal) => runTask('export', request, { onProgress, signal }))
+        : await runTask('export', request);
+      if (Array.isArray(prepared)) outs.push(...prepared);
+      else {
+        state.showNotice(t('msg.recordingVideo'), 3000);
+        const canvases = prepared.frames.map(frame => {
+          const canvas = new OffscreenCanvas(prepared.width, prepared.height);
+          canvas.getContext('2d')!.putImageData(new ImageData(frame.data as Uint8ClampedArray<ArrayBuffer>, prepared.width, prepared.height), 0, 0);
+          return canvas;
+        });
+        outs.push({ name: prepared.name, blob: await encodeWebm(canvases, prepared.frames.map(frame => frame.delay), 1) });
+      }
+    }
     if (!outs.length) return state.showTip(t('msg.theSliceIsHidden'));
     if (split || opts.kind === 'zip') return zipOutputs(outs, `${base}${split ? `-${opts.split}` : ''}.zip`);
     for (const o of outs) download(o.blob, o.name);
@@ -320,12 +202,7 @@ export function repeatLastExport() {
 export type ProjectFormat = 'pixprite' | 'aseprite';
 
 async function projectBlob(doc: Sprite, format: ProjectFormat) {
-  if (format === 'aseprite') {
-    const ase = doc.toDocument();
-    if (!ase.palette.length) ase.palette = state.palette.slice();
-    return new Blob([await encodeAseprite(ase) as BlobPart], { type: 'application/octet-stream' });
-  }
-  return new Blob([JSON.stringify(doc)], { type: 'application/json' });
+  return runTask('projectFile', { raw: doc.captureDocument(), format, palette: state.palette.slice() });
 }
 
 /** What a document loses (or keeps only for Pixprite) when saved as .aseprite, translated */
@@ -350,7 +227,7 @@ export async function downloadProject(id: string, format: ProjectFormat = 'pixpr
   const data = await loadProjectData(id);
   if (!data) return state.showTip(t('msg.theProjectCouldNot'));
   const doc = new Sprite(32, 32);
-  doc.load(data);
+  await doc.loadAsync(data);
   download(await projectBlob(doc, format), `${doc.name}.${format}`);
   const lost = format === 'aseprite' ? asepriteLosses(doc) : [];
   if (lost.length) state.showTip(`${t('dialog.saveAs.notSavedInThis')}: ${lost.join(', ')}`, 4000);
@@ -358,14 +235,7 @@ export async function downloadProject(id: string, format: ProjectFormat = 'pixpr
 
 export async function saveProject(name = state.sprite.name, format: ProjectFormat = 'pixprite') {
   state.sprite.name = name;
-  if (format === 'aseprite') {
-    const doc = state.sprite.toDocument();
-    if (!doc.palette.length) doc.palette = state.palette.slice();
-    const bytes = await encodeAseprite(doc);
-    return download(new Blob([bytes as BlobPart], { type: 'application/octet-stream' }), `${name}.aseprite`);
-  }
-  const blob = new Blob([JSON.stringify(state.sprite)], { type: 'application/json' });
-  download(blob, `${name}.pixprite`);
+  download(await projectBlob(state.sprite, format), `${name}.${format}`);
 }
 
 export function pickFiles(accept: string, multiple = false) {
@@ -419,7 +289,7 @@ async function readDocument(file: File): Promise<Sprite> {
   } else if (file.type.startsWith('image/')) {
     doc.loadImage(await createImageBitmap(file), name);
   } else {
-    doc.load(JSON.parse(await file.text()));
+    await doc.loadAsync(await file.text());
   }
   return doc;
 }
@@ -576,7 +446,9 @@ export async function readSystemClipboard(): Promise<Bitmap | null> {
 export async function exportTileset(cols = 0) {
   const ts = state.sprite.tileset;
   if (!ts) return;
-  download(await png(bitmapToCanvas(tilesetImage(ts, cols))), `${safeName(ts.name)}.png`);
+  const name = `${safeName(ts.name)}.png`;
+  const prepared = await runTask('tileExport', { ts, cols });
+  download(prepared.png, name);
 }
 
 /** The active tilemap layer (current frame) as JSON or CSV, plus the tileset image with JSON */
@@ -584,12 +456,15 @@ export async function exportTilemap(format: 'json' | 'csv') {
   const { sprite } = state;
   const ts = sprite.tileset, l = sprite.current;
   if (!ts || !l) return;
-  const grid = mapGrid(ts, sprite.getCel() as { x: number; y: number; tiles?: TileRefs; } | null, sprite.width, sprite.height);
   const base = `${safeName(sprite.name)}-${safeName(l.name)}`;
-  if (format === 'csv') return download(new Blob([mapCsv(grid)], { type: 'text/csv' }), `${base}.csv`);
   const image = `${safeName(ts.name)}.png`;
-  download(new Blob([mapJson(ts, grid, l.name, image)], { type: 'application/json' }), `${base}.json`);
-  await exportTileset();
+  const cel = sprite.getCel();
+  const prepared = await runTask('tileExport', { ts, map: {
+    cel: cel ? { x: cel.x, y: cel.y, tiles: cel.tiles } : null,
+    width: sprite.width, height: sprite.height, layer: l.name, image, format,
+  } });
+  download(prepared.map!, `${base}.${format}`);
+  if (format === 'json') download(prepared.png, image);
 }
 
 /** Adds the tiles of an image (cut by the active tileset's tile size) to the active tileset */

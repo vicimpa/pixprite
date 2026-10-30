@@ -3,13 +3,18 @@ import type { SpriteContext } from "./SpriteContext";
 import { celRect, childrenOf, rootsOf, type Cel } from "./SpriteModel";
 import { bakeCel, layerFXOpacity } from './DocumentModel';
 
+/** Only the model, cache and renderer collaborators used by these functions. */
+export type RenderContext = Pick<SpriteContext,
+  'layers' | 'width' | 'height' | 'frame' | 'canvasRect' | 'floating' | 'version' |
+  'cache' | 'cacheVersion' | 'focusLayer' | 'split' | 'drawLayer' | 'drawNode' | 'drawSiblings' | 'renderSplit'>;
+
 // Rendering
 
 /**
  * Draws a layer at its cels' positions; (ox, oy) is the sprite point at the context's origin.
  * `override` is a canvas-sized buffer shown instead of the cel (previews).
  */
-export function drawLayer(this: SpriteContext, ctx: OffscreenCanvasRenderingContext2D, index: number, frame: number, force = false, override?: Uint32Array, ox = 0, oy = 0): void {
+export function drawLayer(this: RenderContext, ctx: OffscreenCanvasRenderingContext2D, index: number, frame: number, force = false, override?: Uint32Array, ox = 0, oy = 0): void {
   const layer = this.layers[index];
   if (!layer || (!force && !layer.visible)) return;
   const cel: Cel = override ? { ...this.canvasRect, data: override } : layer.cels[frame];
@@ -41,7 +46,7 @@ export function drawLayer(this: SpriteContext, ctx: OffscreenCanvasRenderingCont
 }
 
 /** Draws a layer, or a group composited from its children with the group's opacity and blend */
-export function drawNode(this: SpriteContext, ctx: OffscreenCanvasRenderingContext2D, i: number, frame: number, force: boolean, override?: (i: number) => Uint32Array | undefined, ox = 0, oy = 0): void {
+export function drawNode(this: RenderContext, ctx: OffscreenCanvasRenderingContext2D, i: number, frame: number, force: boolean, override?: (i: number) => Uint32Array | undefined, ox = 0, oy = 0): void {
   const l = this.layers[i];
   if (!l || (!force && !l.visible)) return;
   if (!l.group) return this.drawLayer(ctx, i, frame, true, override?.(i), ox, oy);
@@ -59,7 +64,7 @@ export function drawNode(this: SpriteContext, ctx: OffscreenCanvasRenderingConte
  * Draws sibling nodes bottom to top. A run of clipping layers is drawn on a copy of the
  * layer under it, masked by that layer's alpha, then the result goes down with its blend.
  */
-export function drawSiblings(this: SpriteContext, ctx: OffscreenCanvasRenderingContext2D, list: number[], frame: number, override?: (i: number) => Uint32Array | undefined, ox = 0, oy = 0, vis = (i: number) => this.layers[i].visible): void {
+export function drawSiblings(this: RenderContext, ctx: OffscreenCanvasRenderingContext2D, list: number[], frame: number, override?: (i: number) => Uint32Array | undefined, ox = 0, oy = 0, vis = (i: number) => this.layers[i].visible): void {
   const L = this.layers;
   for (let n = 0; n < list.length; n++) {
     const i = list[n];
@@ -96,7 +101,7 @@ export function drawSiblings(this: SpriteContext, ctx: OffscreenCanvasRenderingC
 }
 
 /** Composite as below + layer + above, reusing the cached parts; null when the layer stack doesn't allow it */
-export function renderSplit(this: SpriteContext, frame: number, at: number, override?: (i: number) => Uint32Array | undefined): OffscreenCanvas | null {
+export function renderSplit(this: RenderContext, frame: number, at: number, override?: (i: number) => Uint32Array | undefined): OffscreenCanvas | null {
   const L = this.layers;
   const roots = rootsOf(L);
   const n = roots.indexOf(at);
@@ -127,7 +132,7 @@ export function renderSplit(this: SpriteContext, frame: number, at: number, over
  * Flattened image of a frame, cached until the next change.
  * `only` renders a single layer; `override` swaps one layer's pixels (brush preview) and skips the cache.
  */
-export function render(this: SpriteContext, frame = this.frame, only?: number, override?: { layer: number; data: Uint32Array; }): OffscreenCanvas {
+export function render(this: RenderContext, frame = this.frame, only?: number, override?: { layer: number; data: Uint32Array; }): OffscreenCanvas {
   if (this.cacheVersion !== this.version) {
     this.cache.clear();
     this.cacheVersion = this.version;

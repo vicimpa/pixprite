@@ -444,7 +444,7 @@ const SheetPreview: FC<{ opts: ExportOptions; }> = ({ opts }) => {
   const key = JSON.stringify(opts);
   useEffect(() => {
     const timer = setTimeout(() => {
-      const sheet = buildSheet(sheetOptions(opts, exportFrames(opts.tag)));
+      const sheet = buildSheet(sheetOptions(opts, exportFrames(opts.tag)), { sprite: state.sprite, prefs: state.prefs });
       const can = ref.current;
       if (!can) return;
       // Fit into the box with whole-number zoom when it fits

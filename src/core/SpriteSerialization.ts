@@ -1,7 +1,7 @@
 import type { AseDocument } from "~/core/formats/Aseprite";
 import type { SpriteContext } from "./SpriteContext";
 import { cleanInfo, lockOwners, newLayer, TAG_COLORS, tagsByName, trimCel, type Cel, type CelImage, type Frame, type Layer } from "./SpriteModel";
-import { isExtData, isLocksRecord, migratePixpriteV3, migratePixpriteV4, PIXPRITE_VERSION, validateDocumentIntegrity, validatePixpriteShape, type RawImage } from "./SpriteValidation";
+import { isExtData, isLocksRecord, migratePixpriteV3, migratePixpriteV4, PIXPRITE_VERSION, validateDocumentIntegrity, validatePixpriteShape, type PixpriteData } from "./SpriteValidation";
 import { bakeCel, createCelInstance, createImage, hasCelTransform, imageOf, isCelInstance, layerFXOpacity, type Image } from './DocumentModel';
 
 // Serialization
@@ -15,10 +15,16 @@ export function savedLayers(this: SpriteContext): Layer[] {
   }));
 }
 
-export function toJSON(this: SpriteContext) {
-  const images: RawImage[] = [];
+export type DocumentCapture = Omit<PixpriteData, 'images' | 'tilesets'> & {
+  images: { id: string; w: number; h: number; d: Uint32Array }[];
+  tilesets: (Omit<NonNullable<PixpriteData['tilesets']>[number], 'd'> & { d: Uint32Array[] })[];
+};
+
+function serialize(this: SpriteContext, binary = false) {
+  const images: any[] = [];
   const resources = new Map<string, Image>();
-  const b64 = (data: Uint32Array) => {
+  const b64 = (data: Uint32Array): any => {
+    if (binary) return data;
     const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     let s = '';
     for (let i = 0; i < bytes.length; i += 0x8000)
@@ -57,6 +63,7 @@ export function toJSON(this: SpriteContext) {
     guides: this.guides,
     framePalettes: this.framePalettes,
     tilesets: this.tilesets.map(ts => {
+      if (binary) return { name: ts.name, tw: ts.tw, th: ts.th, baseIndex: ts.baseIndex, count: ts.tiles.length, d: ts.tiles, ...(ts.userData ? { userData: ts.userData } : {}) };
       const all = new Uint32Array(ts.tiles.length * ts.tw * ts.th);
       ts.tiles.forEach((tile, i) => all.set(tile, i * ts.tw * ts.th));
       return { name: ts.name, tw: ts.tw, th: ts.th, baseIndex: ts.baseIndex, count: ts.tiles.length, d: b64(all), ...(ts.userData ? { userData: ts.userData } : {}) };
@@ -73,6 +80,15 @@ export function toJSON(this: SpriteContext) {
       }),
     })),
   };
+}
+
+export function toJSON(this: SpriteContext): PixpriteData & { images: NonNullable<PixpriteData['images']> } {
+  return serialize.call(this) as PixpriteData & { images: NonNullable<PixpriteData['images']> };
+}
+
+/** Capture raw pixels and metadata together, before any asynchronous work or encoding. */
+export function captureDocument(this: SpriteContext): DocumentCapture {
+  return structuredClone(serialize.call(this, true)) as DocumentCapture;
 }
 
 export function load(this: SpriteContext, data: unknown): void {
@@ -143,7 +159,10 @@ export function load(this: SpriteContext, data: unknown): void {
   this.touch();
 }
 
-export function toDocument(this: SpriteContext): AseDocument {
+export type DocumentExportContext = Pick<SpriteContext,
+  'width' | 'height' | 'frames' | 'tags' | 'framePalettes' | 'slices' | 'colorMode' | 'tilesets' | 'transparentIndex' | 'savedLayers'>;
+
+export function toDocument(this: DocumentExportContext): AseDocument {
   const layers = this.savedLayers().filter(layer => !layer.reference);
   // Indexed pixel payloads cannot retain arbitrary baked alpha through palette lookup.
   const trueColor = this.colorMode === 'indexed' && layers.some(layer => !layer.group && (

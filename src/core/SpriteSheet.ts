@@ -4,8 +4,8 @@
  */
 
 import { opaqueBounds, type Rect } from "~/core/Image";
-import { state } from "~/core/State";
-import { parentOf, type Tag } from "~/core/Sprite";
+import type { SpriteContext } from "./SpriteContext";
+import { parentOf, type Tag } from "~/core/SpriteModel";
 
 export type SheetType = 'horizontal' | 'vertical' | 'rows' | 'columns' | 'packed';
 export type TrimMode = 'none' | 'sprite' | 'cels';
@@ -103,8 +103,12 @@ function pack(slots: Slot[], spacing: number, border: number) {
   return { width: best!.w + border * 2, height: best!.h + border * 2 };
 }
 
-export function buildSheet(o: SheetOptions) {
-  const { sprite, prefs } = state;
+export type SheetContext = {
+  sprite: Pick<SpriteContext, 'width' | 'height' | 'layers' | 'frames' | 'tags' | 'slices' | 'render' | 'visibleDeep'>;
+  prefs: { gridX: number; gridY: number; gridW: number; gridH: number };
+};
+
+export function buildSheet(o: SheetOptions, { sprite, prefs }: SheetContext) {
   const areas = o.area ? o.frames.map(f => o.area!(f)).filter((r): r is Rect => !!r) : [];
   const W = o.area ? Math.max(1, ...areas.map(r => r.w)) : sprite.width;
   const H = o.area ? Math.max(1, ...areas.map(r => r.h)) : sprite.height;
@@ -220,8 +224,7 @@ export function buildSheet(o: SheetOptions) {
 }
 
 /** The data file (hash or array flavour) describing every frame of a built sheet */
-export function sheetData(sheet: Sheet, title: string, image: string, flavour: 'hash' | 'array') {
-  const { sprite } = state;
+export function sheetData(sheet: Sheet, title: string, image: string, flavour: 'hash' | 'array', sprite: SheetContext['sprite']) {
   const o = sheet.options, k = o.scale, ex = sheet.extrude;
   const entries = sheet.samples.map((s, i) => {
     const vars: Record<string, string> = {

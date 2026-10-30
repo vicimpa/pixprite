@@ -1,5 +1,5 @@
 import { getProjectMeta, listFolders, listProjects, loadProjectData, type ProjectMeta } from '~/core/Projects';
-import { encodeZip } from '~/core/formats/Zip';
+import { runTask } from './BackgroundTask';
 
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const KEY = 'pixprite:externalBackups';
@@ -42,7 +42,7 @@ export async function projectBackup(id: string) {
   const savedAt = Date.now();
   const [meta, data] = await Promise.all([getProjectMeta(id), loadProjectData(id)]);
   if (!meta || !data) throw new Error('Project data is missing');
-  return { savedAt, name: `${safeName(meta.name)}.pixprite`, blob: new Blob([JSON.stringify(data)], { type: 'application/json' }) };
+  return { savedAt, name: `${safeName(meta.name)}.pixprite`, blob: new Blob([await runTask('stringify', { data })], { type: 'application/json' }) };
 }
 
 export async function allProjectsBackup() {
@@ -51,11 +51,11 @@ export async function allProjectsBackup() {
   const entries = await Promise.all(projects.map(async meta => {
     const data = await loadProjectData(meta.id);
     if (!data) throw new Error(`Project data is missing: ${meta.name}`);
-    return { name: `projects/${safeName(meta.id)}-${safeName(meta.name)}.pixprite`, data: new TextEncoder().encode(JSON.stringify(data)) };
+    return { name: `projects/${safeName(meta.id)}-${safeName(meta.name)}.pixprite`, data: await runTask('jsonBytes', { data }) };
   }));
   entries.push({ name: 'manifest.json', data: new TextEncoder().encode(JSON.stringify({
     format: 'pixprite-backup', version: 1, created: new Date().toISOString(),
     projects: projects.map((meta, i) => ({ ...meta, file: entries[i].name })), folders,
   }, null, 2)) });
-  return { savedAt, name: 'pixprite-backup.zip', blob: new Blob([encodeZip(entries) as BlobPart], { type: 'application/zip' }) };
+  return { savedAt, name: 'pixprite-backup.zip', blob: new Blob([await runTask('zip', { entries }) as BlobPart], { type: 'application/zip' }) };
 }

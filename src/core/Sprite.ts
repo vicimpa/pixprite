@@ -1,3 +1,5 @@
+import { runTask, type TaskOptions } from './BackgroundTask';
+import { hydrateCapture } from './BackgroundDocument';
 import type { Locks, LocksRecord, MetaTarget } from "@pixprite/api";
 import { prop, reactive } from "@vicimpa/decorators";
 import { convertPixels, type ColorMode, type Dither, type PaletteMap } from "~/core/ColorMode";
@@ -1381,6 +1383,31 @@ export class Sprite {
   /** Layers with floating pixels merged in, as they would be saved */
   private savedLayers(): Layer[] {
     return SpriteSerialization.savedLayers.call(this.operationContext);
+  }
+
+  captureDocument() {
+    return SpriteSerialization.captureDocument.call(this.operationContext);
+  }
+
+  async loadAsync(data: unknown, opts: TaskOptions = {}) {
+    const prepared = await runTask('decodeDocument', { data }, opts);
+    const model = hydrateCapture(prepared);
+    this.reset(model.width, model.height, model.name ?? 'untitled');
+    this.info = model.info;
+    this.layers = model.layers;
+    this.frames = model.frames;
+    this.tags = model.tags ?? [];
+    this.slices = model.slices ?? [];
+    this.guides = model.guides ?? [];
+    this.framePalettes = model.framePalettes ?? [];
+    this.tilesets = model.tilesets;
+    this.loop = model.loop ?? null;
+    this.colorMode = model.colorMode ?? 'rgb';
+    this.transparentIndex = model.transparentIndex ?? -1;
+    this.ext = model.ext ?? {};
+    if (model.locks && lockOwners.installed(model.locks.owner)) this.locks = model.locks;
+    else this.orphanLocks = model.locks ?? null;
+    this.touch();
   }
 
   toJSON(): ReturnType<typeof SpriteSerialization.toJSON> {

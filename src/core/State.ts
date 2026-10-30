@@ -1,3 +1,4 @@
+import { runTask } from './BackgroundTask';
 import { isQuotaError } from "~/core/Storage";
 import { Color } from "~/core/Color";
 import { PaletteMap } from "~/core/ColorMode";
@@ -272,20 +273,6 @@ const EDITOR_KEYS = [
 /** Recovery snapshots: how often per document, and when each was last taken */
 const SNAPSHOT_MS = 2 * 60_000;
 const lastSnapshot = new WeakMap<Sprite, number>();
-
-function thumbnail(doc: Sprite, size = 96) {
-  try {
-    const k = Math.max(1, Math.floor(size / Math.max(doc.width, doc.height)));
-    const can = document.createElement('canvas');
-    can.width = Math.min(size, doc.width * k) || 1;
-    can.height = Math.min(size, doc.height * k) || 1;
-    const ctx = can.getContext('2d')!;
-    ctx.imageSmoothingEnabled = false;
-    const s = Math.min(can.width / doc.width, can.height / doc.height);
-    ctx.drawImage(doc.render(0), 0, 0, doc.width * s, doc.height * s);
-    return can.toDataURL('image/png');
-  } catch { return ''; }
-}
 
 /** Layout fields that are personal habits rather than part of an arrangement */
 const PERSONAL = ['pickerTab', 'previewX', 'previewY', 'previewW', 'previewH', 'previewFollow', 'previewPlaying'] as const;
@@ -703,24 +690,28 @@ export class State {
     for (const doc of this.docs) {
       try {
         const sid = doc.sessionId ??= newProjectId();
-        const editor = this.editorOf(doc);
+        const rememberedEditor = doc.editor;
+        const editor = structuredClone(this.editorOf(doc));
         const json = JSON.stringify(editor);
         const changed = doc.version !== doc.storedVersion;
         if (!changed && json === doc.storedEditor) continue;
         const version = doc.version;
-        const data = changed ? JSON.parse(JSON.stringify(doc)) : null;
-        await saveSessionRecord(sid, {
-          head: { projectId: doc.projectId, name: doc.name } satisfies SessionHead,
-          data, editor,
-        }, changed);
-        doc.editor = editor;
+        const head = { projectId: doc.projectId, name: doc.name } satisfies SessionHead;
+        const now = Date.now();
+        const snapshot = changed && now - (lastSnapshot.get(doc) ?? 0) >= SNAPSHOT_MS;
+        const raw = changed ? doc.captureDocument() : null;
+        const prepared = raw ? await runTask('prepareDocument', { raw, preview: snapshot }) : null;
+        const data = prepared?.data ?? null;
+        if (!this.docs.includes(doc)) continue;
+        await saveSessionRecord(sid, { head, data, editor }, changed);
+        // A tab switch may have captured newer view/tool state while the worker was running.
+        if (doc.editor === rememberedEditor) doc.editor = editor;
         doc.storedEditor = json;
         if (changed) doc.storedVersion = version;
-        const now = Date.now();
-        if (changed && now - (lastSnapshot.get(doc) ?? 0) >= SNAPSHOT_MS) {
+        if (snapshot && raw && prepared && this.docs.includes(doc)) {
           try {
             await saveSnapshot({
-              owner: doc.projectId ?? sid, name: doc.name, width: doc.width, height: doc.height, frames: doc.frames.length, thumb: thumbnail(doc),
+              owner: head.projectId ?? sid, name: raw.name ?? 'untitled', width: raw.width, height: raw.height, frames: raw.frames.length, thumb: prepared.thumb,
             }, data);
             lastSnapshot.set(doc, now);
             this.projectsVersion++;
@@ -750,14 +741,16 @@ export class State {
     const now = Date.now(), id = doc.projectId ?? newProjectId();
     const meta = await getProjectMeta(id);
     const version = doc.version;
-    const data = JSON.parse(JSON.stringify(doc));
-    const editor = this.editorOf(doc);
+    const raw = doc.captureDocument();
+    const editor = structuredClone(this.editorOf(doc));
+    const folderId = meta ? meta.folderId ?? null : homeFolder.value;
+    const prepared = await runTask('prepareDocument', { raw, preview: true });
     await saveProjectData({
-      id, name: doc.name, created: meta?.created ?? now, updated: now,
-      width: doc.width, height: doc.height, frames: doc.frames.length, layers: doc.layers.length,
-      colorMode: doc.colorMode, thumb: thumbnail(doc), info: Object.keys(doc.info).length ? doc.info : undefined,
-      folderId: meta ? meta.folderId ?? null : homeFolder.value,
-    }, data, editor ? { ...editor, doc: { ...(editor.doc as object), unsaved: false } } : undefined);
+      id, name: raw.name ?? 'untitled', created: meta?.created ?? now, updated: now,
+      width: raw.width, height: raw.height, frames: raw.frames.length, layers: raw.layers.length,
+      colorMode: raw.colorMode ?? 'rgb', thumb: prepared.thumb, info: raw.info as Sprite['info'],
+      folderId,
+    }, prepared.data, editor ? { ...editor, doc: { ...(editor.doc as object), unsaved: false } } : undefined);
     doc.projectId = id;
     // Edits made while the transaction was in flight still count as unsaved.
     doc.savedVersion = version;
@@ -808,7 +801,7 @@ export class State {
       const data = await loadProjectData(id);
       if (!data) throw new Error(t('msg.theProjectCouldNot'));
       const doc = new Sprite(32, 32);
-      doc.load(data);
+      await doc.loadAsync(data);
       doc.projectId = id;
       doc.editor = await loadProjectState(id) ?? null;
       doc.markSaved();
@@ -826,7 +819,7 @@ export class State {
       const saved = await loadLastGoodProject(id);
       if (!saved) return this.showTip(t('recovery.noPrevious'), 5000);
       const doc = new Sprite(1, 1);
-      doc.load(saved.data);
+      await doc.loadAsync(saved.data);
       doc.name = `${doc.name} (${t('recovery.copy')})`;
       this.openDocument(doc);
       this.save();
@@ -839,7 +832,7 @@ export class State {
     const data = await loadSnapshot(id);
     if (!data) return this.showTip(t('msg.theSnapshotCouldNot'));
     const doc = new Sprite(32, 32);
-    doc.load(data);
+    await doc.loadAsync(data);
     const time = (await listSnapshots()).find(s => s.id === id)?.time ?? Date.now();
     doc.name = `${doc.name} (${new Date(time).toLocaleString()})`;
     doc.projectId = null;
@@ -995,10 +988,12 @@ export class State {
   }
 
   /** A copy of a document in a new tab */
-  duplicateDocument(doc = this.sprite) {
-    const data = JSON.parse(JSON.stringify(doc));
+  async duplicateDocument(doc = this.sprite) {
+    const raw = doc.captureDocument();
+    raw.name = `${doc.name} copy`;
+    const { data } = await runTask('prepareDocument', { raw });
     const copy = new Sprite(32, 32);
-    copy.load({ ...data, name: `${doc.name} copy` });
+    await copy.loadAsync(data);
     copy.storedVersion = -1;
     this.docs = [...this.docs, copy];
     this.switchTo(copy);
@@ -1031,7 +1026,7 @@ export class State {
           for (const d of parsed?.docs ?? [parsed]) {
             try {
               const document = new Sprite(32, 32);
-              document.load(d);
+              await document.loadAsync(d);
               if (!this.pristine(document)) await this.saveDocument(document);
             } catch (e) { failed.push(d); console.warn('Legacy project migration failed', e); }
           }
@@ -1054,7 +1049,7 @@ export class State {
           const saved = await loadSession(id);
           const doc = new Sprite(32, 32);
           if (saved) {
-            doc.load(saved.data);
+            await doc.loadAsync(saved.data);
             doc.sessionId = id;
             doc.projectId = saved.head?.projectId ?? null;
             doc.editor = saved.editor;
@@ -1063,7 +1058,7 @@ export class State {
           } else {
             const data = await loadProjectData(id);
             if (!data) throw new Error('Missing session document');
-            doc.load(data);
+            await doc.loadAsync(data);
             doc.projectId = id;
             doc.editor = await loadProjectState(id);
           }
@@ -1079,7 +1074,7 @@ export class State {
             const previous = tabs.includes(recoveryId) ? null : await loadLastGoodSession(id);
             if (previous) {
               const recovered = new Sprite(1, 1);
-              recovered.load(previous.data);
+              await recovered.loadAsync(previous.data);
               recovered.sessionId = recoveryId;
               recovered.name = `${recovered.name} (${t('recovery.copy')})`;
               this.docs = [...this.docs, recovered];

@@ -4,7 +4,7 @@
  * Folders only group the meta records; documents never move.
  */
 
-import { serializedBytes } from "~/core/Storage";
+import { BackgroundWorkerError, runTask } from "~/core/BackgroundTask";
 import { Sprite, type ProjectInfo } from "~/core/Sprite";
 import { signal } from "@preact/signals-react";
 
@@ -42,6 +42,8 @@ const META = 'meta';
 const DATA = 'data';
 const GOOD_DATA = 'lastGoodData';
 const GOOD_META = 'lastGoodMeta';
+/** Compare-and-write tokens for cross-tab validation outside write transactions. */
+const REVISIONS = 'revisions';
 /** How the editor was set up for each project (tools, view, panels); kept apart from the project itself */
 const STATE = 'state';
 /**
@@ -59,10 +61,11 @@ let opening: Promise<IDBDatabase> | null = null;
 
 function db() {
   opening ??= new Promise<IDBDatabase>((resolve, reject) => {
-    // 6: previous validated revisions; existing projects remain untouched.
-    const req = indexedDB.open(DB, 6);
+    // 7: compare-and-write tokens; existing documents and recovery copies remain untouched.
+    const req = indexedDB.open(DB, 7);
     req.onupgradeneeded = () => {
       const d = req.result;
+      if (!d.objectStoreNames.contains(REVISIONS)) d.createObjectStore(REVISIONS);
       if (!d.objectStoreNames.contains(META)) d.createObjectStore(META, { keyPath: 'id' });
       if (!d.objectStoreNames.contains(DATA)) d.createObjectStore(DATA);
       if (!d.objectStoreNames.contains(GOOD_DATA)) d.createObjectStore(GOOD_DATA);
@@ -96,6 +99,11 @@ function request<T>(req: IDBRequest<T>) {
   });
 }
 
+export class DeletedDocumentError extends Error {
+  constructor() { super('Document was deleted while saving'); this.name = 'DeletedDocumentError'; }
+}
+const deletedRevision = (value: unknown) => typeof value === 'string' && value.startsWith('deleted:');
+
 export const newProjectId = () => crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
 /** All projects, most recently changed first */
@@ -105,9 +113,10 @@ export async function listProjects(): Promise<ProjectMeta[]> {
   const missing = all.filter(p => p.bytes === undefined);
   if (missing.length) {
     const store = (await db()).transaction(DATA, 'readonly').objectStore(DATA);
-    await Promise.all(missing.map(async p => {
-      const data = await request(store.get(p.id));
-      if (data !== undefined) { try { p.bytes = serializedBytes(data); } catch { /* isolate damaged records */ } }
+    const values = missing.map(p => request(store.get(p.id)));
+    await Promise.all(missing.map(async (p, i) => {
+      const data = await values[i];
+      if (data !== undefined) { try { p.bytes = await runTask('inspectDocument', { data }); } catch { /* isolate damaged records */ } }
     }));
   }
   return all.sort((a, b) => b.updated - a.updated);
@@ -119,32 +128,57 @@ export function validateStoredDocument(data: unknown) {
   document.load(data);
 }
 
-function validDocument(data: unknown) {
-  try { validateStoredDocument(data); return true; } catch { return false; }
+export async function validateStoredDocumentAsync(data: unknown) {
+  return runTask('inspectDocument', { data });
+}
+
+async function validDocument(data: unknown) {
+  if (data === undefined) return false;
+  try { await validateStoredDocumentAsync(data); return true; } catch (error) {
+    if (error instanceof BackgroundWorkerError) throw error;
+    return false;
+  }
+}
+
+/** Read payload and token in one snapshot, validate off-thread, then compare the token atomically. */
+async function previousRevision(store: string, key: string, revision: string) {
+  const tx = (await db()).transaction([store, REVISIONS], 'readonly');
+  const [data, token] = await Promise.all([request(tx.objectStore(store).get(key)), request(tx.objectStore(REVISIONS).get(revision))]);
+  if (deletedRevision(token)) throw new DeletedDocumentError();
+  return { data, token, valid: await validDocument(data) };
 }
 
 export async function saveProjectData(meta: ProjectMeta, data: unknown, editor?: unknown) {
-  const copy = structuredClone(data);
-  validateStoredDocument(copy);
-  const next = { ...meta, bytes: serializedBytes(copy) };
-  const tx = (await db()).transaction([META, DATA, GOOD_META, GOOD_DATA, STATE], 'readwrite');
-  const committed = done(tx);
-  const oldMeta = tx.objectStore(META).get(meta.id);
-  const oldData = tx.objectStore(DATA).get(meta.id);
-  oldData.onsuccess = () => {
-    // A damaged current record must never replace the last validated revision.
-    if (oldMeta.result && validDocument(oldData.result)) {
-      tx.objectStore(GOOD_META).put(oldMeta.result);
-      tx.objectStore(GOOD_DATA).put(oldData.result, meta.id);
-    } else if (oldData.result === undefined) {
-      tx.objectStore(GOOD_META).put(next);
-      tx.objectStore(GOOD_DATA).put(copy, meta.id);
-    }
-    tx.objectStore(META).put(next);
-    tx.objectStore(DATA).put(copy, meta.id);
-    if (editor !== undefined) tx.objectStore(STATE).put(editor, meta.id);
-  };
-  await committed;
+  const copy = structuredClone(data), nextMeta = structuredClone(meta), nextEditor = structuredClone(editor);
+  const id = nextMeta.id;
+  const next = { ...nextMeta, bytes: await validateStoredDocumentAsync(copy) };
+  const revision = `project:${id}`;
+  for (;;) {
+    const previous = await previousRevision(DATA, id, revision);
+    const tx = (await db()).transaction([META, DATA, GOOD_META, GOOD_DATA, STATE, REVISIONS], 'readwrite');
+    const committed = done(tx);
+    let retry = false, deleted = false;
+    const oldMeta = tx.objectStore(META).get(id);
+    const token = tx.objectStore(REVISIONS).get(revision);
+    token.onsuccess = () => {
+      if (deletedRevision(token.result)) { deleted = true; return; }
+      if (token.result !== previous.token) { retry = true; return; }
+      if (oldMeta.result && previous.valid) {
+        tx.objectStore(GOOD_META).put(oldMeta.result);
+        tx.objectStore(GOOD_DATA).put(previous.data, id);
+      } else if (previous.data === undefined) {
+        tx.objectStore(GOOD_META).put(next);
+        tx.objectStore(GOOD_DATA).put(copy, id);
+      }
+      tx.objectStore(META).put(next);
+      tx.objectStore(DATA).put(copy, id);
+      tx.objectStore(REVISIONS).put(newProjectId(), revision);
+      if (nextEditor !== undefined) tx.objectStore(STATE).put(nextEditor, id);
+    };
+    await committed;
+    if (deleted) throw new DeletedDocumentError();
+    if (!retry) return;
+  }
 }
 
 /** Explicit recovery only: callers open this as a new unsaved document. */
@@ -154,7 +188,7 @@ export async function loadLastGoodProject(id: string) {
     request(tx.objectStore(GOOD_META).get(id)), request(tx.objectStore(GOOD_DATA).get(id)),
   ]);
   if (!meta || !data) return null;
-  validateStoredDocument(data);
+  await validateStoredDocumentAsync(data);
   return { meta: meta as ProjectMeta, data: data as unknown };
 }
 
@@ -169,7 +203,8 @@ export async function getProjectMeta(id: string): Promise<ProjectMeta | null> {
 }
 
 export async function deleteProject(id: string) {
-  const tx = (await db()).transaction([META, DATA, STATE, GOOD_META, GOOD_DATA], 'readwrite');
+  const tx = (await db()).transaction([META, DATA, STATE, GOOD_META, GOOD_DATA, REVISIONS], 'readwrite');
+  tx.objectStore(REVISIONS).put(`deleted:${newProjectId()}`, `project:${id}`);
   tx.objectStore(META).delete(id);
   tx.objectStore(DATA).delete(id);
   tx.objectStore(STATE).delete(id);
@@ -316,26 +351,38 @@ export type SessionRecord = { head?: SessionHead; data: unknown; editor: Record<
 /** Header, working pixels and editor state either all commit or all stay at their previous values. */
 export async function saveSessionRecord(id: string, value: SessionRecord, changed = true) {
   const copy = structuredClone(value);
-  if (changed) validateStoredDocument(copy.data);
-  const tx = (await db()).transaction(SESSIONS, 'readwrite');
-  const committed = done(tx), store = tx.objectStore(SESSIONS);
-  const head = store.get(`head:${id}`), editor = store.get(`editor:${id}`), data = store.get(`data:${id}`);
-  data.onsuccess = () => {
-    if (changed && validDocument(data.result))
-      store.put({ head: head.result, data: data.result, editor: editor.result ?? null }, `good:${id}`);
-    else if (changed && data.result === undefined) store.put(copy, `good:${id}`);
-    store.put(copy.head, `head:${id}`);
-    if (changed) store.put(copy.data, `data:${id}`);
-    store.put(copy.editor, `editor:${id}`);
-  };
-  await committed;
+  if (changed) await validateStoredDocumentAsync(copy.data);
+  const revision = `session:${id}`;
+  for (;;) {
+    const previous = changed ? await previousRevision(SESSIONS, `data:${id}`, revision) : null;
+    const tx = (await db()).transaction([SESSIONS, REVISIONS], 'readwrite');
+    const committed = done(tx), store = tx.objectStore(SESSIONS);
+    let retry = false, deleted = false;
+    const head = store.get(`head:${id}`), editor = store.get(`editor:${id}`);
+    const token = tx.objectStore(REVISIONS).get(revision);
+    token.onsuccess = () => {
+      if (deletedRevision(token.result)) { deleted = true; return; }
+      if (previous && token.result !== previous.token) { retry = true; return; }
+      if (previous?.valid) store.put({ head: head.result, data: previous.data, editor: editor.result ?? null }, `good:${id}`);
+      else if (previous && previous.data === undefined) store.put(copy, `good:${id}`);
+      store.put(copy.head, `head:${id}`);
+      if (changed) {
+        store.put(copy.data, `data:${id}`);
+        tx.objectStore(REVISIONS).put(newProjectId(), revision);
+      }
+      store.put(copy.editor, `editor:${id}`);
+    };
+    await committed;
+    if (deleted) throw new DeletedDocumentError();
+    if (!retry) return;
+  }
 }
 
 export async function loadLastGoodSession(id: string): Promise<SessionRecord | null> {
   const tx = (await db()).transaction(SESSIONS, 'readonly');
   const record = await request(tx.objectStore(SESSIONS).get(`good:${id}`));
   if (!record) return null;
-  validateStoredDocument(record.data);
+  await validateStoredDocumentAsync(record.data);
   return record;
 }
 
@@ -349,7 +396,8 @@ export async function loadSession(id: string) {
 }
 
 export async function deleteSession(id: string) {
-  const tx = (await db()).transaction(SESSIONS, 'readwrite');
+  const tx = (await db()).transaction([SESSIONS, REVISIONS], 'readwrite');
+  tx.objectStore(REVISIONS).put(`deleted:${newProjectId()}`, `session:${id}`);
   const s = tx.objectStore(SESSIONS);
   for (const part of ['head', 'data', 'editor', 'good']) s.delete(`${part}:${id}`);
   await done(tx);
@@ -382,15 +430,24 @@ let lastSnapshotTime = 0;
 
 /** Adds a snapshot and drops the oldest ones beyond `keep` */
 export async function saveSnapshot(meta: Omit<SnapshotMeta, 'id' | 'time'>, data: unknown, keep = SNAPSHOTS_KEPT) {
-  validateStoredDocument(data);
+  const copy = structuredClone(data), capturedMeta = structuredClone(meta);
+  const bytes = await validateStoredDocumentAsync(copy);
   const time = lastSnapshotTime = Math.max(Date.now(), lastSnapshotTime + 1);
-  const id = `${meta.owner}:${time}:${newProjectId()}`;
+  const id = `${capturedMeta.owner}:${time}:${newProjectId()}`;
   const d = await db();
-  const tx = d.transaction([SNAP_META, SNAP_DATA], 'readwrite');
-  tx.objectStore(SNAP_META).put({ ...meta, id, time, bytes: serializedBytes(data) } satisfies SnapshotMeta);
-  tx.objectStore(SNAP_DATA).put(data, id);
-  await done(tx);
-  const old = (await listSnapshots(meta.owner)).slice(keep);
+  const tx = d.transaction([SNAP_META, SNAP_DATA, REVISIONS], 'readwrite');
+  const committed = done(tx);
+  let deleted = false;
+  const project = tx.objectStore(REVISIONS).get(`project:${capturedMeta.owner}`);
+  const session = tx.objectStore(REVISIONS).get(`session:${capturedMeta.owner}`);
+  session.onsuccess = () => {
+    if (deletedRevision(project.result) || deletedRevision(session.result)) { deleted = true; return; }
+    tx.objectStore(SNAP_META).put({ ...capturedMeta, id, time, bytes } satisfies SnapshotMeta);
+    tx.objectStore(SNAP_DATA).put(copy, id);
+  };
+  await committed;
+  if (deleted) throw new DeletedDocumentError();
+  const old = (await listSnapshots(capturedMeta.owner)).slice(keep);
   if (old.length) await deleteSnapshotIds(old.map(s => s.id));
 }
 
@@ -403,9 +460,10 @@ export async function listSnapshots(owner?: string): Promise<SnapshotMeta[]> {
   const missing = all.filter(s => s.bytes === undefined);
   if (missing.length) {
     const data = (await db()).transaction(SNAP_DATA, 'readonly').objectStore(SNAP_DATA);
-    await Promise.all(missing.map(async s => {
-      const value = await request(data.get(s.id));
-      if (value !== undefined) { try { s.bytes = serializedBytes(value); } catch { /* isolate damaged records */ } }
+    const values = missing.map(s => request(data.get(s.id)));
+    await Promise.all(missing.map(async (s, i) => {
+      const value = await values[i];
+      if (value !== undefined) { try { s.bytes = await runTask('inspectDocument', { data: value }); } catch { /* isolate damaged records */ } }
     }));
   }
   return all.sort((a, b) => b.time - a.time);
