@@ -10,12 +10,12 @@ export function useRednerGL() {
 
 export function useProgInfo({ gl }: RenderGL, vs: string, fs: string) {
   const info = useMemo(() => {
-    return createProgramInfo(gl, [vs, fs]);
+    return gl ? createProgramInfo(gl, [vs, fs]) : undefined;
   }, [gl, vs, fs]);
 
   useEffect(() => {
     return () => {
-      gl.deleteProgram(info.program);
+      if (info) gl?.deleteProgram(info.program);
     };
   }, [info]);
 

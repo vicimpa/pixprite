@@ -278,6 +278,15 @@ fn window_action(window: &WebviewWindow, action: &str) -> Result<(), String> {
     result.map_err(|e| e.to_string())
 }
 #[tauri::command]
+fn desktop_frontend_error(window: WebviewWindow, message: String) -> Result<(), String> {
+    trusted(&window)?;
+    eprintln!(
+        "WebView error: {}",
+        message.chars().take(4096).collect::<String>()
+    );
+    Ok(())
+}
+#[tauri::command]
 async fn desktop_library(
     window: WebviewWindow,
     state: State<'_, Arc<Native>>,
@@ -781,6 +790,7 @@ fn main() {
             desktop_copy_image,
             desktop_paste_image,
             desktop_text_action,
+            desktop_frontend_error,
             desktop_library,
             desktop_bootstrap,
             desktop_migration_complete,

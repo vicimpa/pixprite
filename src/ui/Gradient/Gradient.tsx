@@ -3,6 +3,8 @@ import { Signal, useComputed } from "@preact/signals-react";
 import type { FC } from "react";
 import hslFrag from "./shader/hsl.frag";
 import hsvFrag from "./shader/hsv.frag";
+import { deepGetValue } from "~/utils/signals";
+import { gradientPixels } from "./pixels";
 
 type GradientColor = [number, number, number, number];
 type GradientColorValue = GradientColor | Signal<GradientColor>;
@@ -55,6 +57,8 @@ export const Gradient: FC<GradientProps> = ({ hsl, gradient, ...props }) => {
   });
 
   return (
-    <Shader shader={shader} uniforms={uniforms} {...props} />
+    <Shader shader={shader} uniforms={uniforms} {...props} drawFallback={(ctx, width, height) => {
+      ctx.putImageData(new ImageData(gradientPixels(width, height, deepGetValue(uniforms), hsl), width, height), 0, 0);
+    }} />
   );
 };

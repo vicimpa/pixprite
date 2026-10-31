@@ -90,6 +90,13 @@ jobs:
         env:
           PIXPRITE_E2E_EXECUTABLE: ${{ github.workspace }}/${{ matrix.executable }}
       - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: desktop-failures-${{ matrix.artifact }}
+          path: dist/reports/desktop/
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
         with:
           name: pixprite-${{ matrix.artifact }}
           path: |

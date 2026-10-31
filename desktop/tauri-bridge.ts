@@ -8,6 +8,13 @@ import type { UpdateState } from './update-types';
 installTextShortcuts('__PIXPRITE_SHORTCUT_TOKEN__', action => invoke('desktop_text_action', { action }));
 const encode = (bytes: Uint8Array) => { let value = ''; for (let i = 0; i < bytes.length; i += 8192) value += String.fromCharCode(...bytes.subarray(i, i + 8192)); return btoa(value); };
 if (window.top === window.self) {
+  // WebView console output is not inherited by the native process on every platform.
+  const reportError = (error: unknown) => {
+    const message = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error);
+    void invoke('desktop_frontend_error', { message: message.slice(0, 4096) }).catch(() => {});
+  };
+  window.addEventListener('error', event => reportError(event.error ?? event.message));
+  window.addEventListener('unhandledrejection', event => reportError(event.reason));
   let onRequest: ((request: AutomationRequest) => Promise<unknown>) | undefined;
   let onFiles: ((files: DesktopFile[]) => Promise<void>) | undefined;
   const states = new Set<(state: WindowState) => void>(), updates = new Set<(state: UpdateState) => void>();

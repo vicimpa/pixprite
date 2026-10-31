@@ -56,6 +56,31 @@ test('a failed initial bundle offers a working reload button', async ({ page }) 
   await expect(page.locator('#startup-screen')).toHaveCount(0);
 });
 
+test('the editor creates and restores documents without WebGL2', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => {
+    for (const prototype of [OffscreenCanvas.prototype, HTMLCanvasElement.prototype]) {
+      const getContext = prototype.getContext;
+      Object.defineProperty(prototype, 'getContext', { value(this: HTMLCanvasElement | OffscreenCanvas, type: string, ...args: unknown[]) {
+        return type === 'webgl' || type === 'webgl2' ? null : Reflect.apply(getContext, this, [type, ...args]);
+      } });
+    }
+  });
+  await boot(page);
+  await create(page);
+  for (const name of ['HSV', 'HSL']) {
+    await page.getByRole('button', { name, exact: true }).click();
+    await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  }
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('pixprite:session') ?? '{}').tabs?.length > 0);
+  await page.evaluate(() => localStorage.removeItem('pixprite:running'));
+  await page.reload();
+  await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  await expect(page.locator('#startup-screen')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test('all UI and format modules are in one bundle and work offline without loading placeholders', async ({ page, context }) => {
   // Exercise the bundled computation fallback as well; workers are separate by design.
   await page.addInitScript(() => Object.defineProperty(window, 'Worker', { value: undefined }));

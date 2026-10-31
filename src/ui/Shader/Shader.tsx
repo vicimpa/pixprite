@@ -14,6 +14,7 @@ export type ShaderProps = {
   inset?: true;
   uniforms?: DGV<Record<string, number | Iterable<number>> | {}>;
   shader?: string;
+  drawFallback?: (ctx: CanvasRenderingContext2D, width: number, height: number) => void;
 } & Omit<React.JSX.IntrinsicElements['div'], 'children' | 'ref'>;
 
 const context = Symbol('context');
@@ -25,14 +26,14 @@ const getContext = (can: (HTMLCanvasElement & { [context]?: ImageBitmapRendering
   );
 };
 
-export const Shader: FC<ShaderProps> = ({ inset, uniforms = {}, shader = baseFrag, ...props }) => {
+export const Shader: FC<ShaderProps> = ({ inset, uniforms = {}, shader = baseFrag, drawFallback, ...props }) => {
   const ref = useSignalRef<HTMLDivElement>(null);
   const visible = useSignalIntersect(ref);
   const size = useSignalSize(ref);
   const canvas = useSignalRef<HTMLCanvasElement>(null);
-  const render = useComputed(() => getContext(canvas.value));
   const glCtx = useRednerGL();
   const progInfo = useProgInfo(glCtx, boxVert, boxFrag + '\n' + shader);
+  const render = useComputed(() => progInfo ? getContext(canvas.value) : canvas.value?.getContext('2d'));
 
   useEffect(() => (
     effect(() => {
@@ -49,6 +50,10 @@ export const Shader: FC<ShaderProps> = ({ inset, uniforms = {}, shader = baseFra
 
       can.width = width;
       can.height = height;
+      if (!gl || !progInfo) {
+        drawFallback?.(ctx as CanvasRenderingContext2D, can.width, can.height);
+        return;
+      }
       glCtx.width = width;
       glCtx.height = height;
       gl.enable(gl.BLEND);
@@ -59,7 +64,7 @@ export const Shader: FC<ShaderProps> = ({ inset, uniforms = {}, shader = baseFra
       gl.useProgram(progInfo.program);
       setUniforms(progInfo, data);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      ctx.transferFromImageBitmap(glCtx.transferToImageBitmap());
+      (ctx as ImageBitmapRenderingContext).transferFromImageBitmap(glCtx.transferToImageBitmap());
     })
   ));
 
