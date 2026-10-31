@@ -176,17 +176,10 @@ function contrastText(hex: string) {
   return lum > 140 ? '#111' : '#fff';
 }
 
-/** Tags laid out in as few rows as possible; a long name reserves the frames it covers too */
+/** One physical band; overlapping tags retain their original spans and the selected one is in front. */
 function tagRows(columns: FrameColumn[], tags: typeof state.sprite.tags) {
-  const start = (i: number) => Math.max(0, columnOf(columns, tags[i].from));
-  const end = (i: number) => { const v = columnOf(columns, tags[i].to); return v < 0 ? columns.length - 1 : v; };
-  const rows: number[][] = [];
-  tags.forEach((t, i) => {
-    if (!columns.length || t.to < columns[0].from || t.from > columns.at(-1)!.to) return;
-    const row = rows.find(r => r.every(j => end(i) < start(j) || start(i) > end(j)));
-    if (row) row.push(i); else rows.push([i]);
-  });
-  return rows;
+  const visible = tags.flatMap((tag, i) => columns.length && tag.to >= columns[0].from && tag.from <= columns.at(-1)!.to ? [i] : []);
+  return visible.length ? [visible] : [];
 }
 
 export const Timeline: FC = () => {
@@ -234,6 +227,7 @@ export const Timeline: FC = () => {
   const fitTo = fitTag ? Math.max(fitFrom, columnOf(columns, fitTag.to)) : columns.length - 1;
   const frameWidth = nav.fit ? fitFrameWidth(available, fitTo - fitFrom + 1, cell * 8) : cell * nav.zoom;
   const rows = useMemo(() => tagRows(columns, sprite.tags), [columns, sprite.tags]);
+  const frontTag = rows[0]?.includes(selected) ? selected : rows[0]?.[0];
   const r = sprite.range;
   const total = sprite.frames.reduce((a, f) => a + f.duration, 0);
   const headTop = rows.length * cell;
@@ -528,12 +522,14 @@ export const Timeline: FC = () => {
           gridTemplateColumns: `${cell}px ${cell}px ${cell}px ${nameWidth}px ${columns.length * frameWidth}px minmax(0, 1fr)`,
         }}>
           {rows.map((row, ri) => (
-            <div key={'tags' + ri} className="contents">
+            <div key={'tags' + ri} className="contents" data-testid="timeline-tag-band">
               <styled.Corner style={{ gridRow: ri + 1, gridColumn: '1 / 5', top: ri * cell }} />
               {row.filter(i => Math.max(0, columnOf(columns, sprite.tags[i].from)) <= (window.at(-1)?.to ?? -1) && (columnOf(columns, sprite.tags[i].to) < 0 ? columns.length - 1 : columnOf(columns, sprite.tags[i].to)) >= (frames[0] ?? 0)).map(i => {
                 const tag = sprite.tags[i];
                 return (
-                  <styled.TagCell key={i} style={{ ...columnStyle(Math.max(0, columnOf(columns, tag.from)), columnOf(columns, tag.to) < 0 ? columns.length - 1 : columnOf(columns, tag.to)), gridRow: ri + 1, top: ri * cell }}>
+                  <styled.TagCell key={i} data-timeline-tag={i} data-front={i === frontTag}
+                    onFocusCapture={() => setNavigation(n => n.selected === i ? n : { ...n, selected: i })}
+                    style={{ ...columnStyle(Math.max(0, columnOf(columns, tag.from)), columnOf(columns, tag.to) < 0 ? columns.length - 1 : columnOf(columns, tag.to)), gridRow: ri + 1, top: ri * cell }}>
                     <styled.Tag
                       style={{ borderColor: tag.color }}
                       title={`${tag.name}: frames ${tag.from + 1}–${tag.to + 1} (${tag.direction}). Click selects its frames, drag moves it, drag an end to resize, double click to edit`}

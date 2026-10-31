@@ -50,7 +50,7 @@ export const Corner = styled.div`
   ${sticky}
   ${line}
   left: 0;
-  z-index: 4;
+  z-index: 6;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -63,6 +63,8 @@ export const TagCell = styled.div`
   padding: 2px 1px;
   overflow: hidden;
   border-bottom: 1px solid var(--b1);
+
+  &[data-front=true] { z-index: 4; }
 `;
 
 export const TagFill = styled.div`

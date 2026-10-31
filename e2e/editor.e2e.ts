@@ -1629,6 +1629,56 @@ function navigationFixture(count: number, name: string, layers = 1) {
       cels: Array.from({ length: count }, (_, i) => i ? { link: 0 } : { x: 0, y: 0, image: { kind: 'image', id: 'nav-red' } }) })) };
 }
 
+test('timeline tags keep one physical band across overlaps, long labels, folding and zoom', async ({ page }) => {
+  const fixture = { ...navigationFixture(40, 'One tag band'), tags: [
+    { name: 'Outer', from: 0, to: 25, color: '#cc4444', direction: 'forward' },
+    { name: 'Inner', from: 2, to: 8, color: '#44aa44', direction: 'forward' },
+    { name: 'Peer', from: 2, to: 8, color: '#4444cc', direction: 'forward' },
+    { name: 'A very long adjacent tag name '.repeat(4), from: 26, to: 39, color: '#aaaa44', direction: 'forward' },
+  ] };
+  await openFixture(page, fixture);
+  await expect.poll(() => documentNamed(page, fixture.name)).not.toBeNull();
+  const original: any = await documentNamed(page, fixture.name);
+  const band = page.getByTestId('timeline-tag-band');
+  const tags = page.locator('[data-timeline-tag]');
+  const jump = page.getByRole('combobox', { name: 'Jump to tag', exact: true });
+  const geometry = () => tags.evaluateAll(nodes => nodes.map(node => {
+    const rect = node.getBoundingClientRect(); return { top: rect.top, height: rect.height };
+  }));
+  await expect(band).toHaveCount(1);
+  await expect(tags).toHaveCount(4);
+  const initial = await geometry();
+  expect(initial.every(rect => rect.top === initial[0].top && rect.height === initial[0].height)).toBe(true);
+  const headTop = (await page.locator('[data-hit=frame][data-f="0"]').boundingBox())!.y;
+  const frontAtInner = () => page.getByTitle(/^Inner: frames/).evaluate(el => {
+    const rect = el.getBoundingClientRect();
+    return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest<HTMLElement>('[data-timeline-tag]')?.dataset.timelineTag;
+  });
+  // Coincident/nested spans remain individually reachable through the tag list.
+  for (const index of ['0', '1', '2']) {
+    await jump.selectOption(index);
+    await expect.poll(frontAtInner).toBe(index);
+    await expect(band).toHaveCount(1);
+  }
+  await jump.selectOption('1');
+  await page.getByRole('button', { name: 'Collapse tag: Inner', exact: true }).click();
+  await expect(page.locator('[data-fold-from="2"]')).toHaveText('⋯7');
+  await expect(band).toHaveCount(1);
+  expect((await page.locator('[data-hit=frame][data-f="0"]').boundingBox())!.y).toBe(headTop);
+  await page.getByRole('button', { name: 'Expand tag: Inner', exact: true }).click();
+  const zoom = page.getByRole('spinbutton', { name: 'Timeline zoom', exact: true });
+  await zoom.fill('30'); await zoom.press('Tab');
+  await expect(band).toHaveCount(1);
+  expect((await geometry()).every(rect => rect.top === initial[0].top && rect.height === initial[0].height)).toBe(true);
+  expect((await page.locator('[data-hit=frame][data-f="0"]').boundingBox())!.y).toBe(headTop);
+  await command(page, 'file.save');
+  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.tags[1].collapsed).toBe(false);
+  const saved: any = await documentNamed(page, fixture.name);
+  expect(saved.images).toEqual(original.images);
+  expect(saved.frames).toEqual(original.frames);
+  expect(saved.layers).toEqual(original.layers);
+});
+
 test('timeline navigation fits endpoints, zooms horizontally with source picking, and tag list/filter/goto keep overlaps and source data intact', async ({ page }) => {
   test.setTimeout(90_000);
   const fixture = { ...navigationFixture(120, 'Navigation overlap'), tags: [
