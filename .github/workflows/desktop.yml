@@ -80,7 +80,7 @@ jobs:
         run: bun scripts/check-desktop-package.ts dist/desktop "${{ matrix.executable }}"
       - name: Test native editor, updates and MCP (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a bun run test:desktop
+        run: dbus-run-session -- xvfb-run -a bun run test:desktop
         env:
           PIXPRITE_E2E_EXECUTABLE: ${{ github.workspace }}/${{ matrix.executable }}
           WEBKIT_DISABLE_DMABUF_RENDERER: '1'

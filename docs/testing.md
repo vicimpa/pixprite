@@ -28,7 +28,7 @@ The storage controls scenario checks persistence status/request, the quota warni
 
 `e2e/home-icons.e2e.ts` checks Home text wrapping at 360–1024 px in Russian and English with large fonts. It checks the default Outline set, switches between both built-in sets offline, verifies constant icon dimensions and reload persistence, and preserves former pixel/outline preferences. It also installs the actual Duotone extension from an isolated catalog and checks live switching, disable/re-enable and removal fallback to Outline. Icon pack unit tests validate bounded inert artwork and coverage of the shipped sets.
 
-`e2e/desktop-windows.e2e.ts` checks the compact app header, button placement, local tab ordering, removal of detached windows, window controls, close/reopen persistence and migration of old multi-window sessions into one window. Linux CI uses bare Xvfb, so actual minimize/maximize window-manager transitions are checked on macOS/Windows.
+`e2e/desktop-windows.e2e.ts` checks the compact app header, button placement, local tab ordering, removal of detached windows, window controls, close/reopen persistence and migration of old multi-window sessions into one window. Linux CI uses Xvfb with a private D-Bus session; actual minimize/maximize window-manager transitions are checked on macOS/Windows. The three-launch persistence test has a 180-second total budget for cold WebKitGTK starts, while each launch retains its 45-second readiness deadline.
 
 ## CI and bundle budgets
 

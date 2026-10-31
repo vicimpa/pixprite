@@ -2,6 +2,9 @@ import { expect, test } from '@playwright/test';
 import { nativeFixture } from './desktop-helper';
 
 test('one compact window persists documents, reopens files and rejects overwrites', async () => {
+  // Three cold WebKitGTK launches under Xvfb can exceed the default 90 seconds.
+  // Each launch still has the fixture's 45-second readiness deadline.
+  test.setTimeout(180_000);
   const f = await nativeFixture();
   try {
     await f.launch();

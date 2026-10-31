@@ -56,17 +56,23 @@ test('a failed initial bundle offers a working reload button', async ({ page }) 
   await expect(page.locator('#startup-screen')).toHaveCount(0);
 });
 
-test('the editor creates and restores documents without WebGL2', async ({ page }) => {
+for (const failure of ['unavailable', 'lost', 'shader'] as const) test(`@smoke the editor creates and restores documents with ${failure} WebGL2`, async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.addInitScript(() => {
+  await page.addInitScript(mode => {
     for (const prototype of [OffscreenCanvas.prototype, HTMLCanvasElement.prototype]) {
       const getContext = prototype.getContext;
       Object.defineProperty(prototype, 'getContext', { value(this: HTMLCanvasElement | OffscreenCanvas, type: string, ...args: unknown[]) {
-        return type === 'webgl' || type === 'webgl2' ? null : Reflect.apply(getContext, this, [type, ...args]);
+        if (type !== 'webgl' && type !== 'webgl2') return Reflect.apply(getContext, this, [type, ...args]);
+        if (mode === 'unavailable') return null;
+        const context = Reflect.apply(getContext, this, [type, ...args]);
+        if (context) Object.defineProperty(context, mode === 'lost' ? 'isContextLost' : 'createShader', {
+          configurable: true, value: mode === 'lost' ? () => true : () => null,
+        });
+        return context;
       } });
     }
-  });
+  }, failure);
   await boot(page);
   await create(page);
   for (const name of ['HSV', 'HSL']) {
