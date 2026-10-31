@@ -1,5 +1,5 @@
 import { columnOf, columnPosition, frameAtColumn, frameColumns, type FrameColumn } from '~/core/TimelineFolding';
-import { activeTag, adjacentTag, anchorScroll, clipColumns, fitFrameWidth, orderedTags, reconcileTag, timelineWindow } from '~/core/TimelineNavigation';
+import { activeTag, adjacentTag, anchorScroll, clipColumns, orderedTags, reconcileTag, timelineWindow } from '~/core/TimelineNavigation';
 import { Minimap } from './Minimap';
 import { t } from "~/core/i18n";
 import { runCommand } from "~/core/Commands";
@@ -201,19 +201,13 @@ export const Timeline: FC = () => {
   const order = sprite.layers.map((_, i) => sprite.layers.length - 1 - i).filter(i => !folded(i));
   const previous = useRef<{ columns: FrameColumn[]; width: number; available: number; sprite: WeakRef<typeof sprite> } | null>(null);
   const [navigation, setNavigation] = useState<{ sprite: WeakRef<typeof sprite>; tags: typeof sprite.tags; selected: number;
-    only: boolean; zoom: number; fit: 'all' | 'tag' | null; fitFrame: number; fitReveal: number }>({ sprite: new WeakRef(sprite), tags: sprite.tags, selected: -1, only: false, zoom: 1, fit: null, fitFrame: 0, fitReveal: 0 });
+    only: boolean }>({ sprite: new WeakRef(sprite), tags: sprite.tags, selected: -1, only: false });
   // Reconcile during render so no committed view can carry an index from a previous tag array/document.
   let nav = navigation;
   if (nav.sprite.deref() !== sprite) {
-    nav = { sprite: new WeakRef(sprite), tags: sprite.tags, selected: -1, only: false, zoom: 1, fit: null, fitFrame: 0, fitReveal: 0 }; setNavigation(nav);
+    nav = { sprite: new WeakRef(sprite), tags: sprite.tags, selected: -1, only: false }; setNavigation(nav);
   } else if (nav.tags !== sprite.tags) {
     nav = { ...nav, tags: sprite.tags, selected: reconcileTag(nav.tags, sprite.tags, nav.selected) }; setNavigation(nav);
-  }
-  if (nav.fit === 'tag' && nav.selected < 0) { nav = { ...nav, fit: null, zoom: (previous.current?.width ?? cell) / cell }; setNavigation(nav); }
-  const fitTarget = sprite.tags[nav.selected];
-  if (nav.fit === 'tag' && fitTarget && (sprite.frame !== nav.fitFrame || sprite.timelineReveal !== nav.fitReveal)
-    && (sprite.frame < fitTarget.from || sprite.frame > fitTarget.to)) {
-    nav = { ...nav, fit: null, zoom: (previous.current?.width ?? cell) / cell }; setNavigation(nav);
   }
   const selected = nav.selected >= 0 ? nav.selected : activeTag(sprite.tags, -1, sprite.frame);
   const currentTag = activeTag(sprite.tags, nav.selected, sprite.frame);
@@ -222,10 +216,7 @@ export const Timeline: FC = () => {
   const columns = useMemo(() => clipColumns(allColumns, filter ? [filter.from, filter.to] : null), [allColumns, filter]);
   const leftWidth = cell * 3 + nameWidth;
   const available = Math.max(1, viewport.width - leftWidth);
-  const fitTag = nav.fit === 'tag' && selected >= 0 ? sprite.tags[selected] : null;
-  const fitFrom = fitTag ? Math.max(0, columnOf(columns, fitTag.from)) : 0;
-  const fitTo = fitTag ? Math.max(fitFrom, columnOf(columns, fitTag.to)) : columns.length - 1;
-  const frameWidth = nav.fit ? fitFrameWidth(available, fitTo - fitFrom + 1, cell * 8) : cell * nav.zoom;
+  const frameWidth = cell;
   const rows = useMemo(() => tagRows(columns, sprite.tags), [columns, sprite.tags]);
   const frontTag = rows[0]?.includes(selected) ? selected : rows[0]?.[0];
   const r = sprite.range;
@@ -233,19 +224,17 @@ export const Timeline: FC = () => {
   const headTop = rows.length * cell;
   const window = timelineWindow(columns.length, frameWidth, viewport.left, available);
   const frames = window.map(c => c.from);
-  const endOf = new Map(window.map(c => [c.from, c.to]));
   const layerRows = indices(visibleRange(order.length, cell, viewport.top, viewport.height - headTop - cell));
-  const columnStyle = (v: number, end = endOf.get(v) ?? v) => ({ gridColumn: 5, justifySelf: 'start', marginLeft: v * frameWidth, width: (end - v + 1) * frameWidth });
+  const columnStyle = (v: number, end = v) => ({ gridColumn: 5, justifySelf: 'start', marginLeft: v * frameWidth, width: (end - v + 1) * frameWidth });
   const beforeLayoutLeft = scroll.current?.scrollLeft ?? 0;
   useLayoutEffect(() => {
     const el = scroll.current, before = previous.current;
     if (!el || !viewport.width) return;
-    if (nav.fit) el.scrollLeft = fitFrom * frameWidth;
-    else if (before && before.sprite.deref() === sprite) {
+    if (before && before.sprite.deref() === sprite) {
       el.scrollLeft = anchorScroll({ ...before, left: beforeLayoutLeft }, { columns, width: frameWidth, available }, sprite.frame);
     }
     previous.current = { columns, width: frameWidth, available, sprite: new WeakRef(sprite) };
-  }, [columns, frameWidth, available, fitFrom, fitTo, nav.fit, sprite, viewport.width]);
+  }, [columns, frameWidth, available, sprite, viewport.width]);
 
   // Manual transitions and playback keep the playhead visible. Geometry changes preserve the viewport anchor.
   useLayoutEffect(() => {
@@ -257,15 +246,11 @@ export const Timeline: FC = () => {
     else if (x + frameWidth > el.scrollLeft + available) el.scrollLeft = x + frameWidth - available;
   }, [sprite, sprite.frame, sprite.timelineReveal]);
 
-  const setZoom = (zoom: number) => {
-    if (!Number.isFinite(zoom) || zoom <= 0) return;
-    setNavigation(n => ({ ...n, zoom: Math.max(.00001, Math.min(8, zoom)), fit: null }));
-  };
   const selectTag = (index: number) => {
     const tag = sprite.tags[index];
     if (!tag) return;
     state.playing = false; sprite.dropFloating();
-    setNavigation(n => ({ ...n, selected: index, fit: null, zoom: frameWidth / cell }));
+    setNavigation(n => ({ ...n, selected: index }));
     sprite.range = { type: 'frames', layers: [0, sprite.layers.length - 1], frames: [tag.from, tag.to] };
     sprite.goToFrame(tag.from);
   };
@@ -443,13 +428,6 @@ export const Timeline: FC = () => {
   return (
     <styled.Root>
       <styled.Toolbar aria-label={t('timeline.navigation')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}>
-        <Button aria-label={t('timeline.zoomOut')} onClick={() => setZoom(frameWidth / cell / 1.5)}>−</Button>
-        <Label>{t('timeline.zoom')} <styled.Num aria-label={t('timeline.zoom')} type="number" min={.001} max={800} step={10}
-          style={{ width: '5em' }} value={+(frameWidth / cell * 100).toFixed(3)} onChange={e => setZoom(+e.target.value / 100)} />%</Label>
-        <Button aria-label={t('timeline.zoomIn')} onClick={() => setZoom(frameWidth / cell * 1.5)}>+</Button>
-        <Button aria-pressed={nav.fit === 'all'} $active={nav.fit === 'all'} onClick={() => { state.playing = false; setNavigation(n => ({ ...n, only: false, fit: 'all' })); }}>{t('timeline.fitAll')}</Button>
-        <Button aria-pressed={nav.fit === 'tag'} $active={nav.fit === 'tag'} disabled={selected < 0} onClick={() => { state.playing = false; setNavigation(n => ({ ...n, only: false, fit: 'tag', selected, fitFrame: sprite.frame, fitReveal: sprite.timelineReveal })); }}>{t('timeline.fitTag')}</Button>
-        <Separator />
         <Button disabled={!sprite.tags.length} onClick={() => selectTag(adjacentTag(sprite.tags, selected, sprite.frame, -1))}>{t('timeline.previousTag')}</Button>
         <styled.TagSelect disabled={!sprite.tags.length} aria-label={t('timeline.jumpTag')} value={selected} style={{ maxWidth: 180 }} onChange={e => selectTag(+e.target.value)}>
           <option value={-1} disabled>{t('timeline.jumpTag')}</option>
@@ -457,7 +435,7 @@ export const Timeline: FC = () => {
         </styled.TagSelect>
         <Button disabled={!sprite.tags.length} onClick={() => selectTag(adjacentTag(sprite.tags, selected, sprite.frame, 1))}>{t('timeline.nextTag')}</Button>
         <Label><Check aria-label={t('timeline.onlyTag')} checked={nav.only} disabled={!sprite.tags.length}
-          onChange={e => setNavigation(n => ({ ...n, only: e.target.checked, fit: null, zoom: frameWidth / cell }))} />{t('timeline.onlyTag')}</Label>
+          onChange={e => setNavigation(n => ({ ...n, only: e.target.checked }))} />{t('timeline.onlyTag')}</Label>
         <Button onClick={() => runCommand('anim.goto')}>{t('common.goToFrame')}…</Button>
         <Separator />
         <Button $square $active={state.playing} title={t('timeline.playStopEnterRight')}
@@ -618,11 +596,7 @@ export const Timeline: FC = () => {
             <Muted>{t('common.layers')}</Muted>
           </styled.Corner>
           {frames.map(v => {
-            const col = columns[v], end = endOf.get(v)!, f = col.from;
-            if (end > v) return <styled.FrameHead key={f} data-hit="frame" data-f={f} data-aggregate-to={columns[end].to}
-              data-current={sprite.frame >= f && sprite.frame <= columns[end].to} data-selected={r?.type !== 'layers' && !!r && r.frames[0] <= columns[end].to && r.frames[1] >= f}
-              style={{ gridRow: rows.length + 1, ...columnStyle(v), top: headTop, overflow: 'hidden', fontSize: 9 }}
-              title={`${f + 1}–${columns[end].to + 1}`}>{f + 1}</styled.FrameHead>;
+            const col = columns[v], f = col.from;
             if (col.folded) return <styled.FrameHead key={f} data-fold-from={f} data-fold-to={col.to}
               role="button" tabIndex={0} aria-label={`${t('timeline.hiddenFrames')}: ${col.to - f + 1} (${f + 1}–${col.to + 1})`}
               title={`${f + 1}–${col.to + 1}: ${t('timeline.expandAll')}`}
@@ -723,11 +697,7 @@ export const Timeline: FC = () => {
                   <LayerName index={l} />
                 </styled.LayerCell>
                 {frames.map(v => {
-                  const col = columns[v], end = endOf.get(v)!, f = col.from;
-                  if (end > v) return <styled.Cel key={f} data-hit="cel" data-l={l} data-f={f} data-aggregate-to={columns[end].to}
-                    data-current={current && sprite.frame >= f && sprite.frame <= columns[end].to} data-cross={current}
-                    data-selected={!!r && inRange(r, l, null) && r.frames[0] <= columns[end].to && r.frames[1] >= f}
-                    style={{ gridRow, ...columnStyle(v), backgroundImage: 'linear-gradient(transparent 45%, var(--fg-dim) 45% 55%, transparent 55%)' }} title={`${f + 1}–${columns[end].to + 1}`} />;
+                  const col = columns[v], f = col.from;
                   if (col.folded) return <styled.Cel key={f} data-folded-frames data-current={current && sprite.frame >= f && sprite.frame <= col.to}
                     style={{ gridRow, ...columnStyle(v), color: 'var(--fg-dim)' }} title={`${f + 1}–${col.to + 1}`}
                     onPointerDown={e => e.stopPropagation()} onClick={() => { sprite.revealFrames([f, col.to]); state.save(); }}>⋯</styled.Cel>;

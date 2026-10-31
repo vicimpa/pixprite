@@ -43,17 +43,12 @@ export function adjacentTag(tags: readonly Tag[], selected: number, frame: numbe
     : order.findLast(i => tags[i].from < frame) ?? order.at(-1)!;
 }
 
-export function fitFrameWidth(available: number, count: number, maximum: number) {
-  return Math.min(maximum, Math.max(1, available) / Math.max(1, count));
-}
-
-/** At subpixel zoom aggregate at least 6px per DOM item, including overscan. Picking uses the original columns. */
+/** Virtualize fixed-width columns, including folded placeholders and overscan. */
 export function timelineWindow(count: number, width: number, left: number, available: number) {
-  const step = Math.max(1, Math.ceil(6 / width));
-  const range = visibleRange(Math.ceil(count / step), width * step, left, available);
+  const range = visibleRange(count, width, left, available);
   return Array.from({ length: range.end - range.start }, (_, k) => {
-    const from = (range.start + k) * step;
-    return { from, to: Math.min(count, from + step) - 1 };
+    const from = range.start + k;
+    return { from, to: from };
   });
 }
 
