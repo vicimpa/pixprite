@@ -846,7 +846,7 @@ test('closing a pending preparation disposes its watch and disabled autosave sta
   await expect(page.locator('[draggable=true]')).toHaveCount(0);
   await command(page, 'edit.prefs');
   const preferences = page.getByRole('dialog', { name: 'Preferences', exact: true });
-  await preferences.getByLabel('Keep work in the browser between sessions', { exact: true }).uncheck();
+  await preferences.getByLabel('Keep working copies between sessions', { exact: true }).uncheck();
   await preferences.getByRole('button', { name: 'Done', exact: true }).click();
   await create(page, 'Manual quiet');
   await command(page, 'file.save');
