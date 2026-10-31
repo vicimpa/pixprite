@@ -1641,10 +1641,13 @@ test('timeline tags keep one physical band across overlaps, long labels, folding
   const original: any = await documentNamed(page, fixture.name);
   const band = page.getByTestId('timeline-tag-band');
   const tags = page.locator('[data-timeline-tag]');
-  const jump = page.getByRole('combobox', { name: 'Jump to tag', exact: true });
   const geometry = () => tags.evaluateAll(nodes => nodes.map(node => {
     const rect = node.getBoundingClientRect(); return { top: rect.top, height: rect.height };
   }));
+  await expect(page.getByTestId('timeline-minimap')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Jump to tag', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('checkbox', { name: 'Only current tag', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^(Previous tag|Next tag|Go to frame…)$/ })).toHaveCount(0);
   await expect(band).toHaveCount(1);
   await expect(tags).toHaveCount(4);
   const initial = await geometry();
@@ -1654,13 +1657,17 @@ test('timeline tags keep one physical band across overlaps, long labels, folding
     const rect = el.getBoundingClientRect();
     return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest<HTMLElement>('[data-timeline-tag]')?.dataset.timelineTag;
   });
-  // Coincident/nested spans remain individually reachable through the tag list.
-  for (const index of ['0', '1', '2']) {
-    await jump.selectOption(index);
+  // Coincident/nested spans remain reachable through the strip's context menu.
+  const select = async (name: string) => {
+    await page.locator('[data-timeline-tag][data-front=true]').click({ button: 'right' });
+    await page.getByText(name, { exact: true }).click();
+  };
+  for (const [index, name] of [['0', 'Outer (1–26)'], ['1', 'Inner (3–9)'], ['2', 'Peer (3–9)']]) {
+    await select(name);
     await expect.poll(frontAtInner).toBe(index);
     await expect(band).toHaveCount(1);
   }
-  await jump.selectOption('1');
+  await select('Inner (3–9)');
   await page.getByRole('button', { name: 'Collapse tag: Inner', exact: true }).click();
   await expect(page.locator('[data-fold-from="2"]')).toHaveText('⋯7');
   await expect(band).toHaveCount(1);
@@ -1676,103 +1683,6 @@ test('timeline tags keep one physical band across overlaps, long labels, folding
   expect(saved.images).toEqual(original.images);
   expect(saved.frames).toEqual(original.frames);
   expect(saved.layers).toEqual(original.layers);
-});
-
-test('timeline navigation uses fixed-width frames while tag list/filter/goto keep overlaps and source data intact', async ({ page }) => {
-  test.setTimeout(90_000);
-  const fixture = { ...navigationFixture(120, 'Navigation overlap'), tags: [
-    { name: 'Late', from: 90, to: 119, color: '#ff0000', direction: 'forward' },
-    { name: 'Wide', from: 10, to: 60, color: '#00ff00', direction: 'forward' },
-    { name: 'Short', from: 10, to: 20, color: '#0000ff', direction: 'forward' },
-    { name: 'Nested', from: 15, to: 18, color: '#ffff00', direction: 'forward' }], hiddenFrameRanges: [[30, 40]] };
-  await openFixture(page, fixture);
-  const scroller = page.getByTestId('timeline-scroll');
-  await expect(page.getByRole('spinbutton', { name: 'Timeline zoom', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /^Fit (entire animation|selected tag)$/ })).toHaveCount(0);
-  const jump = page.getByRole('combobox', { name: 'Jump to tag', exact: true });
-  await jump.selectOption('1');
-  await expect(page.locator('[data-hit=frame][data-current=true]')).toHaveAttribute('data-f', '10');
-  await page.getByRole('button', { name: 'Next tag', exact: true }).click(); await expect(jump).toHaveValue('2');
-  await page.getByRole('button', { name: 'Previous tag', exact: true }).click(); await expect(jump).toHaveValue('1');
-  await page.getByRole('checkbox', { name: 'Only current tag', exact: true }).check();
-  await expect(scroller).toHaveAttribute('data-column-count', '41'); // 51 source frames, 11 collapsed into one.
-  await timelineGoto(page, 17); // Explicit wide selection wins the innermost nested tag.
-  await expect(scroller).toHaveAttribute('data-column-count', '41');
-  await timelineGoto(page, 80); // Outside every tag: no inaccessible playhead.
-  await expect(scroller).toHaveAttribute('data-column-count', '110');
-  await expect(page.locator('[data-hit=frame][data-current=true]')).toHaveAttribute('data-f', '79');
-  await page.getByRole('checkbox', { name: 'Only current tag', exact: true }).uncheck();
-  const head = page.locator('[data-hit=frame][data-f="79"]');
-  const geometry = await head.boundingBox();
-  expect(geometry!.width).toBe(geometry!.height);
-  await expect(scroller).toHaveAttribute('data-frame-width', String(geometry!.height));
-  await head.click(); await expect(page.locator('[data-hit=frame][data-current=true]')).toHaveAttribute('data-f', '79');
-  await jump.selectOption('0'); await page.getByRole('button', { name: 'Collapse tag: Late', exact: true }).click();
-  await expect(page.locator('[data-fold-from="90"]')).toBeVisible(); // Collapsing keeps the playhead in its compressed column.
-  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.tags[0].collapsed).toBe(true);
-  await timelineGoto(page, 91); // A manual same-frame jump reveals the folded tag.
-  await expect(page.locator('[data-hit=frame][data-current=true]')).toHaveAttribute('data-f', '90');
-  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.tags[0].collapsed).toBe(false);
-  await page.getByTitle(/^Late: frames/).dblclick();
-  const dialog = page.getByRole('dialog', { name: 'Tag', exact: true });
-  await dialog.getByRole('textbox').first().fill('Renamed Late'); await dialog.getByRole('button', { name: 'OK', exact: true }).click();
-  await expect(jump.locator('option:checked')).toHaveText('Renamed Late (91–120)');
-  await timelineGoto(page, 80);
-  await page.setViewportSize({ width: 1100, height: 900 });
-  await expect(page.locator('[data-hit=frame][data-f="79"][data-current=true]')).toBeVisible();
-  await jump.selectOption('1');
-  await page.getByRole('checkbox', { name: 'Only current tag', exact: true }).check();
-  await timelineGoto(page, 100); await expect(scroller).toHaveAttribute('data-column-count', '30');
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await expect(page.locator('[data-hit=frame][data-f="99"][data-current=true]')).toBeVisible();
-  await timelineGoto(page, 80); await expect(scroller).toHaveAttribute('data-column-count', '110');
-  await page.setViewportSize({ width: 1200, height: 900 });
-  await expect(page.locator('[data-hit=frame][data-f="79"][data-current=true]')).toBeVisible();
-  await expect(scroller).toHaveAttribute('data-frame-width', String(geometry!.height));
-  await page.getByRole('checkbox', { name: 'Only current tag', exact: true }).uncheck();
-  await jump.selectOption('0');
-
-  await page.getByTitle(/^Renamed Late: frames/).click({ button: 'right' }); await page.getByText('Delete tag', { exact: true }).click();
-  await expect(jump).toHaveValue('-1');
-  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.tags.length).toBe(3);
-  const saved: any = await documentNamed(page, fixture.name);
-  expect(saved.images).toEqual(fixture.images); expect(saved.layers[0].cels).toEqual(fixture.layers[0].cels); expect(saved.frames).toEqual(fixture.frames);
-  expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual({ width: 1, height: 1, data: [255, 0, 0, 255] });
-});
-
-test('timeline minimap synchronizes native wheel scroll, pointer drag, keyboard, folding and resize with a bounded DPR canvas', async ({ page }) => {
-  test.setTimeout(90_000);
-  const fixture = navigationFixture(1000, 'Minimap synchronization'); await openFixture(page, fixture);
-  const scroller = page.getByTestId('timeline-scroll'), map = page.getByTestId('timeline-minimap'), view = page.getByTestId('timeline-minimap-viewport');
-  const read = () => scroller.evaluate(el => ({ left: el.scrollLeft, available: el.clientWidth - 232, width: el.scrollWidth - 232 }));
-  const assertSync = async () => {
-    await expect.poll(async () => {
-      const actual = await read(), fraction = Number(await view.getAttribute('data-left'));
-      return Math.abs(fraction - actual.left / actual.width);
-    }).toBeLessThan(.0001);
-  };
-  await scroller.hover(); await page.mouse.wheel(2000, 0); await expect.poll(async () => (await read()).left).toBeGreaterThan(1000); await assertSync();
-  const rect = await map.boundingBox();
-  await page.mouse.click(rect!.x + rect!.width * .75, rect!.y + 12);
-  await expect.poll(async () => (await read()).left).toBeGreaterThan(15000); await assertSync();
-  const vbox = await view.boundingBox();
-  await page.mouse.move(vbox!.x + vbox!.width / 2, vbox!.y + 12); await page.mouse.down();
-  await page.mouse.move(rect!.x + rect!.width * .25, rect!.y + 12, { steps: 8 }); await page.mouse.up();
-  await expect.poll(async () => (await read()).left).toBeLessThan(7000); await assertSync();
-  await map.focus(); await page.keyboard.press('End'); await assertSync();
-  await expect(page.locator('[data-hit=frame][data-f="999"]')).toBeVisible();
-  const before = Number(await view.getAttribute('data-width'));
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await expect.poll(async () => Number(await view.getAttribute('data-width'))).toBeGreaterThan(before); await assertSync();
-  await page.getByRole('button', { name: 'Collapse all', exact: true }).click();
-  await expect(view).toHaveAttribute('data-width', '1'); await assertSync();
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1450, height: 1000, deviceScaleFactor: 2, mobile: false });
-  await expect.poll(() => map.locator('canvas').evaluate((el: HTMLCanvasElement) => el.height)).toBe(48);
-  const backing = await map.locator('canvas').evaluate((el: HTMLCanvasElement) => ({ width: el.width, height: el.height }));
-  expect(backing.width).toBeLessThanOrEqual(4096); expect(backing.height).toBeLessThanOrEqual(96);
-  await expect.poll(async () => (await documentNamed(page, fixture.name) as any)?.hiddenFrameRanges).toEqual([[0, 999]]);
-  expect((await documentNamed(page, fixture.name) as any).images).toEqual(fixture.images);
 });
 
 test('huge fixed-width timeline bounds DOM and reaches distant and final frames after resize', async ({ page }) => {

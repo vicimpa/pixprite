@@ -1193,10 +1193,4 @@
   "timeline.collapseTag": "Collapse tag",
   "timeline.expandTag": "Expand tag",
   "timeline.hiddenFrames": "Hidden frames",
-  "timeline.navigation": "Timeline navigation",
-  "timeline.previousTag": "Previous tag",
-  "timeline.nextTag": "Next tag",
-  "timeline.jumpTag": "Jump to tag",
-  "timeline.onlyTag": "Only current tag",
-  "timeline.minimap": "Timeline minimap"
 }

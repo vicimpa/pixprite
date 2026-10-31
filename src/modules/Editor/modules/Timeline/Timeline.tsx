@@ -1,6 +1,5 @@
 import { columnOf, columnPosition, frameAtColumn, frameColumns, type FrameColumn } from '~/core/TimelineFolding';
-import { activeTag, adjacentTag, anchorScroll, clipColumns, orderedTags, reconcileTag, timelineWindow } from '~/core/TimelineNavigation';
-import { Minimap } from './Minimap';
+import { activeTag, anchorScroll, reconcileTag, timelineWindow } from '~/core/TimelineNavigation';
 import { t } from "~/core/i18n";
 import { runCommand } from "~/core/Commands";
 import { parentOf, subtreeStart, type Range } from "~/core/Sprite";
@@ -200,20 +199,16 @@ export const Timeline: FC = () => {
   };
   const order = sprite.layers.map((_, i) => sprite.layers.length - 1 - i).filter(i => !folded(i));
   const previous = useRef<{ columns: FrameColumn[]; width: number; available: number; sprite: WeakRef<typeof sprite> } | null>(null);
-  const [navigation, setNavigation] = useState<{ sprite: WeakRef<typeof sprite>; tags: typeof sprite.tags; selected: number;
-    only: boolean }>({ sprite: new WeakRef(sprite), tags: sprite.tags, selected: -1, only: false });
+  const [navigation, setNavigation] = useState<{ sprite: WeakRef<typeof sprite>; tags: typeof sprite.tags; selected: number }>({ sprite: new WeakRef(sprite), tags: sprite.tags, selected: -1 });
   // Reconcile during render so no committed view can carry an index from a previous tag array/document.
   let nav = navigation;
   if (nav.sprite.deref() !== sprite) {
-    nav = { sprite: new WeakRef(sprite), tags: sprite.tags, selected: -1, only: false }; setNavigation(nav);
+    nav = { sprite: new WeakRef(sprite), tags: sprite.tags, selected: -1 }; setNavigation(nav);
   } else if (nav.tags !== sprite.tags) {
     nav = { ...nav, tags: sprite.tags, selected: reconcileTag(nav.tags, sprite.tags, nav.selected) }; setNavigation(nav);
   }
   const selected = nav.selected >= 0 ? nav.selected : activeTag(sprite.tags, -1, sprite.frame);
-  const currentTag = activeTag(sprite.tags, nav.selected, sprite.frame);
-  const filter = nav.only && currentTag >= 0 ? sprite.tags[currentTag] : null;
-  const allColumns = useMemo(() => frameColumns(sprite.frames.length, sprite.tags, sprite.hiddenFrameRanges), [sprite.frames.length, sprite.tags, sprite.hiddenFrameRanges]);
-  const columns = useMemo(() => clipColumns(allColumns, filter ? [filter.from, filter.to] : null), [allColumns, filter]);
+  const columns = useMemo(() => frameColumns(sprite.frames.length, sprite.tags, sprite.hiddenFrameRanges), [sprite.frames.length, sprite.tags, sprite.hiddenFrameRanges]);
   const leftWidth = cell * 3 + nameWidth;
   const available = Math.max(1, viewport.width - leftWidth);
   const frameWidth = cell;
@@ -427,17 +422,7 @@ export const Timeline: FC = () => {
 
   return (
     <styled.Root>
-      <styled.Toolbar aria-label={t('timeline.navigation')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}>
-        <Button disabled={!sprite.tags.length} onClick={() => selectTag(adjacentTag(sprite.tags, selected, sprite.frame, -1))}>{t('timeline.previousTag')}</Button>
-        <styled.TagSelect disabled={!sprite.tags.length} aria-label={t('timeline.jumpTag')} value={selected} style={{ maxWidth: 180 }} onChange={e => selectTag(+e.target.value)}>
-          <option value={-1} disabled>{t('timeline.jumpTag')}</option>
-          {orderedTags(sprite.tags).map(i => <option key={i} value={i}>{sprite.tags[i].name} ({sprite.tags[i].from + 1}–{sprite.tags[i].to + 1})</option>)}
-        </styled.TagSelect>
-        <Button disabled={!sprite.tags.length} onClick={() => selectTag(adjacentTag(sprite.tags, selected, sprite.frame, 1))}>{t('timeline.nextTag')}</Button>
-        <Label><Check aria-label={t('timeline.onlyTag')} checked={nav.only} disabled={!sprite.tags.length}
-          onChange={e => setNavigation(n => ({ ...n, only: e.target.checked }))} />{t('timeline.onlyTag')}</Label>
-        <Button onClick={() => runCommand('anim.goto')}>{t('common.goToFrame')}…</Button>
-        <Separator />
+      <styled.Toolbar aria-label={t('cmd.window.timeline')} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}>
         <Button $square $active={state.playing} title={t('timeline.playStopEnterRight')}
           onClick={() => runCommand('anim.play')}
           onContextMenu={e => popupAt(e, 'play', 110)}>
@@ -481,7 +466,6 @@ export const Timeline: FC = () => {
         </Muted>
       </styled.Toolbar>
 
-      <Minimap scroll={scroll} columns={columns} width={frameWidth} available={available} left={viewport.left} frame={sprite.frame} tags={sprite.tags} />
       <styled.Scroll
         data-testid="timeline-scroll" data-frame-width={frameWidth} data-column-count={columns.length}
         ref={scroll}
@@ -558,7 +542,11 @@ export const Timeline: FC = () => {
                       onContextMenu={e => {
                         e.preventDefault();
                         e.stopPropagation();
+                        const overlaps = sprite.tags.flatMap((other, index) => other.from <= tag.to && other.to >= tag.from ? [{
+                          label: `${other.name} (${other.from + 1}–${other.to + 1})`, checked: index === i, run: () => selectTag(index),
+                        }] : []);
                         openContextMenu([
+                          ...(overlaps.length > 1 ? [...overlaps, '-' as const] : []),
                           { label: t(tag.collapsed ? 'timeline.expandTag' : 'timeline.collapseTag'), run: () => { sprite.collapseTag(i); state.save(); } },
                           { label: t('timeline.tagProperties'), run: () => dialogs.tagProperties(i) },
                           { label: t('common.deleteTag'), run: () => { sprite.removeTag(i); state.save(); } },

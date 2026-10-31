@@ -1,14 +1,7 @@
 import equal from 'fast-deep-equal';
-import { columnOf, type FrameColumn, type FrameSpan } from './TimelineFolding';
+import { columnOf, type FrameColumn } from './TimelineFolding';
 import type { Tag } from './SpriteModel';
 import { visibleRange } from '~/ui/virtualGeometry';
-
-/** Restrict a view, never the source document; folds crossing an edge are clipped. */
-export function clipColumns(columns: readonly FrameColumn[], span: FrameSpan | null): FrameColumn[] {
-  if (!span) return columns as FrameColumn[];
-  const first = columnOf(columns, span[0]), last = columnOf(columns, span[1]);
-  return columns.slice(first, last + 1).map(c => ({ ...c, from: Math.max(c.from, span[0]), to: Math.min(c.to, span[1]) }));
-}
 
 export function orderedTags(tags: readonly Tag[]) {
   return tags.map((_, i) => i).sort((a, b) => tags[a].from - tags[b].from || a - b);
@@ -34,15 +27,6 @@ export function reconcileTag(previous: readonly Tag[], next: readonly Tag[], sel
   return previous.length === next.length ? Math.min(selected, next.length - 1) : -1;
 }
 
-export function adjacentTag(tags: readonly Tag[], selected: number, frame: number, direction: -1 | 1) {
-  const order = orderedTags(tags);
-  if (!order.length) return -1;
-  const current = order.indexOf(selected);
-  if (current >= 0) return order[(current + direction + order.length) % order.length];
-  return direction > 0 ? order.find(i => tags[i].from > frame) ?? order[0]
-    : order.findLast(i => tags[i].from < frame) ?? order.at(-1)!;
-}
-
 /** Virtualize fixed-width columns, including folded placeholders and overscan. */
 export function timelineWindow(count: number, width: number, left: number, available: number) {
   const range = visibleRange(count, width, left, available);
@@ -50,16 +34,6 @@ export function timelineWindow(count: number, width: number, left: number, avail
     const from = range.start + k;
     return { from, to: from };
   });
-}
-
-export function minimapViewport(extent: number, available: number, scroll: number) {
-  return { left: Math.max(0, Math.min(1, scroll / Math.max(1, extent))),
-    width: Math.min(1, available / Math.max(1, extent)) };
-}
-
-/** Pointer coordinate is a fraction of the whole map; offset is the grabbed fraction within the viewport. */
-export function minimapScroll(extent: number, available: number, fraction: number, offset: number) {
-  return Math.max(0, Math.min(Math.max(0, extent - available), fraction * extent - offset));
 }
 
 /** Continuous source position for viewport anchoring, including the fraction inside a frame/fold. */

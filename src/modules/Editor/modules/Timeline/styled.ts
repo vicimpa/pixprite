@@ -239,13 +239,3 @@ export const Popup = styled.div`
 export const Num = styled(Input)`
   width: 3em;
 `;
-
-export const TagSelect = styled.select`
-  ${bevel}
-  height: var(--row);
-  max-width: 180px;
-  flex-shrink: 0;
-  color: var(--fg);
-  padding: 0 4px;
-  font: inherit;
-`;

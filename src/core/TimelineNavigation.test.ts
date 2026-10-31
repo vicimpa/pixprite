@@ -1,18 +1,12 @@
 import { expect, test } from 'bun:test';
-import { activeTag, adjacentTag, anchorScroll, clipColumns, minimapScroll, minimapViewport, orderedTags, reconcileTag, sourcePosition, timelineWindow, viewPosition } from './TimelineNavigation';
-import { columnPosition, frameAtColumn, frameColumns } from './TimelineFolding';
+import { activeTag, anchorScroll, orderedTags, reconcileTag, sourcePosition, timelineWindow, viewPosition } from './TimelineNavigation';
+import { frameColumns } from './TimelineFolding';
 import type { Tag } from './SpriteModel';
 const tag = (name: string, from: number, to: number): Tag => ({ name, from, to, color: '#ff0000', direction: 'forward' });
 
-test('tag list retains source indices, ties stay individually reachable in both directions, and active selection resolves overlaps', () => {
+test('tag ordering retains source indices and active selection resolves overlaps', () => {
   const tags = [tag('Late', 90, 99), tag('Wide', 10, 50), tag('Short', 10, 20), tag('Nested', 15, 18)];
   expect(orderedTags(tags)).toEqual([1, 2, 3, 0]);
-  expect(adjacentTag(tags, 1, 10, 1)).toBe(2);
-  expect(adjacentTag(tags, 2, 10, -1)).toBe(1);
-  expect(adjacentTag(tags, 0, 90, 1)).toBe(1);
-  expect(adjacentTag(tags, -1, 51, 1)).toBe(0);
-  expect(adjacentTag(tags, -1, 9, -1)).toBe(0);
-  expect(adjacentTag([], -1, 0, 1)).toBe(-1);
   expect(activeTag(tags, 1, 16)).toBe(1);
   expect(activeTag(tags, -1, 16)).toBe(3);
   expect(activeTag(tags, 0, 16)).toBe(3);
@@ -27,15 +21,6 @@ test('tag list retains source indices, ties stay individually reachable in both 
   expect(reconcileTag([original[1], original[0]], structuredClone(original), 1)).toBe(0); // Undo restores clones in the prior order.
 });
 
-test('current-tag clipping partitions only the original requested indices, including overlapping fold unions and compressed endpoints', () => {
-  const columns = frameColumns(100, [{ ...tag('Fold', 2, 80), collapsed: true }], [[70, 90]]);
-  const clipped = clipColumns(columns, [10, 50]);
-  expect(clipped).toEqual([{ from: 10, to: 50, folded: true }]);
-  expect(frameAtColumn(clipped, columnPosition(clipped, 50))).toBe(50);
-  expect(clipColumns(columns, null)).toBe(columns);
-  expect(columns[2]).toEqual({ from: 2, to: 90, folded: true });
-});
-
 test('fixed-width timeline windows bound DOM and reach the final column independently of source count', () => {
   for (const count of [1, 10, 1000, 100_000]) for (const available of [201, 1000, 4096]) {
     const first = timelineWindow(count, 24, 0, available);
@@ -46,17 +31,6 @@ test('fixed-width timeline windows bound DOM and reach the final column independ
     expect(last.at(-1)!.to).toBe(count - 1);
   }
   expect(timelineWindow(100, 24, 0, 0)).toEqual([]);
-});
-
-test('minimap inverse covers viewport dragging, center clicks, clamping and non-scrollable extents', () => {
-  const extent = 100000, available = 1000, left = 23456;
-  const view = minimapViewport(extent, available, left);
-  expect(view).toEqual({ left: .23456, width: .01 });
-  expect(minimapScroll(extent, available, view.left + view.width * .3, available * .3)).toBeCloseTo(left);
-  expect(minimapScroll(extent, available, 1, 0)).toBe(99000);
-  expect(minimapScroll(extent, available, -.5, 0)).toBe(0);
-  expect(minimapScroll(100, 1000, .5, 500)).toBe(0);
-  expect(minimapViewport(100, 1000, 0)).toEqual({ left: 0, width: 1 });
 });
 
 test('folding preserves the exact fractional source anchor before browser scroll clamping', () => {

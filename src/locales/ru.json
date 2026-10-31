@@ -1193,10 +1193,4 @@
   "timeline.collapseTag": "Свернуть тег",
   "timeline.expandTag": "Развернуть тег",
   "timeline.hiddenFrames": "Скрытые кадры",
-  "timeline.navigation": "Навигация таймлайна",
-  "timeline.previousTag": "Предыдущий тег",
-  "timeline.nextTag": "Следующий тег",
-  "timeline.jumpTag": "Перейти к тегу",
-  "timeline.onlyTag": "Только текущий тег",
-  "timeline.minimap": "Мини-карта таймлайна"
 }
