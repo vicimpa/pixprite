@@ -5,7 +5,7 @@ import { installHotkeys } from "~/core/Hotkeys";
 import { installPlayback } from "~/core/Playback";
 import { state } from "~/core/State";
 import { themeReady } from "~/core/Themes";
-import { startSession } from "~/core/Projects";
+import { initProjectLibrary, startSession } from "~/core/Projects";
 import { installNumberFields } from "~/ui/numberFields";
 import { installTooltips } from "~/ui/tooltips";
 import { askChoice, askConfirm } from "~/ui/Dialog";
@@ -17,9 +17,16 @@ import * as tools from "~/core/Tools";
 import * as commands from "~/core/Commands";
 import { Color } from "~/core/Color";
 import { createRoot } from "react-dom/client";
+import { useEffect, type ReactNode } from "react";
+import { installDesktop } from "~/core/Desktop";
 
 // Language packs from extensions must be registered before the saved language is checked
 const textsReady = startExtensions().then(() => installI18n());
+void textsReady.then(() => {
+  document.getElementById('startup-screen')?.setAttribute('aria-label', t('common.loading'));
+  const retry = document.getElementById('startup-retry');
+  if (retry) retry.textContent = t('common.retry');
+});
 
 addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('dblclick', e => e.preventDefault());
@@ -35,7 +42,8 @@ state.confirmClose = async doc => {
 
 // Noticed before anything is written: the last visit may have ended in a crash
 state.uncleanExit = startSession();
-const restored = state.restore();
+const restored = initProjectLibrary().then(() => state.restore());
+installDesktop(Promise.all([restored, textsReady]));
 void restored.then(async () => {
   await textsReady;
   // After a crash, offer the snapshot list (on the home page)
@@ -57,11 +65,19 @@ if (import.meta.env.DEV) Object.assign(window, { pixprite: { state, tools, comma
 const MOBILE_OK = 'pixprite.mobileOk';
 const mobileOk = () => { try { return localStorage.getItem(MOBILE_OK) === '1'; } catch { return false; } };
 
-void Promise.all([textsReady, themeReady()]).then(() => {
+const StartupReady = ({ children }: { children: ReactNode }) => {
+  useEffect(() => {
+    document.getElementById('startup-screen')?.remove();
+    window.pixpriteDesktop?.ready();
+  }, []);
+  return children;
+};
+
+void Promise.all([restored, textsReady, themeReady()]).then(() => {
   const root = createRoot(document.getElementById('root')!);
-  if (isDesktop() || mobileOk()) return root.render(<App />);
-  root.render(<MobileStub onContinue={() => {
+  if (isDesktop() || mobileOk()) return root.render(<StartupReady><App /></StartupReady>);
+  root.render(<StartupReady><MobileStub onContinue={() => {
     try { localStorage.setItem(MOBILE_OK, '1'); } catch { /* private mode: ask again next time */ }
     root.render(<App />);
-  }} />);
+  }} /></StartupReady>);
 });

@@ -1,50 +1,21 @@
-import { lazyDialog } from "~/ui/LazyFeature";
+import { dialogs as common } from "./Common";
+import { newSprite } from "./NewSprite";
+import { colorModeDialog } from "./ColorMode";
+import { sliceProperties } from "./Slice";
+import { openShortcuts } from "./Shortcuts";
+import { tilemapDialogs } from "./Tilemap";
+import { filterDialogs } from "./Filters";
 
 export const dialogs = {
-  newSprite: lazyDialog(async () => (await import("./NewSprite")).newSprite),
-  canvasSize: lazyDialog(async () => (await import("./Common")).dialogs.canvasSize),
-  spriteSize: lazyDialog(async () => (await import("./Common")).dialogs.spriteSize),
-  spriteProperties: lazyDialog(async () => (await import("./Common")).dialogs.spriteProperties),
-  layerProperties: lazyDialog(async () => (await import("./Common")).dialogs.layerProperties),
-  frameProperties: lazyDialog(async () => (await import("./Common")).dialogs.frameProperties),
-  tagProperties: lazyDialog(async () => (await import("./Common")).dialogs.tagProperties),
-  saveAs: lazyDialog(async () => (await import("./Common")).dialogs.saveAs),
-  exportImage: lazyDialog(async () => (await import("./Common")).dialogs.exportImage),
-  importSheet: lazyDialog(async () => (await import("./Common")).dialogs.importSheet),
-  history: lazyDialog(async () => (await import("./Common")).dialogs.history),
-  preferences: lazyDialog(async () => (await import("./Common")).dialogs.preferences),
-  about: lazyDialog(async () => (await import("./Common")).dialogs.about),
-  gotoFrame: lazyDialog(async () => (await import("./Common")).dialogs.gotoFrame),
-  tweenFrames: lazyDialog(async () => (await import("./Common")).dialogs.tweenFrames),
-  celProperties: lazyDialog(async () => (await import("./Common")).dialogs.celProperties),
-  guidePosition: lazyDialog(async () => (await import("./Common")).dialogs.guidePosition),
-  colorMode: lazyDialog(async () => (await import("./ColorMode")).colorModeDialog),
-  sliceProperties: lazyDialog(async () => (await import("./Slice")).sliceProperties),
-  shortcuts: lazyDialog(async () => (await import("./Shortcuts")).openShortcuts),
-  changeTileset: lazyDialog(async () => (await import("./Tilemap")).tilemapDialogs.changeTileset),
-  newTilemap: lazyDialog(async () => (await import("./Tilemap")).tilemapDialogs.newTilemap),
-  toTilemap: lazyDialog(async () => (await import("./Tilemap")).tilemapDialogs.toTilemap),
-  posterize: lazyDialog(async () => (await import("./Filters")).filterDialogs.posterize),
-  brightness: lazyDialog(async () => (await import("./Filters")).filterDialogs.brightness),
-  noise: lazyDialog(async () => (await import("./Filters")).filterDialogs.noise),
-  pixelate: lazyDialog(async () => (await import("./Filters")).filterDialogs.pixelate),
-  offset: lazyDialog(async () => (await import("./Filters")).filterDialogs.offset),
-  convolution: lazyDialog(async () => (await import("./Filters")).filterDialogs.convolution),
-  median: lazyDialog(async () => (await import("./Filters")).filterDialogs.median),
-  curves: lazyDialog(async () => (await import("./Filters")).filterDialogs.curves),
-  invert: lazyDialog(async () => (await import("./Filters")).filterDialogs.invert),
-  replaceColor: lazyDialog(async () => (await import("./Filters")).filterDialogs.replaceColor),
-  hsl: lazyDialog(async () => (await import("./Filters")).filterDialogs.hsl),
-  outline: lazyDialog(async () => (await import("./Filters")).filterDialogs.outline),
-  shadow: lazyDialog(async () => (await import("./Filters")).filterDialogs.shadow),
-  adjustColors: lazyDialog(async () => (await import("./Filters")).filterDialogs.hsl),
+  ...common,
+  ...tilemapDialogs,
+  ...filterDialogs,
+  newSprite,
+  colorMode: colorModeDialog,
+  sliceProperties,
+  shortcuts: openShortcuts,
+  adjustColors: filterDialogs.hsl,
 };
 
-export const strokeSelectionDialog = lazyDialog(async () => (await import("./Stroke")).strokeSelectionDialog);
-
-export const paletteDialogs = {
-  ramp: lazyDialog(async () => (await import("./Palette")).paletteDialogs.ramp),
-  size: lazyDialog(async () => (await import("./Palette")).paletteDialogs.size),
-  fromSprite: lazyDialog(async () => (await import("./Palette")).paletteDialogs.fromSprite),
-  presets: lazyDialog(async () => (await import("./Palette")).paletteDialogs.presets),
-};
+export { strokeSelectionDialog } from "./Stroke";
+export { paletteDialogs } from "./Palette";

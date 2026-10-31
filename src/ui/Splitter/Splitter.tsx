@@ -1,8 +1,11 @@
 import type { FC } from "react";
 import styled from "styled-components";
+import { trackPointer } from "~/ui/trackPointer";
 
 const Handle = styled.div<{ $vertical: boolean; }>`
   flex-shrink: 0;
+  touch-action: none;
+  user-select: none;
   background-color: var(--bg);
   ${p => p.$vertical ? 'width: 4px; cursor: col-resize;' : 'height: 4px; cursor: row-resize;'}
 
@@ -25,25 +28,24 @@ export type SplitterProps = {
 export const Splitter: FC<SplitterProps> = ({ vertical, value, dir, min = 60, max = 800, onChange }) => (
   <Handle
     $vertical={vertical}
+    data-splitter={vertical ? 'columns' : 'rows'}
     onPointerDown={e => {
+      if (e.button !== 0) return;
       const el = e.currentTarget;
-      el.setPointerCapture(e.pointerId);
+      const panel = (dir === 1 ? el.previousElementSibling : el.nextElementSibling) as HTMLElement | null;
+      if (!panel) return;
+      const property = vertical ? 'width' : 'height';
+      let latest = value;
       el.dataset.drag = 'true';
-      const start = vertical ? e.clientX : e.clientY;
-      const move = (e: PointerEvent) => {
-        const delta = (vertical ? e.clientX : e.clientY) - start;
-        onChange(Math.max(min, Math.min(max, Math.round(value + delta * dir))));
-      };
-      const up = () => {
+      trackPointer(e, (dx, dy) => {
+        const next = Math.max(min, Math.min(max, Math.round(value + (vertical ? dx : dy) * dir)));
+        if (next === latest) return;
+        latest = next;
+        panel.style[property] = `${next}px`;
+      }, () => {
         el.dataset.drag = 'false';
-        el.removeEventListener('pointermove', move);
-        el.removeEventListener('pointerup', up);
-        el.removeEventListener('lostpointercapture', up);
-      };
-      el.addEventListener('pointermove', move);
-      el.addEventListener('pointerup', up);
-      // Capture ends on cancel as well, which pointerup alone misses
-      el.addEventListener('lostpointercapture', up);
+        if (latest !== value) onChange(latest);
+      });
     }}
   />
 );

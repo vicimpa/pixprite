@@ -7,13 +7,14 @@ import {
 } from "~/core/Projects";
 import { state } from "~/core/State";
 import { StoragePanel } from "./StoragePanel";
+import { Action } from "./styled";
 import { formatBytes } from "~/core/Storage";
 import { openSnapshots, SnapshotList } from "./Snapshots";
 import { checker, openPreview } from "./Preview";
 import { keyNames, t } from "~/core/i18n";
 import { dialogs } from "~/modules/Dialogs";
 import { cmd } from "~/core/Commands";
-import { Button, Muted, Select } from "~/ui/Button";
+import { Muted, Select } from "~/ui/Button";
 import { Icon } from "~/ui/Icon";
 import { LogoMark } from "~/ui/Logo";
 import { editProjectInfo } from "~/modules/ProjectInfo";
@@ -37,13 +38,14 @@ const Inner = styled.div`
   margin: 0 auto;
   padding: 28px 24px 40px;
   display: grid;
-  grid-template-columns: minmax(240px, 300px) 1fr;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
   gap: 28px;
 
   @media (max-width: 760px) { grid-template-columns: 1fr; }
 `;
 
 const Card = styled.section`
+  min-width: 0;
   padding: 14px 16px;
   background: var(--bg);
   border: 1px solid var(--b1);
@@ -51,6 +53,8 @@ const Card = styled.section`
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow-wrap: anywhere;
+  & > span { white-space: normal; }
 `;
 
 const Note = styled.p`
@@ -75,7 +79,7 @@ const H = styled.h2`
 
 const Sizes = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(5.5em, 100%), 1fr));
   gap: 4px;
 `;
 
@@ -226,7 +230,7 @@ const Download = styled.button`
 
 const Keys = styled.div`
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: 3px 10px;
   & > b { font-weight: normal; color: var(--accent); white-space: nowrap; }
 `;
@@ -238,7 +242,7 @@ const Search = styled.input`
   background: var(--field);
   border: 1px solid var(--b1);
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 1 1 140px;
 `;
 
 function ago(ms: number) {
@@ -694,9 +698,9 @@ export const Home: FC = () => {
   const shortcut = (id: string) => prettyCombo(cmd(id).keys?.[0]);
 
   return (
-    <Page ref={page}>
+    <Page ref={page} data-testid="home-page">
       <Inner>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           <Card>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <LogoMark size={64} />
@@ -707,14 +711,14 @@ export const Home: FC = () => {
           <Card>
             <H>{t('common.newSprite')}</H>
             <Sizes>
-              {SIZES.map(([w, h]) => <Button key={`${w}x${h}`} onClick={() => create(w, h)}>{w}×{h}</Button>)}
+              {SIZES.map(([w, h]) => <Action key={`${w}x${h}`} onClick={() => create(w, h)}>{w}×{h}</Action>)}
             </Sizes>
-            <Button $primary onClick={() => dialogs.newSprite()}><Icon name="plus" scale="glyph" /> {t('home.customSize')}</Button>
+            <Action $primary onClick={() => dialogs.newSprite()}><Icon name="plus" scale="glyph" /> {t('home.customSize')}</Action>
           </Card>
           <Card>
             <H>{t('home.open')}</H>
-            <Button onClick={() => openFile()}>{t('home.openFile')} <Muted>{shortcut('file.open')}</Muted></Button>
-            <Button onClick={() => dialogs.importSheet()}>{t('home.importSpriteSheet')}</Button>
+            <Action onClick={() => openFile()}>{t('home.openFile')} <Muted>{shortcut('file.open')}</Muted></Action>
+            <Action onClick={() => dialogs.importSheet()}>{t('home.importSpriteSheet')}</Action>
             <Note>{t('home.orDropImagesGifs')}</Note>
           </Card>
           <Card>
@@ -741,7 +745,7 @@ export const Home: FC = () => {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0, minHeight: 300 }} onPointerDown={startBand}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', minWidth: 0 }}>
             <H style={{ margin: 0 }}>{t('home.projects')}</H>
             <Search placeholder={t('home.searchInAllFolders')} value={query} onChange={e => { setQuery(e.target.value); select([]); }} onKeyDown={e => e.stopPropagation()} />
             <Select value={sort} title={t('home.sort')} onChange={e => {
@@ -753,8 +757,8 @@ export const Home: FC = () => {
               <option value="name">{t('common.name')}</option>
             </Select>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Button disabled={!folder} title={`${t('home.up')} (Backspace)`} onClick={up}><Icon name="up" scale="glyph" /></Button>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', minWidth: 0 }}>
+            <Action disabled={!folder} title={`${t('home.up')} (Backspace)`} onClick={up}><Icon name="up" scale="glyph" /></Action>
             <Crumbs style={{ flex: '1 1 auto' }}>
               <Crumb {...dropTarget(null)} onClick={() => go(null)} title={t('common.allProjects')}><Icon name="home" scale="glyph" /></Crumb>
               {path.map(f => [
@@ -763,12 +767,12 @@ export const Home: FC = () => {
               ])}
             </Crumbs>
             {picked.length > 1 && <Muted>{t('home.nSelected', { n: picked.length })}</Muted>}
-            <Button onClick={() => void newFolder()}><Icon name="plus" scale="glyph" /> {t('home.newFolder')}</Button>
+            <Action onClick={() => void newFolder()}><Icon name="plus" scale="glyph" /> {t('home.newFolder')}</Action>
           </div>
           {state.uncleanExit && (
             <Card style={{ borderColor: 'var(--accent)' }}>
               <Note>{t('home.lastSessionNotClosed')}</Note>
-              <div><Button onClick={() => { state.uncleanExit = false; }}>{t('home.dismiss')}</Button></div>
+              <div><Action onClick={() => { state.uncleanExit = false; }}>{t('home.dismiss')}</Action></div>
             </Card>
           )}
           {q && <Muted>{t('home.resultsFromAllFolders')}</Muted>}
@@ -853,7 +857,7 @@ export const Home: FC = () => {
               );
             })}
           </Grid>
-          <div><Button onClick={() => runCommand('help.shortcuts')}>{t('common.keyboardShortcutsMenu')}</Button></div>
+          <div><Action onClick={() => runCommand('help.shortcuts')}>{t('common.keyboardShortcutsMenu')}</Action></div>
         </div>
       </Inner>
       {band && <Band style={{

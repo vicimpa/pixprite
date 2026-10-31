@@ -32,6 +32,8 @@ export const TitleBar = styled.div`
   background-color: var(--sel);
   color: var(--sel-fg);
   cursor: move;
+  touch-action: none;
+  user-select: none;
   flex-shrink: 0;
 
   &[data-close-left=true] {

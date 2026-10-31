@@ -1,11 +1,12 @@
 /**
- * Installed extensions: packages kept in IndexedDB (manifest + every file as a blob),
+ * Installed extensions: packages kept in IndexedDB (manifest + portable file bytes),
  * installed from a registry (registry.json + sha256 checks), from loose files, or live from a dev server.
  */
 import { signal } from "@preact/signals-react";
 import { languages } from "~/core/i18n";
 import { parseManifest, type Manifest } from "./manifest";
 import { idb, INSTALLED, STORAGE } from "./idb";
+import { packFiles, unpackFiles } from "./packageStorage";
 import { safePath } from './paths';
 export { safePath } from './paths';
 
@@ -69,7 +70,7 @@ export const lifecycle = {
 
 export async function loadInstalled() {
   try {
-    const all = await idb<InstalledExtension[]>(INSTALLED, 'readonly', s => s.getAll());
+    const all = (await idb<Awaited<ReturnType<typeof packFiles<InstalledExtension>>>[]>(INSTALLED, 'readonly', s => s.getAll())).map(unpackFiles);
     installed.value = all.sort((a, b) => a.installedAt - b.installedAt);
   } catch (e) {
     console.error('Failed to read installed extensions', e);
@@ -79,7 +80,10 @@ export async function loadInstalled() {
 
 async function store(ext: InstalledExtension) {
   // Dev extensions are never stored: they live as long as the session
-  if (ext.source !== 'dev') await idb(INSTALLED, 'readwrite', s => s.put(ext));
+  if (ext.source !== 'dev') {
+    const stored = await packFiles(ext);
+    await idb(INSTALLED, 'readwrite', s => s.put(stored));
+  }
   const list = installed.peek().filter(e => e.id !== ext.id);
   installed.value = [...list, ext].sort((a, b) => a.installedAt - b.installedAt);
 }

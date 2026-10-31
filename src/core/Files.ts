@@ -39,6 +39,7 @@ export type ExportOptions = {
 };
 
 export function download(blob: Blob, name: string) {
+  if (window.pixpriteDesktop?.saveDownload) { void window.pixpriteDesktop.saveDownload(name, blob).catch(error => state.showTip(`${t('msg.exportFailed')}: ${String(error)}`, 5000)); return; }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -222,6 +223,7 @@ export async function pickFile(accept: string) {
 
 const stripExt = (name: string) => name.replace(/\.[^.]+$/, '');
 const ext = (name: string) => name.split('.').pop()?.toLowerCase() ?? '';
+const isStill = (file: File) => ext(file.name) !== 'gif' && (file.type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp'].includes(ext(file.name)));
 
 async function imageBuffer(file: Blob) {
   const img = await createImageBitmap(file);
@@ -242,7 +244,7 @@ function resize(img: { w: number; h: number; data: Uint32Array; }, w: number, h:
 export const PALETTE_EXTS = ['gpl', 'pal', 'hex', 'act'];
 
 /** Reads a document file (project, .aseprite, GIF, image) into a new, detached sprite */
-async function readDocument(file: File): Promise<Sprite> {
+export async function readDocument(file: File): Promise<Sprite> {
   const e = ext(file.name), name = stripExt(file.name);
   const doc = new Sprite(32, 32);
   if (e === 'aseprite' || e === 'ase') {
@@ -253,7 +255,7 @@ async function readDocument(file: File): Promise<Sprite> {
   } else if (e === 'gif') {
     const gif = (await import('./formats/GifDecode')).decodeGif(new Uint8Array(await file.arrayBuffer()));
     doc.loadFrames(gif.width, gif.height, gif.frames, name);
-  } else if (file.type.startsWith('image/')) {
+  } else if (isStill(file)) {
     doc.loadImage(await createImageBitmap(file), name);
   } else {
     await doc.loadAsync(await file.text());
@@ -274,8 +276,8 @@ async function isSheetData(file: File) {
  * Loaded documents: in the editor each gets its own tab; on the home page
  * they are saved as projects right away and appear in the list.
  */
-export async function addDocuments(docs: Sprite[], failed: string[] = []) {
-  if (state.home) {
+export async function addDocuments(docs: Sprite[], failed: string[] = [], destination: 'auto' | 'tabs' = 'auto') {
+  if (state.home && destination === 'auto') {
     let added = 0;
     for (const doc of docs) await state.importProject(doc).then(() => added++, () => failed.push(doc.name));
     if (added) state.showNotice(t('msg.nProjectsAdded', { n: added }));
@@ -287,7 +289,7 @@ export async function addDocuments(docs: Sprite[], failed: string[] = []) {
 }
 
 /** Opens files. Several plain images together become one animation (an image sequence) */
-export async function loadFiles(files: File[], assertActive = () => {}) {
+export async function loadFiles(files: File[], assertActive = () => {}, destination: 'auto' | 'tabs' = 'auto') {
   if (!files.length) return;
   const failed: string[] = [];
   const docs: Sprite[] = [];
@@ -309,7 +311,7 @@ export async function loadFiles(files: File[], assertActive = () => {}) {
   if (sheetData.length) state.showTip(t('msg.spriteSheetDescriptionsOpen'), 4000);
   rest = rest.filter(f => !sheetData.includes(f));
 
-  const stills = rest.filter(f => f.type.startsWith('image/') && ext(f.name) !== 'gif');
+  const stills = rest.filter(isStill);
   if (stills.length > 1) {
     // Several still images at once: an image sequence, sorted by their numbers
     try {
@@ -331,7 +333,7 @@ export async function loadFiles(files: File[], assertActive = () => {}) {
     }
   }
   assertActive();
-  await addDocuments(docs, failed);
+  await addDocuments(docs, failed, destination);
 }
 
 function finish() {
@@ -397,7 +399,9 @@ export async function savePalette(format: Exclude<PaletteFormat, 'png'>) {
 }
 
 export async function copyToSystemClipboard(bmp: Bitmap | null) {
-  if (!bmp || !navigator.clipboard?.write) return;
+  if (!bmp) return;
+  if (window.pixpriteDesktop?.copyImage) { try { await window.pixpriteDesktop.copyImage(bmp); } catch {} return; }
+  if (!navigator.clipboard?.write) return;
   try {
     const blob = await bitmapToCanvas(bmp).convertToBlob({ type: 'image/png' });
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
@@ -409,6 +413,7 @@ export async function blobToBitmap(blob: Blob): Promise<Bitmap> {
 }
 
 export async function readSystemClipboard(): Promise<Bitmap | null> {
+  if (window.pixpriteDesktop?.pasteImage) { try { return await window.pixpriteDesktop.pasteImage(); } catch { return null; } }
   try {
     for (const item of await navigator.clipboard.read()) {
       const type = item.types.find(t => t.startsWith('image/'));

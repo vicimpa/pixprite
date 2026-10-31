@@ -10,10 +10,47 @@
   <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png">
   <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+  <style>
+    html, body { margin: 0; background: #231f2b; }
+    #startup-screen { position: fixed; inset: 0; z-index: 100000; display: grid; place-content: center; justify-items: center; gap: 24px; color: #e9dfed; background: #231f2b; font: 14px ui-monospace, monospace; }
+    #startup-screen img { width: 64px; height: 64px; image-rendering: pixelated; animation: startup-float 1.6s ease-in-out infinite; }
+    #startup-screen strong { font-size: 20px; font-weight: 500; letter-spacing: 0.25em; margin-left: 0.25em; }
+    .startup-track { width: 144px; height: 4px; background: #3d3448; overflow: hidden; }
+    .startup-track::after { content: ''; display: block; width: 48px; height: 100%; background: #c4a0f0; animation: startup-progress 1.2s steps(12) infinite; }
+    #startup-retry { color: inherit; background: #3d3448; border: 1px solid #8b729e; padding: 8px 16px; font: inherit; cursor: pointer; }
+    #startup-screen[data-error] .startup-track { display: none; }
+    #startup-screen[data-error] img { animation: none; }
+    @keyframes startup-progress { from { transform: translateX(-48px); } to { transform: translateX(144px); } }
+    @keyframes startup-float { 50% { transform: translateY(-6px); } }
+    @media (prefers-reduced-motion: reduce) { #startup-screen img, .startup-track::after { animation: none; } .startup-track::after { width: 100%; opacity: 0.6; } }
+  </style>
 </head>
 
 <body>
+  <div id="startup-screen" role="status" aria-label="Loading Pixprite">
+    <img src="./favicon.svg" alt="" width="64" height="64">
+    <strong>PIXPRITE</strong>
+    <div class="startup-track" aria-hidden="true"></div>
+    <button id="startup-retry" hidden>Retry</button>
+    <noscript>Enable JavaScript to open Pixprite.</noscript>
+  </div>
   <div id="root"></div>
+  <script>
+    (() => {
+      const screen = document.getElementById('startup-screen');
+      const retry = document.getElementById('startup-retry');
+      const failed = () => {
+        if (!screen.isConnected) return;
+        screen.dataset.error = '';
+        screen.setAttribute('role', 'alert');
+        screen.setAttribute('aria-label', 'Could not start Pixprite');
+        retry.hidden = false;
+      };
+      addEventListener('error', event => { if (event.error || event.target instanceof HTMLScriptElement) failed(); }, true);
+      addEventListener('unhandledrejection', failed);
+      retry.addEventListener('click', () => location.reload());
+    })();
+  </script>
   <script type="module" src="./index.tsx"></script>
 </body>
 

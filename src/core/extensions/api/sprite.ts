@@ -227,7 +227,7 @@ export const spriteHandlers: Handlers = {
   },
 
   'sprite.transaction.begin': (c, label) => {
-    const doc = target(c);
+      const doc = target(c);
     // Nested requests already carry the outer tx (the client joins them), so this is always a new step
     const tx = c.host.beginTransaction(doc);
     untracked(() => doc.checkpoint(String(label || 'Extension edit')));

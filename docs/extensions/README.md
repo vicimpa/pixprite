@@ -2,7 +2,7 @@
 
 [Русская версия](README.ru.md)
 
-Extensions add commands, tools, filters, panels, importers/exporters, themes and languages to Pixprite.
+Extensions add commands, tools, filters, panels, importers/exporters, themes, icon packs and languages to Pixprite.
 They run sandboxed: the entry code in a module **Web Worker**, panels and widgets in **sandboxed iframes**
 (`sandbox="allow-scripts"`, no same-origin). Every API call is an async message to the editor, and the editor
 checks it against the permissions in the manifest.
@@ -86,7 +86,7 @@ texts resolved per language, a sha256 of every file (checked on install), and fo
   "author": "you",
   "description": "%description%",
   "icon": "assets/icon.svg",
-  "entry": "main.js",          // runs src/main.ts; no entry = data-only extension (themes, languages)
+  "entry": "main.js",          // runs src/main.ts; no entry = data-only extension (themes, icon packs, languages)
   "public": true,              // false: stays in the repository, never published (templates, work in progress)
   "permissions": ["sprite:read", "sprite:write"],
   "contributes": {
@@ -101,6 +101,7 @@ texts resolved per language, a sha256 of every file (checked on install), and fo
     "importers": [{ "id": "foo", "label": "Foo image", "extensions": ["foo"] }],
     "exporters": [{ "id": "foo", "label": "Foo image", "extensions": ["foo"] }],
     "themes":    [{ "id": "neon", "label": "Neon", "vars": { "--bg": "#0f1d22" } }],
+    "iconPacks": [{ "id": "duotone", "label": "%icons.label%", "icons": "icons.json" }],
     "languages": [{ "code": "uk", "name": "Українська", "dir": "ltr", "dict": "uk.json",
                     "extensions": { "game-rig": "game-rig.uk.json" } }],
     "locales": "locales/"
@@ -119,6 +120,21 @@ Rules checked by `ext:check` (and again by the editor on install):
 **FormSchema** is an array of `{ key, type, label, min?, max?, step?, options?, default? }`, where `type` is
 `slider | number | color | select | checkbox | text | layer | tag`. The editor renders it with its own controls
 (tool options, filter dialogs, `ctx.ui.showForm`).
+
+**Icon packs** replace semantic editor icons. They are data-only contributions with no permissions or worker. Install a pack in Extensions, then choose it in Window → Icon pack (also available in Preferences); the preview updates immediately. The selected pack is remembered independently of the color theme. Outline is the default; both Outline and Pixel are built in and available offline without extensions. Missing icons, disabled packs and removed extensions fall back to Outline. Enabling the selected extension again restores its icons, and switching packs preserves button sizes.
+
+`icons.json` maps names from [the built-in icon list](../../src/ui/Icon/icons.ts) (`pencil`, `eraser`, `play`, `gear`…) to artwork. A pack may replace any subset:
+
+```json
+{
+  "pencil": { "size": 24, "paths": [{ "d": "M4 20 20 4", "stroke": "foreground" }] },
+  "play": { "pixels": "#..\n##.\n###\n##.\n#.." }
+}
+```
+
+Vector artwork uses a square `size` (1–128) and 1–64 SVG path descriptions. Paths accept only `d`, `fill`, `stroke` and `strokeWidth` (default 1.75); colors are `foreground`, `accent`, `fill` (the theme's icon fill), or `none`. Defaults are no fill, foreground stroke and rounded joins/caps. Pixel grids are rectangular, at most 64×64: `#` is foreground, `o` is icon fill, `+` is accent and `.` is transparent. SVG/HTML markup, URLs and event handlers are not accepted. A JSON file is limited to 256 KiB and 256 icons; path data and coordinates are bounded too. Package hashes and paths use the usual extension checks.
+
+The editor ships complete [pixel](../../src/ui/Icon/icons.ts) and [outline](../../src/ui/Icon/outline.json) artwork, with 63 icons each. The [Duotone extension example](../../extensions/icons-duotone) contributes 16 original two-color icons and inherits the remaining icons from Outline. `bun run ext:check` validates the extension artwork; unit tests check both complete built-in sets. Existing `builtin` pixel preferences and the former pixel/outline extension IDs remain supported.
 
 **Themes** set the editor's css variables. A theme only lists what it changes; the rest comes from the default theme (`src/themes/dusk.json` has every variable with its value).
 
@@ -237,6 +253,7 @@ never meets older sources. More catalogs can be added in Preferences → Extensi
 |---|---|
 | `extensions/template` | command, panel, locales with plurals, exported api |
 | `extensions/theme-neon` | data-only theme |
+| `extensions/icons-duotone` | data-only two-color icons with built-in Outline fallback |
 | `extensions/lang-uk` | data-only language pack (partial Ukrainian) |
 | `extensions/game-rig` | tag presets in meta, locks, validator, exporter (zip with sheet.png + rig.json), live game preview panel |
 | `extensions/ai-assistant` | chat panel with an OpenAI-compatible API (DeepSeek by default), function calls mapped to ctx, each AI edit one undo step |

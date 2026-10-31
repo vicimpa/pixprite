@@ -1,6 +1,6 @@
 /** Minimal ZIP writer: stored (uncompressed) entries, enough to bundle exported files */
 
-import { crc32 } from "~/core/formats/Crc32";
+import { crc32 } from "./Crc32";
 
 export type ZipEntry = { name: string; data: Uint8Array; };
 

@@ -24,7 +24,7 @@ Manifest проверяет типы, версию API, permissions и кажд�
 
 `src/core/extensions/security.test.ts` проверяет полную permission-таблицу, точное сопоставление network host, поля manifest и нормализацию путей. `e2e/security.e2e.ts` содержит 10 production-browser тестов с реальными Worker/iframe, компиляцией, RPC, registry загрузкой и IndexedDB браузера. Они помечены `@smoke`: запускаются обычным CI шагом `bun run test:e2e:smoke` и полным `bun run test:e2e`.
 
-`e2e/server.ts` перед запуском собирает оптимизированный harness в `.extension-dist` с production Vite-конфигурацией. Harness экспортирует только диагностическое управление тестом; в shipping `dist/` он не попадает. Подмена handler/Worker для доказательства sandbox не используется. Playwright clock ускоряет только deadline-тесты; реальные контексты Worker и iframe сохраняются. Сетевой fixture считает дошедшие до сервера запрещённые запросы, включая WebSocket handshake.
+`e2e/server.ts` перед запуском собирает оптимизированный harness в `dist/security` с production Vite-конфигурацией. Harness экспортирует только диагностическое управление тестом; в shipping `dist/web/` он не попадает. Подмена handler/Worker для доказательства sandbox не используется. Playwright clock ускоряет только deadline-тесты; реальные контексты Worker и iframe сохраняются. Сетевой fixture считает дошедшие до сервера запрещённые запросы, включая WebSocket handshake.
 
 | Пункт PLAN | Доказательство |
 | --- | --- |

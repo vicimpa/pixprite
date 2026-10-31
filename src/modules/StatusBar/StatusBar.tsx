@@ -4,6 +4,7 @@ import { unpackRgba } from "~/core/Image";
 import { state } from "~/core/State";
 import { Button, Muted, Separator } from "~/ui/Button";
 import { Icon } from "~/ui/Icon";
+import { AdaptiveBar, AdaptiveItem } from "~/ui/AdaptiveBar/AdaptiveBar";
 import { ExtWidgets } from "~/modules/Extensions";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useState, type FC } from "react";
@@ -59,6 +60,9 @@ const Tip = styled.div`
   border: 1px solid var(--b1);
   box-shadow: 2px 2px 0 var(--shadow);
   pointer-events: none;
+  max-width: calc(100vw - 24px);
+  white-space: normal;
+  overflow-wrap: anywhere;
 `;
 
 const Snap = styled.button`
@@ -111,42 +115,49 @@ export const StatusBar: FC = () => {
 
   return (
     <Bar>
-      <span style={{ minWidth: '5.5em' }}>{x > -50 ? `${x}, ${y}` : '–'}</span>
-      {inside && <>
-        <Swatch title={`rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(2)})`}><span style={{ background: `rgba(${r},${g},${b},${a / 255})` }} /></Swatch>
-        <Muted>{a ? `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}${a < 255 ? ` ${Math.round(a / 2.55)}%` : ''}` : 'empty'}</Muted>
-      </>}
-      {cell && <Muted>{cell}</Muted>}
-      {inside && a > 0 && sprite.colorMode === 'indexed' && sprite.palette && <Muted>index {sprite.palette.index(sprite.pick(x, y))}</Muted>}
-      <Muted>{sel ? `Selection ${sel.w}×${sel.h} at ${sel.x}, ${sel.y}` : `${sprite.width}×${sprite.height}`}{sprite.colorMode !== 'rgb' ? ` · ${sprite.colorMode}` : ''}</Muted>
-      {state.snapToGrid && <Snap title={t('status.clickToTurnSnapping')} onClick={() => { state.snapToGrid = false; }}>{t('status.snapToGridOn')}</Snap>}
-      <span style={{ flexGrow: 1 }} />
-      {state.notice ? <span>{state.notice}</span> : <Muted>{keyNames(state.hint)}</Muted>}
-      <ExtWidgets slot="statusbar" />
-      <Separator />
-      <Muted>{sprite.current?.name}</Muted>
-      <Separator />
-      <Button $square title={t('status.firstFrameHome')} onClick={() => runCommand('anim.first')}><Icon name="first" scale="glyph" /></Button>
-      <Button $square title={t('status.previousFrameLeft')} onClick={() => runCommand('anim.prev')}><Icon name="prev" scale="glyph" /></Button>
-      <Button $square $active={state.playing} title={t('status.playEnter')} onClick={() => runCommand('anim.play')}>
-        <Icon name={state.playing ? 'pause' : 'play'} scale="glyph" />
-      </Button>
-      <Button $square title={t('status.nextFrameRight')} onClick={() => runCommand('anim.next')}><Icon name="next" scale="glyph" /></Button>
-      <Button $square title={t('status.lastFrameEnd')} onClick={() => runCommand('anim.last')}><Icon name="last" scale="glyph" /></Button>
-      <span>
-        <NumberEntry
-          value={sprite.frame + 1}
-          title={t('common.goToFrame')}
-          onCommit={n => { sprite.dropFloating(); sprite.frame = Math.max(0, Math.min(sprite.frames.length - 1, Math.round(n) - 1)); }}
-          suffix={` / ${sprite.frames.length}`} />
-      </span>
-      {sprite.frames.length > 1 && <Muted>{frame?.duration}ms</Muted>}
-      <Separator />
-      <Button $square title={t('status.zoomOut')} onClick={() => runCommand('view.zoomOut')}><Icon name="minus" scale="glyph" /></Button>
-      <span>
-        <NumberEntry value={Math.round(state.zoomTarget * 100)} title={t('status.zoom')} onCommit={n => state.zoomTo(Math.max(25, n) / 100)} suffix="%" />
-      </span>
-      <Button $square title={t('status.zoomIn')} onClick={() => runCommand('view.zoomIn')}><Icon name="plus" scale="glyph" /></Button>
+      <AdaptiveBar label={t('status.moreControls')}>
+        <AdaptiveItem priority={-5}>
+        <span style={{ minWidth: '5.5em' }}>{x > -50 ? `${x}, ${y}` : '–'}</span>
+        {inside && <>
+          <Swatch title={`rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(2)})`}><span style={{ background: `rgba(${r},${g},${b},${a / 255})` }} /></Swatch>
+          <Muted>{a ? `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}${a < 255 ? ` ${Math.round(a / 2.55)}%` : ''}` : 'empty'}</Muted>
+        </>}
+        {cell && <Muted>{cell}</Muted>}
+        {inside && a > 0 && sprite.colorMode === 'indexed' && sprite.palette && <Muted>index {sprite.palette.index(sprite.pick(x, y))}</Muted>}
+        </AdaptiveItem>
+        <AdaptiveItem priority={5}><Muted>{sel ? `Selection ${sel.w}×${sel.h} at ${sel.x}, ${sel.y}` : `${sprite.width}×${sprite.height}`}{sprite.colorMode !== 'rgb' ? ` · ${sprite.colorMode}` : ''}</Muted></AdaptiveItem>
+        {state.snapToGrid && <Snap title={`${t('status.snapToGridOn')} · ${t('status.clickToTurnSnapping')}`} aria-label={t('status.snapToGridOn')} onClick={() => { state.snapToGrid = false; }}><Icon name="grid" scale="glyph" /></Snap>}
+        <AdaptiveItem priority={state.notice ? 20 : -20}><span title={state.notice || keyNames(state.hint)} style={{ maxWidth: '28em', overflow: 'hidden', textOverflow: 'ellipsis', color: state.notice ? undefined : 'var(--fg-dim)' }}>{state.notice || keyNames(state.hint)}</span></AdaptiveItem>
+        <ExtWidgets slot="statusbar" />
+        <Separator />
+        <AdaptiveItem priority={-10}><Muted title={sprite.current?.name} style={{ maxWidth: '8em', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sprite.current?.name}</Muted></AdaptiveItem>
+        <Separator />
+        <AdaptiveItem priority={50}>
+        <Button $square title={t('status.firstFrameHome')} onClick={() => runCommand('anim.first')}><Icon name="first" scale="glyph" /></Button>
+        <Button $square title={t('status.previousFrameLeft')} onClick={() => runCommand('anim.prev')}><Icon name="prev" scale="glyph" /></Button>
+        <Button $square $active={state.playing} title={t('status.playEnter')} onClick={() => runCommand('anim.play')}>
+          <Icon name={state.playing ? 'pause' : 'play'} scale="glyph" />
+        </Button>
+        <Button $square title={t('status.nextFrameRight')} onClick={() => runCommand('anim.next')}><Icon name="next" scale="glyph" /></Button>
+        <Button $square title={t('status.lastFrameEnd')} onClick={() => runCommand('anim.last')}><Icon name="last" scale="glyph" /></Button>
+        <span>
+          <NumberEntry
+            value={sprite.frame + 1}
+            title={t('common.goToFrame')}
+            onCommit={n => { sprite.dropFloating(); sprite.frame = Math.max(0, Math.min(sprite.frames.length - 1, Math.round(n) - 1)); }}
+            suffix={` / ${sprite.frames.length}`} />
+        </span>
+        {sprite.frames.length > 1 && <Muted>{frame?.duration}ms</Muted>}
+        <Separator />
+        </AdaptiveItem>
+        <AdaptiveItem priority={100}>
+        <Button $square title={t('status.zoomOut')} onClick={() => runCommand('view.zoomOut')}><Icon name="minus" scale="glyph" /></Button>
+        <span>
+          <NumberEntry value={Math.round(state.zoomTarget * 100)} title={t('status.zoom')} onCommit={n => state.zoomTo(Math.max(25, n) / 100)} suffix="%" />
+        </span>
+        <Button $square title={t('status.zoomIn')} onClick={() => runCommand('view.zoomIn')}><Icon name="plus" scale="glyph" /></Button>
+        </AdaptiveItem>
+      </AdaptiveBar>
       {state.tip && <Tip>{state.tip}</Tip>}
     </Bar>
   );

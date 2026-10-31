@@ -5,6 +5,8 @@
  */
 
 import { loadFiles } from "~/core/Files";
+import { state } from "~/core/State";
+import { t } from "~/core/i18n";
 
 type LaunchParams = { files: FileSystemFileHandle[]; };
 type LaunchQueue = { setConsumer(fn: (params: LaunchParams) => void): void; };
@@ -17,7 +19,7 @@ type LaunchQueue = { setConsumer(fn: (params: LaunchParams) => void): void; };
 export const isDesktop = () => !/Android|iPhone|iPad|Mobile/.test(navigator.userAgent) && !(navigator.maxTouchPoints > 1 && !matchMedia('(any-pointer: fine)').matches);
 
 export function installPwa(ready: Promise<unknown>) {
-  if (!isDesktop()) return;
+  if (!isDesktop() || window.pixpriteDesktop) return;
   // The manifest is linked from here, not from index.html, so mobile browsers never see it
   const link = Object.assign(document.createElement('link'), { rel: 'manifest', href: './manifest.webmanifest' });
   document.head.append(link);
@@ -29,10 +31,17 @@ export function installPwa(ready: Promise<unknown>) {
   }
 
   const queue = (window as { launchQueue?: LaunchQueue; }).launchQueue;
-  queue?.setConsumer(async ({ files }) => {
+  let launches = ready;
+  queue?.setConsumer(({ files }) => {
     if (!files?.length) return;
     // The editor state and texts must be in place before documents open
-    await ready;
-    await loadFiles(await Promise.all(files.map(h => h.getFile())));
+    launches = launches.then(async () => {
+      const results = await Promise.allSettled(files.map(h => h.getFile()));
+      await loadFiles(results.flatMap(result => result.status === 'fulfilled' ? [result.value] : []), undefined, 'tabs');
+      if (results.some(result => result.status === 'rejected')) state.showTip(t('msg.couldNotOpen'), 4000);
+    }).catch(error => {
+      console.error('Could not open launch files', error);
+      state.showTip(t('msg.couldNotOpen'), 4000);
+    });
   });
 }

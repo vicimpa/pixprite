@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../node_modules/.tmp/desktop.tsbuildinfo",
+    "types": [
+      "bun",
+      "node"
+    ],
+    "resolveJsonModule": true
+  },
+  "include": [
+    "*.ts"
+  ]
+}

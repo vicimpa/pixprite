@@ -4,6 +4,7 @@ import { parentOf, subtreeStart, type Range } from "~/core/Sprite";
 import { state } from "~/core/State";
 import { Button, Check, Label, Muted, Range as Slider, Select, Separator } from "~/ui/Button";
 import { Icon } from "~/ui/Icon";
+import { AdaptiveBar, AdaptiveItem } from "~/ui/AdaptiveBar/AdaptiveBar";
 import { openContextMenu, type MenuItems } from "~/ui/Menu";
 import { item } from "~/modules/MainMenu";
 import { dialogs } from "~/modules/Dialogs";
@@ -378,35 +379,35 @@ export const Timeline: FC = () => {
   return (
     <styled.Root>
       <styled.Toolbar>
-        <Button $square $active={state.playing} title={t('timeline.playStopEnterRight')}
-          onClick={() => runCommand('anim.play')}
-          onContextMenu={e => popupAt(e, 'play', 110)}>
-          <Icon name={state.playing ? 'pause' : 'play'} scale="glyph" />
-        </Button>
-        <Button $square $active={state.onion} title={t('timeline.onionSkinORight')}
-          onClick={() => runCommand('anim.onion')}
-          onContextMenu={e => popupAt(e, 'onion', 260)}>
-          <Icon name="onion" scale="glyph" />
-        </Button>
-        <Button $square title={t('timeline.onionSkinAndPlayback')} onClick={e => popupAt(e, 'onion', 260)}>
-          <Icon name="gear" scale="glyph" />
-        </Button>
-        <Separator />
-        <Button title={t('timeline.newFrameAltN')} onClick={() => runCommand('anim.newFrame')}><Icon name="plus" scale="glyph" /> {t('common.frame')}</Button>
-        <Button $square title={t('timeline.deleteFrameS')} disabled={sprite.frames.length < 2} onClick={() => runCommand('anim.deleteFrame')}><Icon name="trash" scale="glyph" /></Button>
-        <Button title={t('timeline.frameTimingAltT')} onClick={() => runCommand('anim.frameProperties')}>{sprite.frames[sprite.frame]?.duration}ms</Button>
-        <Button title={t('timeline.tagTheSelectedFrames')} onClick={() => runCommand('anim.newTag')}>{t('timeline.tag')}</Button>
-        <Button $active={!!sprite.loop} title={t('timeline.loopTheSelectedFrames')} onClick={() => runCommand('anim.loop')}>{t('timeline.loop')}</Button>
-        <Separator />
-        <Button title={t('timeline.newLayerShiftN')} onClick={() => runCommand('layer.new')}><Icon name="plus" scale="glyph" /> {t('timeline.layer')}</Button>
-        <Button $square title={t('timeline.duplicateLayer')} onClick={() => runCommand('layer.duplicate')}><Icon name="duplicate" scale="glyph" /></Button>
-        <Button $square title={t('timeline.deleteLayer')} disabled={sprite.layers.length < 2} onClick={() => runCommand('layer.delete')}><Icon name="trash" scale="glyph" /></Button>
-        <Button title={t('common.layerProperties')} onClick={() => dialogs.layerProperties()}>{t('timeline.props')}</Button>
-        <span style={{ flexGrow: 1 }} />
-        <Muted>
-          {sprite.frames.length} frames · {(total / 1000).toFixed(2)}s
-          {r && (r.frames[1] > r.frames[0] || r.layers[1] > r.layers[0]) ? ' · drag the selection to move, Ctrl/Alt to copy' : ''}
-        </Muted>
+        <AdaptiveBar label={t('timeline.moreControls')}>
+          <AdaptiveItem priority={50}><Button $square $active={state.playing} title={t('timeline.playStopEnterRight')}
+            onClick={() => runCommand('anim.play')}
+            onContextMenu={e => popupAt(e, 'play', 110)}>
+            <Icon name={state.playing ? 'pause' : 'play'} scale="glyph" />
+          </Button>
+          <Button $square $active={state.onion} title={t('timeline.onionSkinORight')}
+            onClick={() => runCommand('anim.onion')}
+            onContextMenu={e => popupAt(e, 'onion', 260)}>
+            <Icon name="onion" scale="glyph" />
+          </Button>
+          <Button $square title={t('timeline.onionSkinAndPlayback')} onClick={e => popupAt(e, 'onion', 260)}>
+            <Icon name="gear" scale="glyph" />
+          </Button></AdaptiveItem>
+          <Separator />
+          <AdaptiveItem priority={20}><Button title={t('timeline.newFrameAltN')} onClick={() => runCommand('anim.newFrame')}><Icon name="plus" scale="glyph" /> {t('common.frame')}</Button>
+          <Button $square title={t('timeline.deleteFrameS')} disabled={sprite.frames.length < 2} onClick={() => runCommand('anim.deleteFrame')}><Icon name="trash" scale="glyph" /></Button>
+          <Button title={t('timeline.frameTimingAltT')} onClick={() => runCommand('anim.frameProperties')}>{sprite.frames[sprite.frame]?.duration}ms</Button></AdaptiveItem>
+          <AdaptiveItem><Button title={t('timeline.tagTheSelectedFrames')} onClick={() => runCommand('anim.newTag')}>{t('timeline.tag')}</Button>
+          <Button $active={!!sprite.loop} title={t('timeline.loopTheSelectedFrames')} onClick={() => runCommand('anim.loop')}>{t('timeline.loop')}</Button></AdaptiveItem>
+          <Separator />
+          <AdaptiveItem priority={10}><Button title={t('timeline.newLayerShiftN')} onClick={() => runCommand('layer.new')}><Icon name="plus" scale="glyph" /> {t('timeline.layer')}</Button>
+          <Button $square title={t('timeline.duplicateLayer')} onClick={() => runCommand('layer.duplicate')}><Icon name="duplicate" scale="glyph" /></Button>
+          <Button $square title={t('timeline.deleteLayer')} disabled={sprite.layers.length < 2} onClick={() => runCommand('layer.delete')}><Icon name="trash" scale="glyph" /></Button>
+          <Button title={t('common.layerProperties')} onClick={() => dialogs.layerProperties()}>{t('timeline.props')}</Button></AdaptiveItem>
+          <AdaptiveItem priority={-10}><Muted title={r ? t('timeline.rangeHint') : undefined}>
+            {sprite.frames.length} frames · {(total / 1000).toFixed(2)}s
+          </Muted></AdaptiveItem>
+        </AdaptiveBar>
       </styled.Toolbar>
 
       <styled.Scroll

@@ -16,7 +16,7 @@ if (smoke && args.includes('--full')) throw new Error('Choose --smoke or --full'
 const samples = numberArg('--samples', smoke ? 1 : 3, 1), warmups = numberArg('--warmups', 1, 0);
 const steps = numberArg('--steps', smoke ? 40 : 200, 10);
 const outputAt = args.indexOf('--output');
-const output = outputAt >= 0 ? args[outputAt + 1] : `benchmark-results/${new Date().toISOString().replaceAll(':', '-')}.json`;
+const output = outputAt >= 0 ? args[outputAt + 1] : `dist/reports/benchmarks/${new Date().toISOString().replaceAll(':', '-')}.json`;
 if (!output) throw new Error('--output requires a filename');
 const scenarios = smoke ? [fullScenarios[0], fullScenarios.at(-1)!] : fullScenarios;
 const root = resolve(import.meta.dir, '..');
@@ -26,7 +26,7 @@ const sourceHasher = new Bun.CryptoHasher('sha256');
 for (const path of trackedSources) { sourceHasher.update(path); sourceHasher.update(await Bun.file(resolve(root, path)).arrayBuffer()); }
 const sourceSha256 = sourceHasher.digest('hex');
 await build({ configFile: resolve(import.meta.dir, 'vite.config.ts'), logLevel: 'warn' });
-const dist = resolve(root, '.benchmark-dist');
+const dist = resolve(root, 'dist/benchmarks');
 const server = Bun.serve({ hostname: '127.0.0.1', port: 0, async fetch(request) {
   const pathname = decodeURIComponent(new URL(request.url).pathname);
   const target = resolve(dist, '.' + pathname);

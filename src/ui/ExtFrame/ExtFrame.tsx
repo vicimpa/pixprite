@@ -6,6 +6,7 @@
  * and `lang` / `dir`; theme changes are pushed live by a tiny injected listener.
  */
 
+import controls from "./controls.js?raw";
 import { currentDir, currentLanguage } from "~/core/i18n";
 import { state } from "~/core/State";
 import { extensionsHost, themeCss } from "~/modules/Extensions/bridge";
@@ -21,13 +22,13 @@ const escapeAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;
 function compose(html: string, base: string | null) {
   const kit = new URL('ext-ui.css', document.baseURI).href;
   // Controls the browser draws its own way (select lists) get the editor's look
-  const kitJs = new URL('ext-ui.js', document.baseURI).href;
+  const kitJs = controls.replace(/<\/script/gi, '<\\/script');
   const head = [
     '<meta charset="utf-8">',
     base ? `<base href="${escapeAttr(base)}">` : '',
     `<style id="pixprite-theme">${themeCss()}</style>`,
     `<link rel="stylesheet" href="${escapeAttr(kit)}">`,
-    `<script defer src="${escapeAttr(kitJs)}"></script>`,
+    `<script>${kitJs}</script>`,
     // Applies live theme updates; ignores anything not from the parent
     `<script>addEventListener('message',function(e){if(e.source!==parent)return;var m=e.data;` +
     `if(m&&m.type==='event'&&m.event==='${THEME_EVENT}')document.getElementById('pixprite-theme').textContent=m.data.css;});</script>`,

@@ -8,6 +8,8 @@
   },
   "include": [
     "runner.ts",
+    "interaction-check.ts",
+    "native-interaction-check.ts",
     "scenarios.ts",
     "compare.ts",
     "virtualization-check.ts",

@@ -152,7 +152,7 @@ export const Select: FC<SelectProps> = ({ value, onChange, children, disabled, t
       <Arrow />
     </Trigger>
     {open && createPortal(
-      <List ref={list} style={box} onPointerDown={e => e.stopPropagation()}>
+      <List ref={list} data-select-popup style={box} onPointerDown={e => e.stopPropagation()}>
         {options.map((o, i) => (
           <Item key={o.value + i} data-active={i === active} data-selected={i === current} data-disabled={o.disabled}
             onPointerEnter={() => !o.disabled && setActive(i)} onClick={() => choose(i)}>

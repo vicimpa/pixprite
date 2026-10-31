@@ -1,5 +1,7 @@
 import { memo, type FC } from "react";
 import { ICONS, type IconName } from "./icons";
+import { useSignals } from "@preact/signals-react/runtime";
+import { iconArtwork, resolveIconPack, selectedIconPack } from "~/core/IconPacks";
 
 const FILLS: Record<string, string> = {
   '#': 'currentColor',
@@ -9,13 +11,13 @@ const FILLS: Record<string, string> = {
 
 type Run = { x: number; y: number; w: number; c: string; };
 
-const parsed = new Map<IconName, { w: number; h: number; runs: Run[]; }>();
+const parsed = new Map<string, { w: number; h: number; runs: Run[]; }>();
 
 /** Turns an ASCII grid into horizontal runs of same-colored pixels */
-function parse(name: IconName) {
-  const cached = parsed.get(name);
+function parse(pixels: string) {
+  const cached = parsed.get(pixels);
   if (cached) return cached;
-  const rows = ICONS[name].trim().split('\n').map(r => r.trim());
+  const rows = pixels.trim().split('\n').map(r => r.trim());
   const w = Math.max(...rows.map(r => r.length));
   const runs: Run[] = [];
   rows.forEach((row, y) => {
@@ -30,7 +32,8 @@ function parse(name: IconName) {
     }
   });
   const result = { w, h: rows.length, runs };
-  parsed.set(name, result);
+  if (parsed.size > 256) parsed.clear();
+  parsed.set(pixels, result);
   return result;
 }
 
@@ -41,11 +44,19 @@ export type IconProps = {
 };
 
 export const Icon: FC<IconProps> = memo(({ name, scale = 'tool' }) => {
-  const { w, h, runs } = parse(name);
+  useSignals();
+  const artwork = iconArtwork(selectedIconPack.value, name);
+  const vector = artwork && 'paths' in artwork ? artwork : null;
+  const builtin = parse(ICONS[name] ?? ICONS.square);
+  const pixel = artwork && 'pixels' in artwork ? parse(artwork.pixels) : vector ? null : builtin;
+  const { w, h } = builtin;
+  const color = (c: string | undefined, fallback: string) => c === 'foreground' ? 'currentColor' : c === 'accent' ? 'var(--accent)' : c === 'fill' ? 'var(--icon-fill)' : c ?? fallback;
   return (
     <svg
-      viewBox={`0 0 ${w} ${h}`}
-      shapeRendering="crispEdges"
+      viewBox={pixel ? `0 0 ${pixel.w} ${pixel.h}` : `0 0 ${vector!.size} ${vector!.size}`}
+      shapeRendering={pixel ? 'crispEdges' : 'geometricPrecision'}
+      aria-hidden="true" focusable="false" data-icon={name} data-icon-style={pixel ? 'pixel' : 'vector'}
+      data-icon-pack={resolveIconPack(selectedIconPack.value)}
       style={{
         display: 'block',
         flexShrink: 0,
@@ -53,9 +64,11 @@ export const Icon: FC<IconProps> = memo(({ name, scale = 'tool' }) => {
         height: typeof scale === 'number' ? h * scale : `calc(var(--${scale === 'tool' ? 'tool-icon' : 'glyph'}) * ${h}px)`,
       }}
     >
-      {runs.map((r, i) => (
+      {pixel ? pixel.runs.map((r, i) => (
         <rect key={i} x={r.x} y={r.y} width={r.w} height={1} fill={FILLS[r.c]} />
-      ))}
+      )) : vector?.paths.map((p, i) => <path key={i} d={p.d}
+        fill={color(p.fill, 'none')} stroke={color(p.stroke, 'currentColor')} strokeWidth={p.strokeWidth ?? 1.75}
+        strokeLinecap="round" strokeLinejoin="round" />)}
     </svg>
   );
 });

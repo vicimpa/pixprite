@@ -1,0 +1,5 @@
+[build]
+target-dir = "dist/tauri"
+
+[resolver]
+incompatible-rust-versions = "fallback"

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Pixprite",
+  "mainBinaryName": "pixprite",
+  "version": "../package.json",
+  "identifier": "io.github.vicimpa.pixprite",
+  "build": {
+    "devUrl": "http://localhost:3355",
+    "frontendDist": "../dist/desktop/web"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src ipc: http://ipc.localhost 'self' https: http://127.0.0.1:* http://localhost:*; worker-src 'self' blob:; frame-src 'self' blob:; media-src 'self' blob:; object-src 'none'; base-uri 'self'",
+      "capabilities": [
+        "main"
+      ],
+      "dangerousDisableAssetCspModification": true
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "GraphicsAndDesign",
+    "shortDescription": "Pixel art and animation editor",
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../dist/desktop/mcp.mjs": "mcp.mjs",
+      "../dist/desktop/mcp-builtin.mjs": "mcp-builtin.mjs"
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "pixprite"
+        ],
+        "name": "Pixprite document",
+        "mimeType": "application/x-pixprite",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "aseprite",
+          "ase"
+        ],
+        "name": "Aseprite document",
+        "mimeType": "application/x-aseprite",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "png",
+          "gif",
+          "webp",
+          "jpg",
+          "jpeg"
+        ],
+        "name": "Image",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "gpl",
+          "pal",
+          "hex",
+          "act"
+        ],
+        "name": "Palette",
+        "role": "Editor"
+      }
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "windows": {
+      "nsis": {
+        "displayLanguageSelector": false
+      }
+    }
+  }
+}

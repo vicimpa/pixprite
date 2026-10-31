@@ -1,0 +1,135 @@
+name: Desktop applications
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'src-tauri/**'
+      - '.cargo/**'
+      - 'rust-toolchain.toml'
+      - 'src/core/Desktop.ts'
+      - 'src/core/Window*'
+      - 'src/modules/DocTabs/**'
+      - 'e2e/desktop*'
+      - 'scripts/*desktop*'
+      - 'vite.config.js'
+      - 'playwright*.config.ts'
+      - '.github/workflows/desktop.yml'
+      - 'package.json'
+      - 'bun.lock'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: macOS-arm64
+            executable: dist/tauri/aarch64-apple-darwin/release/bundle/macos/Pixprite.app/Contents/MacOS/pixprite
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            artifact: macOS-x64
+            executable: dist/tauri/x86_64-apple-darwin/release/bundle/macos/Pixprite.app/Contents/MacOS/pixprite
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: Windows-x64
+            executable: dist/desktop/pixprite.exe
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            artifact: Linux-x64
+            executable: dist/desktop/pixprite
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev patchelf xvfb
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> ../dist/tauri'
+      - run: bun install --frozen-lockfile
+      - name: Check release version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node -e "if ('v' + require('./package.json').version !== process.env.RELEASE_TAG) throw new Error('Release tag does not match package.json')"
+      - run: bun run build
+      - run: bun run desktop:prepare
+      - run: bun run test:native
+      - name: Build Tauri installers
+        run: bun scripts/build-desktop.ts --target ${{ matrix.target }}
+      - name: Check application resources
+        run: bun scripts/check-desktop-package.ts dist/desktop "${{ matrix.executable }}"
+      - name: Test native editor, updates and MCP (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a bun run test:desktop
+        env:
+          PIXPRITE_E2E_EXECUTABLE: ${{ github.workspace }}/${{ matrix.executable }}
+          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+      - name: Test native editor, updates and MCP (macOS and Windows)
+        if: runner.os != 'Linux'
+        run: bun run test:desktop
+        env:
+          PIXPRITE_E2E_EXECUTABLE: ${{ github.workspace }}/${{ matrix.executable }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pixprite-${{ matrix.artifact }}
+          path: |
+            dist/installers/Pixprite-*.dmg
+            dist/installers/Pixprite-*.exe
+            dist/installers/Pixprite-*.msi
+            dist/installers/Pixprite-*.AppImage
+            dist/installers/Pixprite-*.deb
+            dist/desktop/mcp.mjs
+            dist/desktop/mcp-builtin.mjs
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pixprite-*
+          path: artifacts
+      - name: Collect release files
+        run: |
+          mkdir release-assets
+          find artifacts -type f \( -name 'Pixprite-*.dmg' -o -name 'Pixprite-*.exe' -o -name 'Pixprite-*.msi' -o -name 'Pixprite-*.AppImage' -o -name 'Pixprite-*.deb' \) -exec cp -t release-assets -- {} +
+          cp artifacts/pixprite-Linux-x64/desktop/mcp.mjs release-assets/pixprite-mcp.mjs
+          cp artifacts/pixprite-Linux-x64/desktop/mcp-builtin.mjs release-assets/mcp-builtin.mjs
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Compute checksums
+        working-directory: release-assets
+        run: find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" release-assets/* --verify-tag --title "Pixprite ${RELEASE_TAG}" --notes-file "docs/releases/${RELEASE_TAG}.md"

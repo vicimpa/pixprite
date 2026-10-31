@@ -4,7 +4,7 @@ Collected 2026-10-30T19:30:41.905Z with `bun run benchmark --full --samples 3 --
 
 Status: **complete**, 12 scenarios, 36 retained samples and 12 discarded warmups. Bun 1.4.2, Playwright 1.64.1, Chromium 156.0.8078.4; headless, software 2D canvas and SwiftShader. Runner host: Apple M4 Pro, 12 logical CPUs, 24 GiB RAM, darwin 27.0.0. Viewport 1440×1000, scale factor 1. These numbers describe this headless run, not desktop hardware performance.
 
-Base commit `6a787e679e31` plus the benchmark changes in the dirty checkout; source fingerprint `6cd8f8bc3767a21f22f420e25d03fc6b698f3a637661d0ebb86550dd7373fe55`. The [compact JSON](baseline.json) preserves environment, configuration, units, statistics, correctness and autosave evidence. Raw per-sample results remain in ignored `benchmark-results/full-baseline.json`.
+Base commit `6a787e679e31` plus the benchmark changes in the dirty checkout; source fingerprint `6cd8f8bc3767a21f22f420e25d03fc6b698f3a637661d0ebb86550dd7373fe55`. The [compact JSON](baseline.json) preserves environment, configuration, units, statistics, correctness and autosave evidence. Raw per-sample results are now stored in ignored `dist/reports/benchmarks/full-baseline.json`; the historical commands below retain their original output paths.
 
 Times below are **p50 / p95 in ms**, three retained samples per fixture (nearest-rank p95 is the maximum). PNG is frame zero at scale one. Each save includes strict IndexedDB commit and background preparation; each open includes background decoding.
 
@@ -57,7 +57,7 @@ See [README.md](README.md) for all measurement boundaries, full fixture matrix, 
 
 ## Autosave quiet-period fix follow-up
 
-The historical tables and checked-in `baseline.json` above remain unchanged. A follow-up run used `bun run benchmark --smoke --samples 3 --warmups 1 --steps 200 --output benchmark-results/autosave-quiet-fix.json` (local ignored [raw artifact](../benchmark-results/autosave-quiet-fix.json)): two core fixtures and both input fixtures, 12 retained samples plus four discarded warmups. Its input step count, sample/warmup counts, viewport and strict durability match the full baseline; the core matrix is the smoke subset.
+The historical tables and checked-in `baseline.json` above remain unchanged. A follow-up run used `bun run benchmark --smoke --samples 3 --warmups 1 --steps 200 --output benchmark-results/autosave-quiet-fix.json` (local ignored [raw artifact](../dist/reports/benchmarks/autosave-quiet-fix.json)): two core fixtures and both input fixtures, 12 retained samples plus four discarded warmups. Its input step count, sample/warmup counts, viewport and strict durability match the full baseline; the core matrix is the smoke subset.
 
 All three retained drawing-autosave samples dispatched **2, 2, 2** real prepare tasks: one obsolete task terminated at the initial pencil mutation and one final task completed after quiet. Every sample rendered all 200 trusted pointer moves and independently reloaded the exact latest pixels/links. The pending-flush observer now watches actual version mutations through the quiet wait; it does not rely on pointerup calling `state.save()`.
 

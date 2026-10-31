@@ -74,6 +74,10 @@ export function validateManifest(m: unknown): string[] {
     need(it, at, 'id', 'label');
     if (!isObj(it.vars) || !Object.values(it.vars).every(v => typeof v === 'string')) err(`${at}.vars`, 'object of strings expected');
   });
+  list('iconPacks', (it, at) => {
+    need(it, at, 'id', 'label'); path(it, at, 'icons');
+    if (typeof it.id === 'string' && !ID.test(it.id)) err(`${at}.id`, 'lowercase letters, digits, "." and "-"');
+  });
   list('commands', (it, at) => {
     need(it, at, 'id', 'label'); needsCode(at);
     if (it.public !== undefined && typeof it.public !== 'boolean') err(`${at}.public`, 'boolean expected');

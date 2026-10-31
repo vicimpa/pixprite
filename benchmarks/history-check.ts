@@ -4,7 +4,7 @@ import { build } from 'vite';
 import { resolve, sep } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 await build({ configFile: resolve(import.meta.dir, 'vite.config.ts'), logLevel: 'warn' });
-const root = resolve(import.meta.dir, '../.benchmark-dist');
+const root = resolve(import.meta.dir, '../dist/benchmarks');
 const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
   const path = resolve(root, '.' + new URL(request.url).pathname);
   if (!path.startsWith(root + sep)) return new Response('', { status: 403 });
@@ -51,18 +51,18 @@ try {
     try {
       await expect.poll(async () => { await cdp.send('HeapProfiler.collectGarbage'); return api('collected'); }, { timeout: 10000 }).toEqual({ document: true, snapshot: true });
     } catch (error) {
-      await mkdir('benchmark-results/history', { recursive: true });
+      await mkdir('dist/reports/benchmarks/history', { recursive: true });
       const chunks: string[] = [];
       cdp.on('HeapProfiler.addHeapSnapshotChunk', event => chunks.push(event.chunk));
       await cdp.send('HeapProfiler.takeHeapSnapshot');
-      await writeFile('benchmark-results/history/retained.heapsnapshot', chunks.join(''));
+      await writeFile('dist/reports/benchmarks/history/retained.heapsnapshot', chunks.join(''));
       throw error;
     }
     expect(errors).toEqual([]);
     results.push({ budget, strokeEscape: true, committedBarrier: true, controls: true, onionOwnership: true, failedExtensionTransaction: true, extensionDeactivation: true, closed, gc: await api('collected') });
     await page.close();
   }
-  await mkdir('benchmark-results/history', { recursive: true });
-  await writeFile('benchmark-results/history/checks.json', JSON.stringify({ results }, null, 2) + '\n');
+  await mkdir('dist/reports/benchmarks/history', { recursive: true });
+  await writeFile('dist/reports/benchmarks/history/checks.json', JSON.stringify({ results }, null, 2) + '\n');
   console.log('History memory browser checks passed:', JSON.stringify(results));
 } finally { await browser.close(); server.stop(true); }

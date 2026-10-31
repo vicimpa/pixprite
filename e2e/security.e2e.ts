@@ -35,7 +35,7 @@ test('@smoke security: allowlist gates host fetch, credentials, protocols, redir
       try { results[key] = (await ctx.net.fetch(url)).status; } catch(e) { results[key] = e.code; }
     }
     results.rawFetch = await fetch('http://127.0.0.1:4173/__security__/forbidden').then(()=>true,()=>false);
-    results.socket = await new Promise(resolve => { const s = new WebSocket('ws://127.0.0.1:4173/__security__/forbidden'); s.onopen=()=>resolve(true); s.onerror=()=>resolve(false); });
+    results.socket = await new Promise(resolve => { try { const s = new WebSocket('ws://127.0.0.1:4173/__security__/forbidden'); s.onopen=()=>resolve(true); s.onerror=()=>resolve(false); } catch { resolve(false); } });
     return results;
   }};`), ['network:127.0.0.1:4173']);
   await api(page, 'ready');
@@ -71,7 +71,7 @@ test('@smoke security: opaque panel blocks parent DOM, editor IndexedDB, raw fet
       const results={}; try { results.parent=parent.document.body.innerHTML; } catch(e) { results.parent=e.name; }
       try { indexedDB.open('pixprite'); results.indexed='ALLOWED'; } catch(e) { results.indexed=e.name; }
       results.fetch=await fetch('http://127.0.0.1:4173/__security__/forbidden?fetch').then(()=>true,()=>false);
-      results.socket=await new Promise(resolve=>{const ws=new WebSocket('ws://127.0.0.1:4173/__security__/forbidden?ws');ws.onopen=()=>resolve(true);ws.onerror=()=>resolve(false)});
+      results.socket=await new Promise(resolve=>{try{const ws=new WebSocket('ws://127.0.0.1:4173/__security__/forbidden?ws');ws.onopen=()=>resolve(true);ws.onerror=()=>resolve(false)}catch{resolve(false)}});
       results.image=await new Promise(resolve=>{const img=new Image();img.onload=()=>resolve(true);img.onerror=()=>resolve(false);img.src='http://127.0.0.1:4173/__security__/forbidden?image'});
       // Raw RPC is still permission checked for a connected iframe.
       addEventListener('message', e=> {if(e.data?.type==='response'&&e.data.id===999){results.rpc=e.data.error.code;document.body.textContent=JSON.stringify(results)}});

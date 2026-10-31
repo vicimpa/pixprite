@@ -35,6 +35,7 @@ describe('untrusted package paths and manifests', () => {
         { permissions: ['ui:panel'], contributes: { panels: [{ id: 'a', label: 'a', dock: 'left', page: path }] } },
         { permissions: ['ui:panel'], contributes: { widgets: [{ id: 'a', slot: 'toolbar', page: path }] } },
         { contributes: { locales: path } },
+        { contributes: { iconPacks: [{ id: 'icons', label: 'Icons', icons: path }] } },
         { contributes: { languages: [{ code: 'en', name: 'English', dir: 'ltr', dict: path }] } },
         { contributes: { languages: [{ code: 'en', name: 'English', dir: 'ltr', dict: 'en.json', extensions: { a: path } }] } },
       ];

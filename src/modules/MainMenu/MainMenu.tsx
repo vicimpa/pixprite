@@ -2,6 +2,7 @@ import { available, cmd, COMMANDS, commandLabel } from "~/core/Commands";
 import { prettyCombo } from "~/core/Hotkeys";
 import { LANGUAGES, t } from "~/core/i18n";
 import { THEMES } from "~/core/Themes";
+import { iconPackChoices } from '~/core/IconPacks';
 import { LAYOUT_PRESETS, state } from "~/core/State";
 import { LogoMark } from "~/ui/Logo";
 import { askText } from "~/ui/Dialog";
@@ -15,15 +16,19 @@ import styled from "styled-components";
 export function item(id: string, label?: string): MenuEntry {
   const c = cmd(id);
   return {
+    id,
     label: label ?? commandLabel(c),
     shortcut: prettyCombo(c.keys?.[0]),
     disabled: !available(c),
     checked: c.checked?.(),
-    run: c.run,
+    run: () => { if (available(c)) return c.run(); },
   };
 }
 
 const sub = (label: string, items: MenuItems): MenuEntry => ({ label, items });
+const iconPackMenu = () => sub(t('dialog.preferences.iconPack'), [
+  ...iconPackChoices(t).map(([id]) => item(`window.icons.${id}`)),
+]);
 
 /** Built-in layouts keep their English name as the id (it is stored); the menu shows it translated */
 const layoutName = (n: string) => n in LAYOUT_PRESETS ? t(`layout.${n.toLowerCase()}`) : n;
@@ -141,6 +146,7 @@ const MENUS: { label: string; items: () => MenuItems; }[] = [
       ]),
       sub(t('common.theme'), Object.keys(THEMES).map(id => item(`window.theme.${id}`))),
       sub(t('common.language'), Object.keys(LANGUAGES).map(id => item(`window.lang.${id}`))),
+      iconPackMenu(),
       '-', item('window.focus'), item('window.reset'),
     ]
   },
@@ -175,6 +181,7 @@ const HOME_MENUS: { label: string; items: () => MenuItems; }[] = [
     label: 'menu.window', items: () => [
       sub(t('common.theme'), Object.keys(THEMES).map(id => item(`window.theme.${id}`))),
       sub(t('common.language'), Object.keys(LANGUAGES).map(id => item(`window.lang.${id}`))),
+      iconPackMenu(),
       '-', item('window.fullscreen'), item('view.commandPalette'),
     ]
   },
@@ -190,8 +197,10 @@ export const MainMenu: FC = () => {
   useSignals();
   const { sprite } = state;
   return (
+    <div data-testid="main-menu-bar" style={{ position: 'relative', height: state.ui.row + 2, flexShrink: 0 }}>
     <MenuBar key={state.home ? 'home' : 'editor'} menus={state.home ? HOME_MENUS : withExtensions}>
       <Title><Logo><LogoMark size={16} />Pixprite</Logo>{!state.home && `${sprite.name} · ${sprite.width}×${sprite.height}`}</Title>
     </MenuBar>
+    </div>
   );
 };

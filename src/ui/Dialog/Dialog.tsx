@@ -3,8 +3,9 @@ import { Button } from "~/ui/Button";
 import { Icon } from "~/ui/Icon";
 import { signal } from "@preact/signals-react";
 import { useSignals } from "@preact/signals-react/runtime";
-import { useEffect, useRef, useState, type FC, type ReactNode } from "react";
+import { useEffect, useRef, type FC, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { trackPointer } from "~/ui/trackPointer";
 import * as styled from "./styled";
 
 type Entry = { id: number; render: (close: () => void) => ReactNode; };
@@ -57,7 +58,6 @@ export type DialogProps = {
 export const Dialog: FC<DialogProps> = ({
   title, onClose, onSubmit, submitLabel = t('common.ok'), cancelLabel = t('common.cancel'), width, children, extraButtons,
 }) => {
-  const [pos, setPos] = useState<{ x: number; y: number; } | null>(null);
   const ref = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
@@ -72,17 +72,17 @@ export const Dialog: FC<DialogProps> = ({
 
   const dragTitle = (e: React.PointerEvent) => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || e.button !== 0) return;
     const r = el.getBoundingClientRect();
-    const dx = e.clientX - r.left, dy = e.clientY - r.top;
-    const move = (e: PointerEvent) => setPos({
-      x: Math.max(0, Math.min(innerWidth - 40, e.clientX - dx)),
-      y: Math.max(0, Math.min(innerHeight - 20, e.clientY - dy)),
+    let x = r.left, y = r.top;
+    el.style.willChange = 'transform';
+    trackPointer(e, (dx, dy) => {
+      x = Math.max(0, Math.min(innerWidth - 40, r.left + dx));
+      y = Math.max(0, Math.min(innerHeight - 20, r.top + dy));
+      el.style.transform = `translate3d(${x - r.left}px, ${y - r.top}px, 0)`;
+    }, () => {
+      Object.assign(el.style, { position: 'fixed', left: `${x}px`, top: `${y}px`, margin: '0', transform: '', willChange: '' });
     });
-    const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up); };
-    addEventListener('pointermove', move);
-    addEventListener('pointerup', up);
-    addEventListener('pointercancel', up);
   };
 
   return (
@@ -92,7 +92,7 @@ export const Dialog: FC<DialogProps> = ({
       aria-modal="true"
       aria-label={title}
       data-wide={!!width && width > 560}
-      style={{ width, ...(pos ? { position: 'fixed', left: pos.x, top: pos.y, margin: 0 } : {}) }}
+      style={{ width }}
       onKeyDown={e => e.stopPropagation()}
       onSubmit={e => {
         e.preventDefault();

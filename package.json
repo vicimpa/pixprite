@@ -1,7 +1,7 @@
 {
   "name": "pixprite",
-  "version": "0.0.1",
-  "description": "Pixel art and animation editor in the browser",
+  "version": "0.0.2",
+  "description": "Pixel art and animation editor for the web and desktop",
   "license": "MIT",
   "author": "vicimpa",
   "homepage": "https://vicimpa.github.io/pixprite/",
@@ -34,7 +34,18 @@
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test --grep @smoke",
     "benchmark": "bun benchmarks/runner.ts",
-    "bundle:graph": "bun scripts/bundle-graph.ts"
+    "bundle:graph": "bun scripts/bundle-graph.ts",
+    "desktop:compile": "bun scripts/build-desktop.ts --debug --no-bundle",
+    "desktop:dev": "bun run build && bun run desktop:compile && bun scripts/run-desktop.ts",
+    "desktop:pack": "bun run build && bun scripts/build-desktop.ts --no-bundle",
+    "desktop:build": "bun run build && bun scripts/build-desktop.ts",
+    "mcp": "node dist/desktop/mcp.mjs",
+    "docs:screenshot": "bun scripts/docs-screenshot.ts",
+    "desktop:prepare": "bun scripts/build-desktop.ts --prepare",
+    "test:desktop": "playwright test --config playwright.desktop.config.ts",
+    "test:native": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "desktop:migrate": "bun scripts/migrate-electron.ts",
+    "test:webview": "PIXPRITE_E2E_BROWSER=webkit playwright test --grep @smoke"
   },
   "dependencies": {
     "@fontsource/pixelify-sans": "^5.3.0",
@@ -56,7 +67,10 @@
     "twgl.js": "^7.0.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/server": "^2.4.0",
     "@playwright/test": "^1.64.1",
+    "@tauri-apps/api": "~2.11.0",
+    "@tauri-apps/cli": "^2.12.4",
     "@types/bun": "^1.4.3",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
@@ -66,6 +80,10 @@
     "typescript": "~5.8.3",
     "vite": "^7.1.5",
     "vite-plugin-glsl": "^1.5.1",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "zod": "^4.6.7"
+  },
+  "pixprite": {
+    "repo": "vicimpa/pixprite"
   }
 }

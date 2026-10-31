@@ -10,10 +10,11 @@ import { ExtFrame } from "~/ui/ExtFrame";
 import { Icon } from "~/ui/Icon";
 import { signal } from "@preact/signals-react";
 import { useSignals } from "@preact/signals-react/runtime";
-import { useEffect, useState, type FC } from "react";
+import { useEffect, useRef, useState, type FC } from "react";
 import styled from "styled-components";
 import { activeTab, dockOf, hiddenPanels, selectTab, panelKey, panelLayout, placePanel, setSideSize, sideSize, togglePanel, type Dock, type PanelPlace, type Side } from "~/core/extensions/panels";
 import { CloseButton, closeLeft } from "~/ui/Dialog";
+import { trackPointer } from "~/ui/trackPointer";
 import { Splitter } from "~/ui/Splitter";
 import { contributions, extensionsHost } from "./bridge";
 import type { PixelData } from "./types";
@@ -40,6 +41,7 @@ const Floating = styled(PanelBox)`
 
 /** Edges and corner a floating window is resized by; they lie over the frame so it can't take the pointer */
 const Grip = styled.div`
+  touch-action: none;
   position: absolute;
   z-index: 1;
   &[data-edge=e] { top: 0; right: -3px; width: 6px; bottom: 6px; cursor: ew-resize; }
@@ -61,7 +63,7 @@ const Head = styled.header`
   user-select: none;
 
   & > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  &[data-float=true] { cursor: move; }
+  &[data-float=true] { cursor: move; touch-action: none; }
   /* Close button on the left on macOS, as in dialogs */
   &[data-close-left=true] { flex-direction: row-reverse; padding: 0 6px 0 2px; }
 `;
@@ -81,21 +83,6 @@ const minH = (p: Panel) => Math.max(MIN_H, p.minHeight ?? 0);
 
 /** Where a panel shows: the user's choice only when the extension lets it be detached */
 const placeOf = (p: Panel): Dock => p.detachable ? dockOf(panelKey(p.ext, p.id), p.dock) : p.dock;
-
-/** Follows the pointer until it is released; a shield over the page keeps frames from taking it */
-function track(e: React.PointerEvent, setBusy: (b: boolean) => void, move: (dx: number, dy: number) => void) {
-  if (e.button !== 0) return;
-  e.preventDefault();
-  e.stopPropagation();
-  const el = e.currentTarget as HTMLElement;
-  el.setPointerCapture(e.pointerId);
-  const x0 = e.clientX, y0 = e.clientY;
-  setBusy(true);
-  const onMove = (ev: PointerEvent) => move(ev.clientX - x0, ev.clientY - y0);
-  const up = () => { setBusy(false); el.removeEventListener('pointermove', onMove); el.removeEventListener('pointerup', up); };
-  el.addEventListener('pointermove', onMove);
-  el.addEventListener('pointerup', up);
-}
 
 /** Title bar: drag to move a floating panel, detach / dock (when allowed), close */
 const PanelHead: FC<{ p: Panel; floating: boolean; onDrag?: (e: React.PointerEvent) => void; }> = ({ p, floating, onDrag }) => {
@@ -128,20 +115,42 @@ const FloatingPanel: FC<{ p: Panel; }> = ({ p }) => {
   const x = Math.max(0, Math.min(innerWidth - 80, place.x ?? innerWidth - w - 24));
   const y = Math.max(0, Math.min(innerHeight - 40, place.y ?? 80));
   const [busy, setBusy] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
 
-  const drag = (e: React.PointerEvent) => track(e, setBusy, (dx, dy) => placePanel(key, { x: Math.round(x + dx), y: Math.round(y + dy) }));
-  const resize = (edge: string) => (e: React.PointerEvent) => track(e, setBusy, (dx, dy) => {
-    const patch: PanelPlace = {};
-    if (edge.includes('e')) patch.w = Math.max(minW(p), Math.round(w + dx));
-    if (edge.includes('w')) { patch.w = Math.max(minW(p), Math.round(w - dx)); patch.x = Math.round(x + w - patch.w); }
-    if (edge.includes('s')) patch.h = Math.max(minH(p), Math.round(h + dy));
-    placePanel(key, patch);
-  });
+  const drag = (e: React.PointerEvent) => {
+    const el = box.current;
+    if (!el || e.button !== 0) return;
+    e.stopPropagation(); setBusy(true); el.style.willChange = 'transform';
+    let nextX = x, nextY = y;
+    trackPointer(e, (dx, dy) => {
+      nextX = Math.max(0, Math.min(innerWidth - 80, Math.round(x + dx)));
+      nextY = Math.max(0, Math.min(innerHeight - 40, Math.round(y + dy)));
+      el.style.transform = `translate3d(${nextX - x}px, ${nextY - y}px, 0)`;
+    }, () => {
+      Object.assign(el.style, { left: `${nextX}px`, top: `${nextY}px`, transform: '', willChange: '' });
+      placePanel(key, { x: nextX, y: nextY }); setBusy(false);
+    });
+  };
+  const resize = (edge: string) => (e: React.PointerEvent) => {
+    const el = box.current;
+    if (!el || e.button !== 0) return;
+    e.stopPropagation(); setBusy(true);
+    let patch: PanelPlace = {};
+    trackPointer(e, (dx, dy) => {
+      patch = {};
+      if (edge.includes('e')) patch.w = Math.max(minW(p), Math.round(w + dx));
+      if (edge.includes('w')) { patch.w = Math.max(minW(p), Math.round(w - dx)); patch.x = Math.round(x + w - patch.w); }
+      if (edge.includes('s')) patch.h = Math.max(minH(p), Math.round(h + dy));
+      if (patch.w !== undefined) el.style.width = `${patch.w}px`;
+      if (patch.h !== undefined) el.style.height = `${patch.h}px`;
+      if (patch.x !== undefined) el.style.left = `${patch.x}px`;
+    }, () => { placePanel(key, patch); setBusy(false); });
+  };
 
   return (
     <>
       {busy && <Shield style={{ cursor: 'grabbing' }} />}
-      <Floating style={{ left: x, top: y, width: w, height: h }}>
+      <Floating ref={box} style={{ left: x, top: y, width: w, height: h }}>
         <PanelHead p={p} floating onDrag={drag} />
         <ExtFrame ext={p.ext} role="panel" contribution={p.id} page={p.page} title={host.label(p.ext, p.label)} />
         {['e', 's', 'w', 'se', 'sw'].map(edge => <Grip key={edge} data-edge={edge} onPointerDown={resize(edge)} />)}

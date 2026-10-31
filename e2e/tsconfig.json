@@ -2,7 +2,11 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "tsBuildInfoFile": "../node_modules/.tmp/e2e.tsbuildinfo",
-    "types": ["bun"]
+    "types": ["bun"],
+    "paths": {
+      "@pixprite/api": ["../packages/api/src/index.ts"],
+      "@pixprite/api/*": ["../packages/api/src/*"]
+    }
   },
   "include": ["*.ts", "../playwright.config.ts"]
 }

@@ -24,7 +24,7 @@
     "*.ts"
   ],
   "exclude": [
-    "runner.ts",
+    "runner.ts", "interaction-check.ts", "native-interaction-check.ts",
     "vite.config.ts",
     "vite.security.config.ts",
     "compare.ts",

@@ -85,10 +85,8 @@ for (const fallback of [false, true]) {
     expect([...cached].sort()).toEqual(manifest.map(([file]) => path + file).sort());
     expect(cached.some(url => url.includes('compute.worker-'))).toBe(true);
     expect(cached.some(url => url.endsWith('.woff2'))).toBe(true);
-    expect(cached.some(url => url.includes('NewSprite-'))).toBe(true);
-    expect(cached.some(url => url.includes('GifDecode-'))).toBe(true);
-    // None of these features has executed: precache requests do not execute chunks.
-    expect(await page.evaluate(() => performance.getEntriesByType('resource').some(e => /NewSprite-|EditorWorkspace-|GifDecode-/.test(e.name)))).toBe(false);
+    expect(cached.filter(url => url.endsWith('.js') && !url.endsWith('/sw.js'))).toHaveLength(2);
+    // UI and codecs live in the browser entry; the self-contained worker is separate.
     await context.setOffline(true);
     await page.reload();
     await expect(page.getByRole('button', { name: 'Custom size…', exact: true })).toBeVisible();
@@ -148,7 +146,7 @@ test('new deploy waits for every old tab, pins HTML/assets, preserves unsaved pr
   const html = await (await request.get(path)).text();
   expect(html).toContain('content="b"');
   expect(html).toContain('assets-b/');
-  const oldAsset = await page.evaluate(async key => (await (await caches.open(key)).keys()).find(r => r.url.includes('NewSprite-'))!.url, oldKeys[0]);
+  const oldAsset = await page.evaluate(async key => (await (await caches.open(key)).keys()).find(r => /\/assets-a\/index-.*\.js$/.test(r.url))!.url, oldKeys[0]);
   expect((await request.get(oldAsset)).status()).toBe(404);
   // A foreign cache with stale bytes at a new-release URL must never override B's own snapshot.
   const staleUrl = oldAsset.replace('/assets-a/', '/assets-b/');

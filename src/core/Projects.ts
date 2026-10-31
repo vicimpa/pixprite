@@ -1,13 +1,15 @@
 /**
- * Project storage in IndexedDB: a light "meta" record per project (name, size, thumbnail)
+ * Project storage (native .pixprite files, IndexedDB in the browser): a light "meta" record per project (name, size, thumbnail)
  * for the home page, and the full document in a separate store.
  * Folders only group the meta records; documents never move.
  */
 
+import { nativeLibrary, enableNativeLibrary, libraryCall, libraryGet, libraryList, libraryPut, libraryDelete, type LibraryInfo, type LibraryGroup } from './NativeLibrary';
 import { hydrateStored, PREVIEWS, referencedResources, RESOURCES, writePreview, writeResources } from "./DocumentStorage";
 import { BackgroundWorkerError, runTask } from "~/core/BackgroundTask";
 import { Sprite, type ProjectInfo } from "~/core/Sprite";
 import { signal } from "@preact/signals-react";
+import { windowRunningKey } from './WindowSession';
 
 export type ProjectMeta = {
   id: string;
@@ -153,6 +155,7 @@ function scheduleResourceCleanup() {
 
 /** One transaction scans all owners, so concurrent saves and deletion cannot race collection. */
 export async function collectUnusedResources() {
+  if (nativeLibrary) return;
   const owners = [DATA, GOOD_DATA, SESSIONS, SNAP_DATA];
   const tx = (await db()).transaction([...owners, RESOURCES], 'readwrite');
   const committed = done(tx), live = new Set<string>();
@@ -183,6 +186,7 @@ export const newProjectId = () => crypto.randomUUID?.() ?? `${Date.now().toStrin
 
 /** All projects, most recently changed first */
 export async function listProjects(): Promise<ProjectMeta[]> {
+  if (nativeLibrary) return (await libraryList<{ meta: ProjectMeta }>('projects')).map(r => r.meta).sort((a, b) => b.updated - a.updated);
   const all = await readMetadata<ProjectMeta>(META, 'project');
   const missing = all.filter(p => p.bytes === undefined);
   if (missing.length) {
@@ -228,6 +232,13 @@ async function previousRevision(store: string, key: string, revision: string) {
 }
 
 export async function saveProjectData(meta: ProjectMeta, data: unknown, editor?: unknown) {
+  if (nativeLibrary) {
+    const record = structuredClone({ meta, data, editor });
+    record.meta.bytes = await validateStoredDocumentAsync(record.data);
+    await libraryPut('projects', record.meta.id, { ...record, validated: true }, true);
+    if (record.editor !== undefined) await saveProjectState(record.meta.id, record.editor);
+    return;
+  }
   const copy = structuredClone(data), nextMeta = structuredClone(meta), nextEditor = structuredClone(editor);
   const id = nextMeta.id;
   const next = { ...nextMeta, bytes: await validateStoredDocumentAsync(copy) };
@@ -268,6 +279,11 @@ export async function saveProjectData(meta: ProjectMeta, data: unknown, editor?:
 
 /** Explicit recovery only: callers open this as a new unsaved document. */
 export async function loadLastGoodProject(id: string) {
+  if (nativeLibrary) {
+    const record = await libraryGet<{ meta: ProjectMeta; data: unknown }>('goodProjects', id);
+    if (record) await validateStoredDocumentAsync(record.data);
+    return record;
+  }
   const tx = (await db()).transaction([GOOD_META, GOOD_DATA, RESOURCES, PREVIEWS], 'readonly');
   const [meta, data, thumb] = await Promise.all([
     request(tx.objectStore(GOOD_META).get(id)), documentRequest(tx, GOOD_DATA, id), request(tx.objectStore(PREVIEWS).get(`good:${id}`)),
@@ -278,16 +294,25 @@ export async function loadLastGoodProject(id: string) {
 }
 
 export async function loadProjectData(id: string): Promise<unknown | null> {
+  if (nativeLibrary) return (await libraryGet('projects', id))?.data ?? null;
   return (await readDocument(DATA, id)) ?? null;
 }
 
 export async function getProjectMeta(id: string): Promise<ProjectMeta | null> {
+  if (nativeLibrary) return (await libraryList<{ id: string; meta: ProjectMeta }>('projects')).find(r => r.id === id)?.meta ?? null;
   const tx = (await db()).transaction([META, PREVIEWS], 'readonly');
   const [meta, thumb] = await Promise.all([request(tx.objectStore(META).get(id) as IDBRequest<ProjectMeta | undefined>), request(tx.objectStore(PREVIEWS).get(`project:${id}`))]);
   return meta ? { ...meta, thumb: thumb ?? meta.thumb ?? '' } : null;
 }
 
 export async function deleteProject(id: string) {
+  if (nativeLibrary) {
+    await libraryDelete('projects', id, true);
+    await libraryDelete('goodProjects', id);
+    await libraryDelete('states', id);
+    await deleteSnapshots(id);
+    return;
+  }
   const tx = (await db()).transaction([META, DATA, STATE, GOOD_META, GOOD_DATA, REVISIONS, PREVIEWS], 'readwrite');
   tx.objectStore(REVISIONS).put(`deleted:${newProjectId()}`, `project:${id}`);
   tx.objectStore(META).delete(id);
@@ -313,12 +338,14 @@ export async function duplicateProject(id: string, name: string) {
 }
 
 export async function saveProjectState(id: string, editor: unknown) {
+  if (nativeLibrary) return libraryPut('states', id, { editor });
   const tx = (await db()).transaction(STATE, 'readwrite');
   tx.objectStore(STATE).put(editor, id);
   await done(tx);
 }
 
 export async function loadProjectState(id: string): Promise<Record<string, unknown> | null> {
+  if (nativeLibrary) return (await libraryGet<{ editor: Record<string, unknown> }>('states', id))?.editor ?? null;
   const tx = (await db()).transaction(STATE, 'readonly');
   return (await request(tx.objectStore(STATE).get(id))) ?? null;
 }
@@ -352,11 +379,13 @@ export function setHomeFolder(id: string | null) {
 }
 
 export async function listFolders(): Promise<FolderMeta[]> {
+  if (nativeLibrary) return (await libraryList<{ meta: FolderMeta }>('folders')).map(r => r.meta);
   const tx = (await db()).transaction(FOLDERS, 'readonly');
   return request(tx.objectStore(FOLDERS).getAll() as IDBRequest<FolderMeta[]>);
 }
 
 export async function saveFolder(folder: FolderMeta) {
+  if (nativeLibrary) return libraryPut('folders', folder.id, { meta: folder });
   const tx = (await db()).transaction(FOLDERS, 'readwrite');
   tx.objectStore(FOLDERS).put(folder);
   await done(tx);
@@ -390,6 +419,11 @@ export function folderSubtree(folders: FolderMeta[], id: string) {
 
 /** Moves a project into a folder (null: the root); the project's own time is kept */
 export async function moveProject(id: string, folderId: string | null) {
+  if (nativeLibrary) {
+    const meta = await getProjectMeta(id);
+    if (meta) await libraryPut('projects', id, { meta: { ...meta, folderId } }, false, true);
+    return;
+  }
   const meta = await getProjectMeta(id);
   if (!meta) return;
   const tx = (await db()).transaction(META, 'readwrite');
@@ -411,6 +445,20 @@ export async function moveFolder(id: string, parentId: string | null) {
  * 'all' deletes everything inside, projects with their snapshots. Returns the deleted project ids.
  */
 export async function deleteFolder(id: string, mode: 'lift' | 'all') {
+  if (nativeLibrary) {
+    const folders = await listFolders(), folder = folders.find(f => f.id === id);
+    if (!folder) return [];
+    const projects = await listProjects(), gone = folderSubtree(folders, id);
+    if (mode === 'lift') {
+      for (const f of folders) if (f.parentId === id) await saveFolder({ ...f, parentId: folder.parentId });
+      for (const p of projects) if (p.folderId === id) await moveProject(p.id, folder.parentId);
+      await libraryDelete('folders', id); return [];
+    }
+    const doomed = projects.filter(p => p.folderId && gone.has(p.folderId)).map(p => p.id);
+    for (const p of doomed) await deleteProject(p);
+    for (const f of gone) await libraryDelete('folders', f);
+    return doomed;
+  }
   const folders = await listFolders();
   const folder = folders.find(f => f.id === id);
   if (!folder) return [];
@@ -438,6 +486,12 @@ export type SessionRecord = { head?: SessionHead; data: unknown; editor: Record<
 
 /** Header, working pixels and editor state either all commit or all stay at their previous values. */
 export async function saveSessionRecord(id: string, value: SessionRecord, changed = true) {
+  if (nativeLibrary) {
+    const copy = structuredClone(value);
+    if (changed) await validateStoredDocumentAsync(copy.data);
+    await libraryPut('sessions', id, changed ? { ...copy, validated: true } : { head: copy.head, editor: copy.editor }, changed, !changed);
+    return;
+  }
   const copy = structuredClone(value);
   if (changed) await validateStoredDocumentAsync(copy.data);
   const bundle = changed ? await runTask('splitStorageDocument', { data: copy.data }) : null;
@@ -469,6 +523,11 @@ export async function saveSessionRecord(id: string, value: SessionRecord, change
 }
 
 export async function loadLastGoodSession(id: string): Promise<SessionRecord | null> {
+  if (nativeLibrary) {
+    const record = await libraryGet<SessionRecord>('goodSessions', id);
+    if (record) await validateStoredDocumentAsync(record.data);
+    return record;
+  }
   const tx = (await db()).transaction([SESSIONS, RESOURCES], 'readonly');
   const record = await new Promise<any>((resolve, reject) => {
     const req = tx.objectStore(SESSIONS).get(`good:${id}`);
@@ -485,6 +544,7 @@ export async function loadLastGoodSession(id: string): Promise<SessionRecord | n
 }
 
 export async function loadSession(id: string) {
+  if (nativeLibrary) return libraryGet<SessionRecord>('sessions', id);
   const tx = (await db()).transaction([SESSIONS, RESOURCES], 'readonly');
   const s = tx.objectStore(SESSIONS);
   const [head, data, editor] = await Promise.all([
@@ -494,6 +554,7 @@ export async function loadSession(id: string) {
 }
 
 export async function deleteSession(id: string) {
+  if (nativeLibrary) { await libraryDelete('sessions', id, true); await libraryDelete('goodSessions', id); return; }
   const tx = (await db()).transaction([SESSIONS, REVISIONS], 'readwrite');
   tx.objectStore(REVISIONS).put(`deleted:${newProjectId()}`, `session:${id}`);
   const s = tx.objectStore(SESSIONS);
@@ -504,6 +565,7 @@ export async function deleteSession(id: string) {
 
 /** Storage used and available (when the browser reports it) */
 export async function storageEstimate() {
+  if (nativeLibrary) return null;
   try {
     const e = await navigator.storage?.estimate?.();
     return e ? { used: e.usage ?? 0, quota: e.quota ?? 0 } : null;
@@ -529,6 +591,15 @@ let lastSnapshotTime = 0;
 
 /** Adds a snapshot and drops the oldest ones beyond `keep` */
 export async function saveSnapshot(meta: Omit<SnapshotMeta, 'id' | 'time'>, data: unknown, keep = SNAPSHOTS_KEPT) {
+  if (nativeLibrary) {
+    const copy = structuredClone(data), captured = structuredClone(meta);
+    const bytes = await validateStoredDocumentAsync(copy);
+    const time = lastSnapshotTime = Math.max(Date.now(), lastSnapshotTime + 1);
+    const id = `${captured.owner}:${time}:${newProjectId()}`;
+    await libraryPut('snapshots', id, { meta: { ...captured, id, time, bytes }, data: copy });
+    await deleteSnapshotIds((await listSnapshots(captured.owner)).slice(keep).map(s => s.id));
+    return;
+  }
   const copy = structuredClone(data), capturedMeta = structuredClone(meta);
   const bytes = await validateStoredDocumentAsync(copy);
   const bundle = await runTask('splitStorageDocument', { data: copy });
@@ -556,6 +627,7 @@ export async function saveSnapshot(meta: Omit<SnapshotMeta, 'id' | 'time'>, data
 
 /** Snapshots of one owner (or all), newest first */
 export async function listSnapshots(owner?: string): Promise<SnapshotMeta[]> {
+  if (nativeLibrary) return (await libraryList<{ meta: SnapshotMeta }>('snapshots')).map(r => r.meta).filter(s => owner === undefined || s.owner === owner).sort((a, b) => b.time - a.time);
   const all = await readMetadata<SnapshotMeta>(SNAP_META, 'snapshot', owner);
   const missing = all.filter(s => s.bytes === undefined);
   if (missing.length) {
@@ -571,10 +643,12 @@ export async function listSnapshots(owner?: string): Promise<SnapshotMeta[]> {
 }
 
 export async function loadSnapshot(id: string): Promise<unknown | null> {
+  if (nativeLibrary) return (await libraryGet('snapshots', id))?.data ?? null;
   return (await readDocument(SNAP_DATA, id)) ?? null;
 }
 
 async function deleteSnapshotIds(ids: string[]) {
+  if (nativeLibrary) { for (const id of ids) await libraryDelete('snapshots', id); return; }
   const tx = (await db()).transaction([SNAP_META, SNAP_DATA, PREVIEWS], 'readwrite');
   for (const id of ids) { tx.objectStore(SNAP_META).delete(id); tx.objectStore(SNAP_DATA).delete(id); tx.objectStore(PREVIEWS).delete(`snapshot:${id}`); }
   await done(tx);
@@ -600,7 +674,7 @@ export async function deleteSnapshots(owner: string) {
 
 // Clean shutdown marker: set while the app runs, cleared when the page is left normally
 
-const RUNNING = 'pixprite:running';
+const RUNNING = windowRunningKey();
 
 /** Marks the session as running; returns true when the previous one didn't close cleanly */
 export function startSession(): boolean {
@@ -613,4 +687,42 @@ export function startSession(): boolean {
   // Back from the page cache: running again
   addEventListener('pageshow', e => { if (e.persisted) try { localStorage.setItem(RUNNING, '1'); } catch { /* ignore */ } });
   return unclean;
+}
+
+
+/** One-time copy, never a destructive move. The old database remains a recovery source. */
+export async function initProjectLibrary() {
+  if (!window.pixpriteDesktop?.library) return;
+  const info = await libraryCall<LibraryInfo>({ action: 'info' });
+  if (!info.migrated) {
+    const migrate = async (group: LibraryGroup, id: string, record: import('./NativeLibrary').LibraryRecord) => {
+      if (record.data !== undefined) record.validated = await validDocument(record.data);
+      await libraryCall({ action: 'import', group, id, record });
+    };
+    for (const folder of await listFolders()) await migrate('folders', folder.id, { meta: folder });
+    for (const meta of await listProjects()) {
+      const data = await loadProjectData(meta.id);
+      if (!data) throw new Error(`Missing project data: ${meta.name}`);
+      await migrate('projects', meta.id, { meta, data });
+      const editor = await loadProjectState(meta.id);
+      if (editor) await migrate('states', meta.id, { editor });
+      const good = await loadLastGoodProject(meta.id);
+      if (good) await migrate('goodProjects', meta.id, good);
+    }
+    const keys = await request((await db()).transaction(SESSIONS, 'readonly').objectStore(SESSIONS).getAllKeys());
+    const sessionIds = new Set(keys.flatMap(key => typeof key === 'string' ? key.match(/^(?:data|head|good|editor):(.+)$/)?.slice(1) ?? [] : []));
+    for (const id of sessionIds) {
+      const record = await loadSession(id);
+      if (record) await migrate('sessions', id, record);
+      const good = await loadLastGoodSession(id);
+      if (good) await migrate('goodSessions', id, good);
+    }
+    for (const meta of await listSnapshots()) {
+      const data = await loadSnapshot(meta.id);
+      if (!data) throw new Error(`Missing snapshot: ${meta.name}`);
+      await migrate('snapshots', meta.id, { meta, data });
+    }
+    await libraryCall({ action: 'migrated' });
+  }
+  enableNativeLibrary();
 }

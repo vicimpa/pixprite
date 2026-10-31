@@ -9,8 +9,7 @@ export const Bar = styled.div`
   align-items: center;
   gap: 2px;
   padding: 4px 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
 `;
 
 export const Tool = styled.button`
@@ -46,20 +45,28 @@ export const Corner = styled.span`
   opacity: .7;
 `;
 
-export const Flyout = styled.div`
-  position: fixed;
-  z-index: 1000;
+export const Palette = styled.div`
   display: flex;
-  flex-direction: column;
-  padding: 2px;
-  background-color: var(--menu);
-  border: 1px solid var(--b1);
-  box-shadow: inset 1px 1px 0 var(--hilite), 3px 3px 0 var(--shadow);
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+  width: min(620px, calc(100vw - 34px));
+`;
+
+export const ToolGroup = styled.div`
+  flex: 1 1 170px;
+  border-left: 1px solid var(--b2);
+  padding-left: 4px;
 `;
 
 export const FlyItem = styled.div`
   display: flex;
   align-items: center;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
   gap: 8px;
   padding: 3px 6px 3px 4px;
   cursor: pointer;

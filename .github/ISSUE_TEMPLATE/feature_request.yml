@@ -1,0 +1,17 @@
+name: Feature request
+description: Suggest an improvement to Pixprite.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the workflow and the difficulty you encounter.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested improvement
+      description: Describe the behavior you would like and any alternatives you considered.
+    validations:
+      required: true

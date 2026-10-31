@@ -1,41 +1,30 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# Dependencies and generated output
+node_modules/
+/dist/
+*.tsbuildinfo
+/.swc/
+/public/extensions/
 
-node_modules
-dist
-dist-ssr
+# Local configuration and logs
 *.local
+.env
+.env.*
+!.env.example
+logs/
+*.log
 
-# Editor directories and files
+# Editors and operating systems
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-# Build caches
-*.tsbuildinfo
-.swc
-
-# Extensions are kept as source (extensions/); old builds went here
-public/extensions
-
-# Browser test artifacts
-playwright-report
-test-results
-
-# Separate browser benchmark build and raw machine-specific measurements
-.benchmark-dist
-benchmark-results
-
-.extension-dist
+# Tauri generated schemas and Rust fallback output
+/src-tauri/gen/
+/src-tauri/target/

@@ -15,6 +15,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
@@ -60,8 +63,8 @@ jobs:
         with:
           name: browser-failures
           path: |
-            playwright-report/
-            test-results/
+            dist/reports/playwright/
+            dist/reports/e2e/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -70,7 +73,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: editor-dist
-          path: dist/
+          path: dist/web/
           retention-days: 1
 
   deploy:
@@ -87,11 +90,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: editor-dist
-          path: dist
+          path: dist/web
       - name: Deploy
         uses: crazy-max/ghaction-github-pages@v4
         with:
           target_branch: gh-pages
-          build_dir: dist
+          build_dir: dist/web
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

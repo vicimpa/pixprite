@@ -9,6 +9,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join, relative, sep } from "path";
 import type { Manifest } from "@pixprite/api";
 import { referencedKeys, resolveString, validateManifest } from "../src/core/extensions/manifest";
+import { MAX_ICON_PACK_BYTES, parseIconPack } from '../src/core/extensions/iconPack';
 
 export const ROOT = join(import.meta.dirname ?? __dirname, '..');
 export const SRC = join(ROOT, 'extensions');
@@ -64,8 +65,15 @@ export function check(dir: string, m: Manifest): string[] {
   if (m.entry && !sourceOf(dir, m.entry)) problems.push(`entry ${m.entry}: no src/${m.entry.replace(/\.js$/, '.ts')}`);
   for (const p of [...c.panels ?? [], ...c.widgets ?? []]) if (!sourceOf(dir, p.page) && !existsSync(join(dir, 'src', p.page)) && !existsSync(join(dir, p.page)))
     problems.push(`page ${p.page}: no src/${p.page} or src/${p.page.replace(/\.html$/, '.ts')}`);
-  for (const f of [m.icon, ...(c.tools ?? []).map(t => t.icon), ...(c.languages ?? []).flatMap(l => [l.dict, ...Object.values(l.extensions ?? {})])])
+  for (const f of [m.icon, ...(c.tools ?? []).map(t => t.icon), ...(c.iconPacks ?? []).map(p => p.icons), ...(c.languages ?? []).flatMap(l => [l.dict, ...Object.values(l.extensions ?? {})])])
     if (f && !existsSync(join(dir, f))) problems.push(`missing file ${f}`);
+  for (const pack of c.iconPacks ?? []) {
+    try {
+      const file = join(dir, pack.icons);
+      if (statSync(file).size > MAX_ICON_PACK_BYTES) throw new Error('icon pack exceeds 256 KiB');
+      parseIconPack(readJson(file));
+    } catch (e) { problems.push(`${pack.icons}: ${e instanceof Error ? e.message : e}`); }
+  }
 
   // Own strings: every locale has the keys of en.json, and every %key% in the manifest exists
   const locales = readLocales(dir, m);

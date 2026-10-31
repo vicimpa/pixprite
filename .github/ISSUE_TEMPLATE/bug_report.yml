@@ -1,0 +1,25 @@
+name: Bug report
+description: Report a reproducible problem with the editor.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the actual behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include a minimal example document or screenshot if it helps. Remove private content before attaching files.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Pixprite version, operating system, browser/version or desktop app.
+      placeholder: 0.0.2, macOS, desktop app
+    validations:
+      required: true

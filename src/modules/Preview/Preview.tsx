@@ -1,6 +1,7 @@
 import { t } from "~/core/i18n";
 import { state } from "~/core/State";
 import { Button } from "~/ui/Button";
+import { trackPointer } from "~/ui/trackPointer";
 import { Canvas } from "~/ui/Canvas";
 import { Icon } from "~/ui/Icon";
 import { Select } from "~/ui/Select";
@@ -92,6 +93,8 @@ const Title = styled.div`
   background-color: var(--face);
   border-bottom: 1px solid var(--b1);
   cursor: move;
+  touch-action: none;
+  user-select: none;
   flex-shrink: 0;
 `;
 
@@ -118,12 +121,18 @@ export const PreviewWindow: FC = () => {
     // The window is resizable by its corner; keep the size it was given
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const persistSize = () => {
+      clearTimeout(timer);
       const w = el.offsetWidth, h = el.offsetHeight;
       if (w && h && (w !== state.layout.previewW || h !== state.layout.previewH)) state.setLayout({ previewW: w, previewH: h });
-    });
+    };
+    const ro = new ResizeObserver(() => { clearTimeout(timer); timer = setTimeout(persistSize, 150); });
     ro.observe(el);
-    return () => ro.disconnect();
+    addEventListener('pointerup', persistSize);
+    addEventListener('pointercancel', persistSize);
+    return () => { clearTimeout(timer); ro.disconnect(); removeEventListener('pointerup', persistSize); removeEventListener('pointercancel', persistSize); };
+
   }, [state.layout.showPreview]);
   const view = useRef<View>({ zoom: 0, cx: 0, cy: 0 });
   const [tagIndex, setTagIndex] = useState(-1);
@@ -135,12 +144,17 @@ export const PreviewWindow: FC = () => {
   return (
     <Window ref={box} style={{ right: pos.x, top: pos.y, width: previewW, height: previewH }}>
       <Title onPointerDown={e => {
-        // Anchored to the top-right corner, so dragging right decreases `x`
-        const start = pos, cx = e.clientX, cy = e.clientY;
-        const move = (ev: PointerEvent) => setPos({ x: Math.max(0, start.x - (ev.clientX - cx)), y: Math.max(0, start.y + ev.clientY - cy) });
-        const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); };
-        addEventListener('pointermove', move);
-        addEventListener('pointerup', up);
+        const el = box.current;
+        if (!el || e.button !== 0) return;
+        let next = pos;
+        el.style.willChange = 'transform';
+        trackPointer(e, (dx, dy) => {
+          next = { x: Math.max(0, pos.x - dx), y: Math.max(0, pos.y + dy) };
+          el.style.transform = `translate3d(${pos.x - next.x}px, ${next.y - pos.y}px, 0)`;
+        }, () => {
+          Object.assign(el.style, { right: `${next.x}px`, top: `${next.y}px`, transform: '', willChange: '' });
+          setPos(next);
+        });
       }}>
         <span style={{ flexGrow: 1 }}>{t('common.preview')}</span>
         {state.sprite.tags.length > 0 && (

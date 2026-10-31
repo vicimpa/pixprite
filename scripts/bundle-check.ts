@@ -45,7 +45,7 @@ export async function measureBundle(directory: string) {
 
 if (import.meta.main) {
   try {
-    const sizes = await measureBundle(process.argv[2] ?? 'dist');
+    const sizes = await measureBundle(process.argv[2] ?? 'dist/web');
     const budgetFile = process.argv[3] ?? new URL('./bundle-budgets.json', import.meta.url);
     const budgets = JSON.parse(await readFile(budgetFile, 'utf8')) as Budgets;
     let exceeded = false;

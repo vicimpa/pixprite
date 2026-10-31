@@ -18,14 +18,11 @@ export default defineConfig({
     manifest: true,
     rollupOptions: {
       output: {
-        onlyExplicitManualChunks: true,
-        manualChunks(id) {
-          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'react';
-        },
+        inlineDynamicImports: true,
       },
     },
     emptyOutDir: true,
-    outDir: '../dist',
+    outDir: '../dist/web',
   },
   resolve: {
     alias: [{ find: /^@pixprite\/api$/, replacement: api }],
@@ -37,6 +34,7 @@ export default defineConfig({
   // Workers (src/core/compute.worker.ts) resolve the same `~/core/…` paths
   worker: {
     format: 'es',
+    rollupOptions: { output: { inlineDynamicImports: true } },
     plugins: () => [paths({ root: '..' }), bundleGraph('worker')],
   },
   plugins: [

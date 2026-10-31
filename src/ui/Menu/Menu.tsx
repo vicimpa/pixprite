@@ -7,6 +7,8 @@ import { createPortal } from "react-dom";
 import * as styled from "./styled";
 
 export type MenuEntry = {
+  /** Semantic command ID, also used by the native macOS menu bridge. */
+  id?: string;
   /** Shown as is: callers pass translated text */
   label: string;
   shortcut?: string;

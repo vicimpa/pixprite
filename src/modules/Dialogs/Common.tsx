@@ -15,6 +15,8 @@ import { useEffect, useMemo, useRef, useState, type FC, type ReactNode } from "r
 import styled from "styled-components";
 import { keyNames, LANGUAGES, t } from "~/core/i18n";
 import { THEMES } from "~/core/Themes";
+import { iconPackChoices, resolveIconPack } from '~/core/IconPacks';
+import { Icon } from '~/ui/Icon';
 import type { Rect } from "~/core/Image";
 import { InfoFields } from "~/modules/ProjectInfo";
 
@@ -699,6 +701,7 @@ const History: FC<{ close: () => void; }> = ({ close }) => {
 };
 
 const Preferences: FC<{ close: () => void; section?: string; }> = ({ close }) => {
+  useSignals();
   const [p, setP] = useState<Prefs>(state.prefs);
   const set = (patch: Partial<Prefs>) => {
     const next = { ...p, ...patch };
@@ -743,6 +746,16 @@ const Preferences: FC<{ close: () => void; section?: string; }> = ({ close }) =>
           {Object.entries(THEMES).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
         </Select>
       </Field>
+      <Field label={t('dialog.preferences.iconPack')}>
+        <Select title={t('dialog.preferences.iconPack')} value={resolveIconPack(p.iconPack)}
+          onChange={e => set({ iconPack: e.target.value })}>
+          {iconPackChoices(t).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+        </Select>
+      </Field>
+      <Row aria-label={t('dialog.preferences.iconPreview')} style={{ gap: 12, flexWrap: 'wrap' }}>
+        {(['pencil', 'eraser', 'fill', 'move', 'folder', 'gear', 'play', 'trash'] as const).map(name => <Icon key={name} name={name} />)}
+      </Row>
+      <Muted style={{ whiteSpace: 'normal' }}>{t('dialog.preferences.iconPacksHint')}</Muted>
 
       <Section>{t('dialog.preferences.canvas')}</Section>
       <Field label={t('dialog.preferences.checkerboard')}>

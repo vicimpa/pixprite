@@ -4,7 +4,7 @@ import { build } from 'vite';
 import { resolve, sep } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 await build({ configFile: resolve(import.meta.dir, 'vite.config.ts'), logLevel: 'warn' });
-const root = resolve(import.meta.dir, '../.benchmark-dist');
+const root = resolve(import.meta.dir, '../dist/benchmarks');
 const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch(request) {
   const path = resolve(root, '.' + new URL(request.url).pathname);
   if (!path.startsWith(root + sep)) return new Response('', { status: 403 });
@@ -31,7 +31,7 @@ try {
   await page.addInitScript(() => localStorage.setItem('pixprite:prefs', JSON.stringify({ language: 'en', autosave: false })));
   await page.goto(`http://127.0.0.1:${server.port}/benchmarks/virtualization.html`);
   await page.getByRole('button', { name: 'Custom size…', exact: true }).waitFor();
-  await mkdir('benchmark-results/virtualization', { recursive: true });
+  await mkdir('dist/reports/benchmarks/virtualization', { recursive: true });
   await api('timeline');
   await expect(page.locator('[data-hit=cel]').first()).toBeVisible();
   await count('[data-hit=cel]', 1200);
@@ -53,7 +53,7 @@ try {
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down();
   await page.mouse.move(b.x + b.width / 4, b.y + b.height / 2, { steps: 5 }); await page.mouse.up();
   await expect.poll(() => api('frames')).toEqual([80, 100, 110, 90, 120]);
-  await page.screenshot({ path: 'benchmark-results/virtualization/timeline.png' });
+  await page.screenshot({ path: 'dist/reports/benchmarks/virtualization/timeline.png' });
   await api('fold', true);
   await expect(page.locator('[data-hit=layer][data-l="98"]')).toHaveCount(0);
   await expect(page.locator('[data-hit=layer][data-l="89"]')).toBeVisible();
@@ -129,7 +129,7 @@ try {
   await expect(page.locator('[data-key="f:f999"]')).toBeFocused();
   await page.keyboard.press('End');
   await expect(page.locator('[data-key="p:p0"]')).toBeFocused();
-  await page.screenshot({ path: 'benchmark-results/virtualization/home.png' });
+  await page.screenshot({ path: 'dist/reports/benchmarks/virtualization/home.png' });
   await api('snapshots');
   const snapshots = page.getByRole('dialog', { name: 'Snapshots of "Fixture"', exact: true }); await snapshots.waitFor();
   await count('[data-virtual-index]', 50);

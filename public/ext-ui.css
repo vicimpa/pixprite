@@ -91,7 +91,7 @@ label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 ::-webkit-scrollbar-thumb { background: var(--face); border: 1px solid var(--b1); }
 ::-webkit-scrollbar-track { background: var(--bg2, var(--bg)); }
 
-/* Select lists (ext-ui.js puts them in place of <select>) */
+/* Select lists (the embedded controls script puts them in place of <select>) */
 .px-select {
   display: inline-flex;
   align-items: center;

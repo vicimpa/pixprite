@@ -5,8 +5,9 @@ import { openContextMenu } from "~/ui/Menu";
 import { t } from "~/core/i18n";
 import { Icon } from "~/ui/Icon";
 import { useSignals } from "@preact/signals-react/runtime";
-import { useState, type FC } from "react";
+import { useEffect, useState, type FC } from "react";
 import styled from "styled-components";
+import { WindowControls } from "./WindowControls";
 
 const Bar = styled.div`
   display: flex;
@@ -18,6 +19,12 @@ const Bar = styled.div`
   border-bottom: 1px solid var(--b1);
   overflow: hidden;
   flex-shrink: 0;
+  position: relative;
+  &[data-desktop=true] { padding-right: 112px; -webkit-app-region: drag; }
+  &[data-desktop=true][data-platform=darwin] { padding-left: 78px; padding-right: 4px; }
+  &[data-desktop=true] > * { -webkit-app-region: no-drag; }
+  &[data-desktop=true] > [data-window-drag] { -webkit-app-region: drag; min-width: 48px; }
+  &[data-local-drag=true], &[data-local-drag=true] > [data-window-drag] { -webkit-app-region: no-drag; }
 `;
 
 const Tab = styled.div`
@@ -38,6 +45,7 @@ const Tab = styled.div`
 
   &[data-active=true] { color: var(--fg); background: var(--face-hot); box-shadow: inset 0 2px 0 var(--accent); }
   &[data-drop=true] { box-shadow: inset 3px 0 0 var(--accent); }
+  &[data-home] { justify-content: center; padding: 0 6px; }
   & > span { overflow: hidden; text-overflow: ellipsis; flex-grow: 1; }
 `;
 
@@ -65,58 +73,65 @@ const Fill = styled.div`
 
 export const DocTabs: FC = () => {
   useSignals();
+  const desktop = window.pixpriteDesktop;
   const [drag, setDrag] = useState<{ doc: WeakRef<Sprite>; over: number; } | null>(null);
-
-  return (
-    <Bar
+  const title = state.home ? 'Pixprite' : `${state.sprite.name} — Pixprite`;
+  useEffect(() => { if (desktop) document.title = title; }, [desktop, title]);
+  const drop = (e: React.DragEvent, index: number) => {
+    e.preventDefault(); e.stopPropagation();
+    const source = drag?.doc.deref();
+    if (source && state.docs.includes(source)) state.moveDocument(source, index);
+    setDrag(null);
+  };
+  return <>
+    <Bar data-testid="document-tabs" data-desktop={!!desktop} data-platform={desktop?.platform} data-local-drag={!!drag}
+      onDragOver={e => { if (drag) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } }}
+      onDrop={e => drop(e, state.docs.length)}
       onWheel={e => {
-        // The wheel steps through tabs (no wrap)
         const i = (state.home ? -1 : state.docs.indexOf(state.sprite)) + (e.deltaY > 0 || e.deltaX > 0 ? 1 : -1);
-        if (state.docs[i]) state.switchTo(state.docs[i]);
-        else if (i < 0) state.showHome();
+        if (state.docs[i]) state.switchTo(state.docs[i]); else if (i < 0) state.showHome();
       }}
-      onDoubleClick={e => { if (e.target === e.currentTarget) dialogs.newSprite(); }}
-    >
+      onDoubleClick={e => { if (!desktop && e.target === e.currentTarget) dialogs.newSprite(); }}>
       <Tab data-active={state.home} data-home title={t('tabs.home')} style={{ flex: '0 0 auto' }}
-        onPointerDown={e => { if (e.button === 0) state.showHome(); }}>
-        <Icon name="home" scale="glyph" />
-      </Tab>
+        onPointerDown={e => { if (e.button === 0) state.showHome(); }}><Icon name="home" scale="glyph" /></Tab>
       {state.docs.map((doc, i) => {
-        // React keeps the previous render in its alternate tree. Event props must not
-        // keep an entire closed document alive through that tree or a context menu.
+        const sid = doc.sessionId ??= crypto.randomUUID();
         const ref = new WeakRef(doc);
         const resolve = () => { const current = ref.deref(); return current && state.docs.includes(current) ? current : null; };
-        return (
-          <Tab
-            key={i}
-            data-active={!state.home && doc === state.sprite}
-            data-drop={!!drag && drag.over === i && drag.doc.deref() !== doc}
-            title={`${doc.name} · ${doc.width}×${doc.height}`}
-            draggable
-            onDragStart={() => setDrag({ doc: ref, over: i })}
-            onDragOver={e => { e.preventDefault(); if (drag) setDrag({ ...drag, over: i }); }}
-            onDragEnd={() => setDrag(null)}
-            onDrop={() => { const source = drag?.doc.deref(); if (source && state.docs.includes(source)) state.moveDocument(source, i); setDrag(null); }}
-            onPointerDown={e => {
-              const current = resolve(); if (!current) return;
-              if (e.button === 1) { e.preventDefault(); state.closeDocument(current); }
-              else if (e.button === 0) state.switchTo(current);
-            }}
-            onContextMenu={e => {
-              e.preventDefault();
-              openContextMenu([
-                { label: t('common.close'), run: () => { const current = resolve(); if (current) state.closeDocument(current); } },
-                { label: t('tabs.closeOthers'), run: () => { const current = resolve(); if (current) for (const d of state.docs.slice()) if (d !== current) state.closeDocument(d); } },
-                { label: t('common.duplicate'), run: () => { const current = resolve(); if (current) state.duplicateDocument(current); } },
-              ], e.clientX, e.clientY);
-            }}
-          >
-            <span>{doc.name}</span>
-            <Close data-modified={doc.modified} title={t('tabs.closeMiddleClick')} onPointerDown={e => e.stopPropagation()} onClick={() => { const current = resolve(); if (current) state.closeDocument(current); }}><i>×</i></Close>
-          </Tab>
-        );
+        return <Tab key={sid} data-session={sid}
+          data-active={!state.home && doc === state.sprite}
+          data-drop={!!drag && drag.over === i && drag.doc.deref() !== doc}
+          title={`${doc.name} · ${doc.width}×${doc.height}`} draggable
+          onDragStart={e => {
+            setDrag({ doc: ref, over: i });
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('application/x-pixprite-tab', sid);
+          }}
+          onDragOver={e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; if (drag) setDrag({ ...drag, over: i }); }}
+          onDragEnd={() => setDrag(null)}
+          onDrop={e => drop(e, i)}
+          onPointerDown={e => {
+            const current = resolve(); if (!current) return;
+            if (e.button === 1) { e.preventDefault(); void state.closeDocument(current); }
+            else if (e.button === 0) state.switchTo(current);
+          }}
+          onContextMenu={e => {
+            e.preventDefault();
+            const { clientX, clientY } = e;
+            openContextMenu([
+              { label: t('common.close'), run: () => { const current = resolve(); if (current) void state.closeDocument(current); } },
+              { label: t('tabs.closeOthers'), run: () => { const current = resolve(); if (current) for (const d of state.docs.slice()) if (d !== current) void state.closeDocument(d); } },
+              { label: t('common.duplicate'), run: () => { const current = resolve(); if (current) state.duplicateDocument(current); } },
+            ], clientX, clientY);
+          }}>
+          <span>{doc.name}</span>
+          <Close data-modified={doc.modified} title={t('tabs.closeMiddleClick')} onPointerDown={e => e.stopPropagation()}
+            onClick={() => { const current = resolve(); if (current) void state.closeDocument(current); }}><i>×</i></Close>
+        </Tab>;
       })}
-      <Fill onDoubleClick={() => dialogs.newSprite()} title={t('tabs.doubleClickForA')} />
+      {desktop && <Close style={{ alignSelf: 'center', width: 26 }} title={t('common.newSprite')} onClick={() => dialogs.newSprite()}>+</Close>}
+      <Fill data-window-drag data-tauri-drag-region onDoubleClick={() => { if (!desktop) dialogs.newSprite(); }} title={desktop ? undefined : t('tabs.doubleClickForA')} />
+      {desktop && <WindowControls bridge={desktop} />}
     </Bar>
-  );
+  </>;
 };

@@ -3,11 +3,13 @@ import { resolve, sep } from 'node:path';
 import { pwaFixtures } from './pwa-fixtures';
 import { securityFixtures } from './security-fixtures';
 import { build } from 'vite';
+import { buildIndex, SRC } from '../scripts/extensions';
 
 await build({ configFile: resolve(import.meta.dir, '../benchmarks/vite.security.config.ts'), logLevel: 'warn' });
-const securityRoot = resolve(import.meta.dir, '../.extension-dist');
+const securityRoot = resolve(import.meta.dir, '../dist/security');
 
-const root = resolve(import.meta.dir, '../dist');
+const root = resolve(import.meta.dir, '../dist/web');
+const iconCatalog = buildIndex(SRC, ['icons-duotone'], { base: '/__e2e__/icon-packs/' }).registry;
 const pwa = await pwaFixtures(root);
 const manifest = {
   id: 'e2e-permissions', name: 'E2E permissions', version: '1.0.0', apiVersion: 1,
@@ -46,6 +48,14 @@ Bun.serve({
     }
     const fixtureResponse = await pwa(request);
     if (fixtureResponse) return fixtureResponse;
+    if (url.pathname === '/__e2e__/icon-packs/registry.json') return Response.json(iconCatalog);
+    if (url.pathname.startsWith('/__e2e__/icon-packs/')) {
+      const [id, ...parts] = decodeURIComponent(url.pathname.slice('/__e2e__/icon-packs/'.length)).split('/');
+      const path = parts.join('/');
+      const entry = iconCatalog.extensions.find(e => e.id === id);
+      if (!entry?.files[path]) return new Response('Not found', { status: 404 });
+      return new Response(Bun.file(resolve(SRC, id, path)));
+    }
     if (url.pathname === '/__e2e__/registry.json')
       return Response.json([{ ...manifest, path: 'extension/', files: hashes }]);
     const fixture = fixtureFiles[url.pathname.replace('/__e2e__/extension/', '')];

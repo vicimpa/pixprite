@@ -1,4 +1,4 @@
-// Pixprite UI kit for extension pages, loaded next to ext-ui.css.
+// Pixprite UI kit for extension pages, embedded in sandbox pages alongside ext-ui.css.
 // Every <select> gets the editor's own drop-down list instead of the browser's: the select stays
 // in the page (hidden), keeps its value and fires `change` as usual, so pages need no changes.
 // A select added later (pages that build their forms in code) is picked up as well.

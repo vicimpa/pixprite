@@ -3,6 +3,7 @@ import { exportFile, repeatLastExport, openFile, importIntoDocument, savePalette
 import { flipH, flipV, packRgba, unpackRgba } from "~/core/Image";
 import { LANGUAGES, t } from "~/core/i18n";
 import { THEMES, themesVersion } from "~/core/Themes";
+import { iconPackChoices, resolveIconPack } from './IconPacks';
 import { effect, signal, untracked } from "@preact/signals-react";
 import { FLIP_X, FLIP_Y, rotateRef } from "~/core/Tilemap";
 import { Mask } from "~/core/Mask";
@@ -474,7 +475,7 @@ export function registerCommand(c: Command) {
 
 for (const c of [...nudges, ...list]) registerCommand(c);
 
-/** Keeps one command per entry of a registry that can change (themes, languages) */
+/** Keeps one command per entry of a registry that can change (themes, languages, icon packs) */
 function syncCommands(entries: () => [string, string][], make: (id: string, name: string) => Command) {
   const live = new Map<string, () => void>();
   effect(() => {
@@ -495,6 +496,11 @@ syncCommands(() => (void themesVersion.value, Object.entries(THEMES)), (id, name
 syncCommands(() => Object.entries(LANGUAGES), (id, name) => ({
   id: `window.lang.${id}`, group: 'menu.window', label: name, run: () => state.setPrefs({ language: id }), checked: () => state.prefs.language === id,
 }));
+syncCommands(() => iconPackChoices(t), (id, name) => ({
+  id: `window.icons.${id}`, group: 'menu.window', label: name,
+  run: () => state.setPrefs({ iconPack: id }),
+  checked: () => resolveIconPack(state.prefs.iconPack) === id,
+}));
 
 function storeOverrides() {
   const o: Record<string, string[]> = {};
@@ -504,6 +510,7 @@ function storeOverrides() {
     if (keys.join('|') !== def.join('|')) o[c.id] = keys;
   }
   try { localStorage.setItem('pixprite:keys', JSON.stringify(o)); } catch { }
+  commandsVersion.value++;
 }
 
 /** Which command already uses a combo (ignoring `except`) */
@@ -546,7 +553,7 @@ const HOME_COMMANDS = new Set([
   'file.new', 'file.open', 'file.importSheet', 'edit.prefs', 'help.shortcuts', 'help.about', 'view.commandPalette',
   'window.nextTab', 'window.prevTab', 'window.fullscreen',
 ]);
-const isHomeCommand = (id: string) => HOME_COMMANDS.has(id) || id.startsWith('window.theme.') || id.startsWith('window.lang.');
+const isHomeCommand = (id: string) => HOME_COMMANDS.has(id) || id.startsWith('window.theme.') || id.startsWith('window.lang.') || id.startsWith('window.icons.');
 
 /** Can run now: enabled, and outside the editor only the home page commands */
 export function available(c: Command) {

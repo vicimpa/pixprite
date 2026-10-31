@@ -1,3 +1,4 @@
+import { deferSetting, flushSettings } from './DeferredSettings';
 import { IncrementalDocument } from './IncrementalDocument';
 import { Cancelled, isCancelled, runTask } from './BackgroundTask';
 import { isQuotaError } from "~/core/Storage";
@@ -5,6 +6,8 @@ import { Color } from "~/core/Color";
 import { PaletteMap } from "~/core/ColorMode";
 import { t } from "~/core/i18n";
 import { applyTheme } from "~/core/Themes";
+import { DEFAULT_ICON_PACK, selectedIconPack } from "~/core/IconPacks";
+import { windowSessionId, windowSessionKey } from './WindowSession';
 import {
   deleteSession, getProjectMeta, homeFolder, loadProjectData, loadProjectState, loadSession, loadSnapshot, listSnapshots, loadLastGoodProject, loadLastGoodSession, newProjectId, saveProjectData, saveSessionRecord, saveSnapshot,
   type SessionHead,
@@ -84,6 +87,7 @@ export const UI_SIZES: Record<UiSize, { font: number; row: number; cell: number;
 
 export type Prefs = {
   theme: Theme;
+  iconPack: string;
   uiSize: UiSize;
   uiFont: UiFont;
   /** Interface language */
@@ -163,6 +167,7 @@ export const PUBLIC_CATALOG = 'https://cdn.jsdelivr.net/gh/vicimpa/pixprite@exte
 
 export const DEFAULT_PREFS: Prefs = {
   theme: 'dusk',
+  iconPack: DEFAULT_ICON_PACK,
   uiSize: 'medium',
   uiFont: 'system',
   showHints: true,
@@ -786,10 +791,12 @@ export class State {
         this.showTip(`${t('msg.couldNotSave')}: ${isQuotaError(e) ? t('storage.quotaExceeded') : (e as Error).message}`, 4000);
       }
     }
-    store('pixprite:session', {
+    const session = {
       tabs: [...new Set([...this.docs.flatMap(d => d.sessionId ? [d.sessionId] : []), ...this.failedSessions])],
       active: this.home ? 'home' : this.sprite.sessionId,
-    });
+    };
+    store(windowSessionKey(), session);
+    await window.pixpriteDesktop?.reportSession(session);
   }
 
   /** Writes of one document are serialized, including its first project ID assignment. */
@@ -1089,8 +1096,14 @@ export class State {
       // Tools and view as they were last used (a project's own settings apply on top when it opens)
       const last = localStorage.getItem('pixprite:editor');
       if (last) { try { this.applyEditor(JSON.parse(last)); } catch { /* ignore damaged preferences */ } }
-      const session = load('pixprite:session', { tabs: [] as string[], active: 'home' as string | null });
-      const tabs = Array.isArray(session.tabs) ? session.tabs.filter((id): id is string => typeof id === 'string') : [];
+      const nativeSessions = await window.pixpriteDesktop?.readSessions();
+      const session = nativeSessions?.[windowSessionId()] ?? load(windowSessionKey(), { tabs: [] as string[], active: 'home' as string | null });
+      const recovery = window.pixpriteDesktop?.recoveryWindows ?? [];
+      const sources = [windowSessionId(), ...recovery];
+      const tabs = [...new Set(sources.flatMap(owner => {
+        const saved = nativeSessions?.[owner] ?? (owner === windowSessionId() ? session : load(windowSessionKey(owner), { tabs: [] as string[] }));
+        return Array.isArray(saved.tabs) ? saved.tabs.filter((id): id is string => typeof id === 'string') : [];
+      }))];
       this.failedSessions = new Set(tabs);
       // One-time migration of documents kept in localStorage by earlier versions: they become projects
       const legacy = localStorage.getItem('pixprite:docs') ?? localStorage.getItem('pixprite:project');
@@ -1161,7 +1174,14 @@ export class State {
       const active = this.docs.find(d => d.sessionId === session.active || d.projectId === session.active);
       if (active) this.switchTo(active);
       else this.home = true;
-      void this.persist();
+      await this.persist();
+      if (recovery.length) {
+        const stored = load(windowSessionKey(), { tabs: [] as string[] });
+        if (tabs.every(id => stored.tabs.includes(id))) {
+          for (const id of recovery) localStorage.removeItem(windowSessionKey(id));
+          window.pixpriteDesktop?.recoveredWindows(recovery);
+        }
+      }
     } catch (e) {
       console.warn('Failed to restore projects', e);
     }
@@ -1227,13 +1247,20 @@ effect(() => {
   const docs = state.docs;
   untracked(() => { for (const d of docs) d.trimHistory(); });
 });
-effect(() => store('pixprite:layout', state.layout));
-effect(() => store('pixprite:layouts', state.savedLayouts));
+effect(() => deferSetting('pixprite:layout', state.layout));
+effect(() => deferSetting('pixprite:layouts', state.savedLayouts));
 effect(() => store('pixprite:pressure', state.pressure));
 effect(() => store('pixprite:brushes', { items: state.brushLibrary }));
 effect(() => store('pixprite:toolPresets', { items: state.toolPresets }));
 // Tool and view changes are saved with the project too (a little later, they come in bursts)
 let editorTimer = 0;
+export function flushEditorSettings() {
+  clearTimeout(editorTimer);
+  const { zoom: _z, camX: _x, camY: _y, palette: _p, doc: _d, docBrushes: _b, ...last } = state.captureEditor();
+  store('pixprite:editor', last);
+  flushSettings();
+}
+addEventListener('pagehide', flushEditorSettings);
 effect(() => {
   for (const k of EDITOR_KEYS) void (state as unknown as Record<string, unknown>)[k];
   void state.colorA; void state.colorB; void state.zoomTarget; void state.camX; void state.camY; void state.layout;
@@ -1244,8 +1271,7 @@ effect(() => {
   clearTimeout(editorTimer);
   editorTimer = window.setTimeout(() => {
     // The last tools and view settings, for new documents and the next start
-    const { zoom: _z, camX: _x, camY: _y, palette: _p, doc: _d, docBrushes: _b, ...last } = state.captureEditor();
-    store('pixprite:editor', last);
+    flushEditorSettings();
     if (state.prefs.autosave && !state.home) void state.persist();
   }, 600);
 });
@@ -1269,6 +1295,7 @@ effect(() => {
   });
 });
 effect(() => void applyTheme(state.prefs.theme));
+effect(() => { selectedIconPack.value = state.prefs.iconPack; });
 effect(() => { document.documentElement.dataset.font = state.prefs.uiFont; });
 effect(() => {
   const ui = state.ui, style = document.documentElement.style;

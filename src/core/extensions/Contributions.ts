@@ -10,6 +10,8 @@ import { download } from "~/core/Files";
 import { addDictionary, languages, registerLanguage, removeDictionary, type Dict } from "~/core/i18n";
 import { state, type ToolName } from "~/core/State";
 import { applyTheme, registerTheme, THEMES, themesVersion } from "~/core/Themes";
+import { registerIconPack } from '~/core/IconPacks';
+import { MAX_ICON_PACK_BYTES } from './iconPack';
 import { declarePanel } from "./panels";
 import { compile, LINKER, sourceOf } from "./compile";
 import { pen, registerTool, type Session, type ToolGroup, type ToolPointer } from "~/core/Tools";
@@ -236,6 +238,15 @@ export async function loadContributions(host: ExtensionHost) {
   // they go when the extension is stopped (dropTexts)
   off(() => { if (host.status.peek() !== 'failed') removeDictionary(source(ext.id)); });
   await Promise.all([loadLocales(ext), loadLanguages(ext)]);
+
+  for (const pack of c.iconPacks ?? []) {
+    const file = await readFile(ext, pack.icons);
+    host.assertActive();
+    if (!file || file.size > MAX_ICON_PACK_BYTES) throw new Error(`Missing or oversized icon pack: ${pack.icons}`);
+    const data: unknown = JSON.parse(await file.text());
+    host.assertActive();
+    off(registerIconPack(keyOf(ext.id, pack.id), () => host.label(pack.label), data));
+  }
 
   for (const th of c.themes ?? []) {
     const id = `${ext.id}.${th.id}`;

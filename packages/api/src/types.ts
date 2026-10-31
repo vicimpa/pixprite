@@ -37,6 +37,12 @@ export type FormValue = string | number | boolean;
 export type FormValues = Record<string, FormValue>;
 
 export type ThemeContribution = { id: string; label: LocalizedString; /** css var name → value */ vars: Record<string, string>; };
+/** Theme-aware colors; arbitrary SVG/CSS and external resources are not accepted. */
+export type IconColor = 'foreground' | 'accent' | 'fill' | 'none';
+export type IconPath = { d: string; fill?: IconColor; stroke?: IconColor; strokeWidth?: number };
+export type IconArtwork = { pixels: string } | { size: number; paths: IconPath[] };
+/** JSON map of semantic icon names to pixel grids or vector paths. No worker or permission needed. */
+export type IconPackContribution = { id: string; label: LocalizedString; icons: string };
 export type CommandContribution = {
   id: string;
   label: LocalizedString;
@@ -106,6 +112,7 @@ export type LanguageContribution = {
 
 export type Contributes = {
   themes?: ThemeContribution[];
+  iconPacks?: IconPackContribution[];
   commands?: CommandContribution[];
   tools?: ToolContribution[];
   panels?: PanelContribution[];
@@ -130,7 +137,7 @@ export type Manifest = {
   author?: string;
   description?: LocalizedString;
   icon?: string;
-  /** Worker module: `main.js` runs `src/main.ts`. Data-only extensions (themes, language packs) have none */
+  /** Worker module: `main.js` runs `src/main.ts`. Data-only extensions (themes, icon packs, language packs) have none */
   entry?: string;
   /** Published to the public catalog; false keeps it to the repository (templates, work in progress). Default true */
   public?: boolean;

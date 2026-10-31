@@ -15,8 +15,7 @@ export const Toolbar = styled.div`
   gap: 3px;
   padding: 3px 4px;
   flex-shrink: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  min-width: 0;
   border-bottom: 1px solid var(--b1);
 `;
 
