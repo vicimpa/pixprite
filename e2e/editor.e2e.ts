@@ -873,3 +873,74 @@ test('closing a pending preparation disposes its watch and disabled autosave sta
   expect(await documentPixels(page, stored!)).toEqual(expected);
   await expect(page.getByText(/Could not save/)).toHaveCount(0);
 });
+
+test('onion skin popup controls immediately change native canvas ghosts without changing source pixels', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('pixprite:prefs', JSON.stringify({ language: 'en', checkerA: '#000000', checkerB: '#000000', brushPreview: 'off' })));
+  await page.reload();
+  const image = (id: string, pixels: [number, number, number, number, number][]) => {
+    const bytes = Buffer.alloc(8 * 8 * 4);
+    for (const [x, y, r, g, b] of pixels) bytes.set([r, g, b, 255], (y * 8 + x) * 4);
+    return { id, w: 8, h: 8, d: bytes.toString('base64') };
+  };
+  const fixture = { format: 'pixprite', version: 5, name: 'Onion controls', width: 8, height: 8,
+    frames: Array.from({ length: 4 }, () => ({ duration: 100 })),
+    images: [image('older', [[1, 3, 255, 0, 0]]), image('previous', [[3, 3, 0, 255, 0], [5, 3, 255, 0, 0]]),
+      image('current', [[5, 3, 0, 0, 255]]), image('next', [[6, 3, 255, 255, 0]])],
+    layers: [{ name: 'Animation', cels: ['older', 'previous', 'current', 'next'].map(id => ({ x: 0, y: 0, image: { kind: 'image', id } })) }],
+    tags: [{ name: 'Middle', from: 1, to: 2, color: '#ff0000', direction: 'forward' }] };
+  const chooser = page.waitForEvent('filechooser'); await command(page, 'file.open');
+  await (await chooser).setFiles({ name: 'Onion controls.pixprite', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) });
+  await page.locator('[data-key^="p:"]', { hasText: fixture.name }).dblclick();
+  await expect(page.getByTestId('sprite-canvas')).toBeVisible();
+  const zoom = page.getByTitle('Zoom, %', { exact: true }); await zoom.fill('800'); await zoom.press('Enter');
+  await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowRight');
+  await expect(page.locator('[data-hit=frame][data-current=true]')).toHaveAttribute('data-f', '2');
+  await page.mouse.move(5, 5);
+  const pixel = (x: number) => page.getByTestId('sprite-canvas').locator('canvas').evaluate((canvas: HTMLCanvasElement, x) => {
+    const scale = canvas.width / parseFloat(canvas.style.width), cssHeight = canvas.height / scale;
+    const ox = Math.round(parseFloat(canvas.style.width) / 2 - 4 * 8), oy = Math.round(cssHeight / 2 - 4 * 8);
+    return Array.from(canvas.getContext('2d')!.getImageData(Math.floor((ox + (x + .5) * 8) * scale), Math.floor((oy + 3.5 * 8) * scale), 1, 1).data);
+  }, x);
+  await expect.poll(() => pixel(5)).toEqual([0, 0, 255, 255]);
+  const [background1, background3, background6] = await Promise.all([1, 3, 6].map(pixel));
+  await page.getByTitle('Onion skin and playback options', { exact: true }).click();
+  const enabled = page.getByRole('checkbox', { name: 'Onion skin', exact: true });
+  const popup = enabled.locator('xpath=../..');
+  const before = popup.getByRole('spinbutton').nth(0), after = popup.getByRole('spinbutton').nth(1);
+  const opacity = popup.getByRole('slider').nth(0), fade = popup.getByRole('slider').nth(1);
+  await popup.getByRole('checkbox', { name: 'Wrap inside the tag', exact: true }).uncheck();
+  await before.fill('2'); await before.press('Tab'); await after.fill('0'); await after.press('Tab');
+  await opacity.focus(); await opacity.press('End'); await fade.focus(); await fade.press('Home');
+  await expect(page.locator('[data-hit=frame][data-current=true]')).toHaveAttribute('data-f', '2');
+  await expect(opacity).toHaveValue('100'); await expect(fade).toHaveValue('0');
+  await expect(enabled).not.toBeChecked(); await expect.poll(() => pixel(3)).toEqual(background3);
+  await enabled.focus(); await enabled.press('Space'); await expect(enabled).toBeChecked();
+  await expect.poll(() => pixel(3)).toEqual([0, 255, 0, 255]);
+  await expect.poll(() => pixel(1)).toEqual([255, 0, 0, 255]);
+  await opacity.focus(); await opacity.press('Home');
+  await expect.poll(async () => (await pixel(3))[1]).toBeGreaterThanOrEqual(Math.round(background3[1] * .95 + 255 * .05) - 1);
+  await expect.poll(async () => (await pixel(3))[1]).toBeLessThanOrEqual(Math.round(background3[1] * .95 + 255 * .05) + 1);
+  await opacity.press('End'); await fade.focus(); await fade.press('End');
+  await expect.poll(async () => (await pixel(1))[0]).toBeGreaterThanOrEqual(Math.floor((background1[0] + 255) / 2) - 1);
+  await expect.poll(async () => (await pixel(1))[0]).toBeLessThanOrEqual(Math.ceil((background1[0] + 255) / 2) + 1);
+  await expect.poll(() => pixel(3)).toEqual([0, 255, 0, 255]);
+  await expect.poll(() => pixel(5)).toEqual([0, 0, 255, 255]);
+  await popup.getByRole('checkbox', { name: 'Draw on top', exact: true }).check();
+  await expect.poll(() => pixel(5)).toEqual([255, 0, 0, 255]);
+  await popup.getByRole('button', { name: 'Look', exact: true }).click();
+  await page.getByText('Red past / blue future', { exact: true }).click();
+  await expect(popup.getByRole('button', { name: 'Look', exact: true })).toHaveText('Red past / blue future');
+  await expect.poll(async () => { const p = await pixel(3); return p[0] > p[1] && p[1] === p[2]; }).toBe(true);
+  await popup.getByRole('button', { name: 'Look', exact: true }).click(); await page.getByText('Plain', { exact: true }).click();
+  await before.fill('0'); await before.press('Tab'); await after.fill('1'); await after.press('Tab');
+  await expect.poll(() => pixel(3)).toEqual(background3);
+  await expect.poll(() => pixel(6)).toEqual([255, 255, 0, 255]);
+  await popup.getByRole('checkbox', { name: 'Wrap inside the tag', exact: true }).check();
+  await expect.poll(() => pixel(6)).toEqual(background6);
+  await expect.poll(() => pixel(3)).toEqual([0, 255, 0, 255]);
+  await enabled.uncheck(); await expect.poll(() => pixel(3)).toEqual(background3);
+  await command(page, 'file.save');
+  await expect.poll(async () => (await documentNamed(page, fixture.name))?.frames).toEqual(fixture.frames);
+  const saved: any = await documentNamed(page, fixture.name);
+  expect(saved.images).toEqual(fixture.images); expect(saved.layers[0].cels).toEqual(fixture.layers[0].cels);
+});

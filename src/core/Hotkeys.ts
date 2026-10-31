@@ -64,6 +64,16 @@ function isTyping(e: KeyboardEvent) {
     || el?.tagName === 'TEXTAREA' || el?.tagName === 'SELECT';
 }
 
+/** Keep native checkbox/radio/slider keys out of document navigation and quick tools. */
+function controlOwnsKey(e: KeyboardEvent) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  const el = e.target as HTMLInputElement | null;
+  if (el?.tagName !== 'INPUT' || !['checkbox', 'range', 'radio'].includes(el.type)) return false;
+  if (e.key === ' ' || e.key === 'Enter') return true;
+  if (el.type === 'range') return ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key);
+  return el.type === 'radio' && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key);
+}
+
 const lastByKey = new Map<string, string>();
 
 /** A tool key picks the last used tool sharing that key; Shift+key cycles through them */
@@ -81,7 +91,7 @@ function selectTool(key: string, cycle: boolean) {
 }
 
 function onKeyDown(e: KeyboardEvent) {
-  if (isTyping(e) || hasDialogs() || state.commandPalette) return;
+  if (isTyping(e) || controlOwnsKey(e) || hasDialogs() || state.commandPalette) return;
   trackModifiers(e, true);
   const combo = comboOf(e);
 
