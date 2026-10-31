@@ -1,10 +1,9 @@
-import type { FrameSpan } from './TimelineFolding';
 import type { SpriteContext } from "./SpriteContext";
 import type { ColorMode } from "~/core/ColorMode";
 import { Mask } from "~/core/Mask";
 import type { Tileset } from "~/core/Tilemap";
 import { copyLayers, type ExtData, type Floating, type Frame, type FramePalette, type Guide, type Layer, type Slice, type Tag } from "./SpriteModel";
-import { isCelInstance, isImage, retainedBufferIdentity, visitCelBuffers, visitImageBuffers } from './DocumentModel';
+import { isCelInstance, retainedBufferIdentity, visitCelBuffers } from './DocumentModel';
 export type Snapshot = {
   label: string;
   ext: ExtData;
@@ -18,7 +17,6 @@ export type Snapshot = {
   layers: Layer[];
   frames: Frame[];
   tags: Tag[];
-  hiddenFrameRanges: FrameSpan[];
   slices: Slice[];
   tilesets: Tileset[];
   loop: [number, number] | null;
@@ -36,7 +34,7 @@ export type HistoryGuard = { commit(): void; cancel(): void; abandon(): void; on
 
 export function snapshot(this: SpriteContext, label: string): Snapshot {
   const { width, height, layers, frames, tags, loop, mask, floating, layer, frame } = this;
-  return { label, hiddenFrameRanges: this.hiddenFrameRanges.map(r => [...r]), ext: this.ext, guides: this.guides, palette: this.paletteHost?.get() ?? null, framePalettes: this.framePalettes, colorMode: this.colorMode, transparentIndex: this.transparentIndex, width, height, layers: copyLayers(layers), frames: frames.map(f => ({ ...f })), tags: tags.map(t => ({ ...t })), slices: this.slices, tilesets: this.tilesets, loop, mask, floating, floatingStart: this.floatingStart, layer, frame };
+  return { label, ext: this.ext, guides: this.guides, palette: this.paletteHost?.get() ?? null, framePalettes: this.framePalettes, colorMode: this.colorMode, transparentIndex: this.transparentIndex, width, height, layers: copyLayers(layers), frames: frames.map(f => ({ ...f })), tags: tags.map(t => ({ ...t })), slices: this.slices, tilesets: this.tilesets, loop, mask, floating, floatingStart: this.floatingStart, layer, frame };
 }
 
 export function restore(this: SpriteContext, s: Snapshot): void {
@@ -50,7 +48,6 @@ export function restore(this: SpriteContext, s: Snapshot): void {
   this.layers = copyLayers(s.layers);
   this.frames = s.frames.map(f => ({ ...f }));
   this.tags = s.tags.map(t => ({ ...t }));
-  this.hiddenFrameRanges = s.hiddenFrameRanges.map(r => [...r]);
   this.slices = s.slices;
   this.guides = s.guides;
   this.tilesets = s.tilesets;
@@ -113,7 +110,6 @@ function memoryIndex(root: unknown, dynamic?: object[]): MemoryIndex {
     if (value instanceof ArrayBuffer) { buffer(retainedBufferIdentity(value), value.byteLength); return; }
     metadata.set(value, 0);
     if (isCelInstance(value as any)) visitCelBuffers(value as any, buffer, (identity, bytes) => metadata.set(identity, bytes));
-    if (isImage(value)) visitImageBuffers(value, buffer);
     let bytes = 0;
     for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
       if (!('value' in descriptor) || typeof descriptor.value === 'function') continue;
@@ -146,7 +142,7 @@ function snapshotIndex(snapshot: Snapshot): MemoryIndex {
 function liveIndex(doc: SpriteContext) {
   // These are the same ownership roots as a snapshot. Do not copy layers or touch cel.data.
   const { ext, guides, framePalettes, layers, frames, tags, slices, tilesets, loop, mask, floating } = doc;
-  return memoryIndex({ ext, guides, palette: doc.paletteHost?.get() ?? null, framePalettes, layers, frames, tags, hiddenFrameRanges: doc.hiddenFrameRanges, slices, tilesets, loop, mask, floating });
+  return memoryIndex({ ext, guides, palette: doc.paletteHost?.get() ?? null, framePalettes, layers, frames, tags, slices, tilesets, loop, mask, floating });
 }
 function exclusive(index: Map<object, number>, live: Map<object, number>) {
   let bytes = 0;

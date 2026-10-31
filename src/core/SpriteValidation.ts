@@ -12,11 +12,11 @@ export function isLocksRecord(v: unknown): v is LocksRecord {
   return isExtData(v) && typeof v.owner === 'string';
 }
 
-export const PIXPRITE_VERSION = 7;
-export const SUPPORTED_PIXPRITE_VERSIONS = [3, 4, 5, 6, 7] as const;
+export const PIXPRITE_VERSION = 5;
+export const SUPPORTED_PIXPRITE_VERSIONS = [3, 4, 5] as const;
 
 type RawTileset = Omit<Tileset, 'tiles'> & { count: number; d: string; };
-type RawLayer = Partial<Omit<Layer, 'name' | 'cels' | 'mask'>> & { name: string; cels: any[]; mask?: { image: { kind: 'image'; id: string }; x: number; y: number; outside: number; enabled: boolean; inverted: boolean } };
+type RawLayer = Partial<Omit<Layer, 'name' | 'cels'>> & { name: string; cels: any[]; };
 export type RawImage = { id: string; w: number; h: number; d: string };
 export type PixpriteData = {
   format: 'pixprite';
@@ -29,7 +29,6 @@ export type PixpriteData = {
   layers: RawLayer[];
   images?: RawImage[];
   tags?: Tag[];
-  hiddenFrameRanges?: [number, number][];
   slices?: Slice[];
   guides?: Guide[];
   framePalettes?: FramePalette[];
@@ -70,16 +69,6 @@ export function migratePixpriteV4(data: PixpriteData): PixpriteData {
       }),
     })),
   };
-}
-
-/** v5 FX were live on every frame. An absent residual scope retains that exact behavior. */
-export function migratePixpriteV5(data: PixpriteData): PixpriteData {
-  return { ...data, version: 6 };
-}
-
-/** v6 has no layer masks. Older readers must never silently discard v7 transparency. */
-export function migratePixpriteV6(data: PixpriteData): PixpriteData {
-  return { ...data, version: 7 };
 }
 
 const MAX_DOCUMENT_PIXELS = 4096 * 4096;
@@ -144,7 +133,7 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
   if (candidate.format !== 'pixprite') throw new Error('Unknown file format');
   if (typeof candidate.version !== 'number' || !Number.isInteger(candidate.version)) throw new Error('Unsupported pixprite version');
   if (candidate.version > PIXPRITE_VERSION) throw new Error(`Newer pixprite version: ${candidate.version}; supported up to ${PIXPRITE_VERSION}`);
-  if (!SUPPORTED_PIXPRITE_VERSIONS.includes(candidate.version as 3 | 4 | 5 | 6 | 7)) throw new Error(`Unsupported pixprite version: ${candidate.version}`);
+  if (!SUPPORTED_PIXPRITE_VERSIONS.includes(candidate.version as 3 | 4 | 5)) throw new Error(`Unsupported pixprite version: ${candidate.version}`);
   if (!Array.isArray(candidate.frames) || !candidate.frames.length) throw new Error('Document has no frames');
   if (!Array.isArray(candidate.layers) || !candidate.layers.length) throw new Error('Document has no layers');
   for (const key of ['tags', 'slices', 'guides', 'framePalettes', 'tilesets'] as const)
@@ -167,9 +156,7 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
   if (data.loop !== undefined && data.loop !== null && (!Array.isArray(data.loop) || data.loop.length !== 2
     || !data.loop.every(Number.isInteger) || data.loop[0] < 0 || data.loop[1] < data.loop[0] || data.loop[1] >= data.frames.length))
     throw new Error('Invalid loop range');
-  if (data.hiddenFrameRanges !== undefined && (!Array.isArray(data.hiddenFrameRanges) || data.hiddenFrameRanges.some(r => !Array.isArray(r) || r.length !== 2 || !r.every(Number.isInteger) || r[0] < 0 || r[1] < r[0] || r[1] >= data.frames.length))) throw new Error('Invalid hidden frame ranges');
   for (const tag of data.tags ?? []) {
-    if (tag.collapsed !== undefined && typeof tag.collapsed !== 'boolean') throw new Error('Invalid tag collapsed');
     if (!Number.isInteger(tag.from) || !Number.isInteger(tag.to) || tag.from < 0 || tag.to < tag.from || tag.to >= data.frames.length)
       throw new Error('Invalid tag range');
     if (!['forward', 'reverse', 'pingpong', 'pingpong-reverse'].includes(tag.direction)) throw new Error('Invalid tag direction');
@@ -205,7 +192,7 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
     pixelsLeft -= ts.count * tilePixels;
   }
   const images = new Map<string, RawImage>();
-  if (data.version >= 5) {
+  if (data.version === 5) {
     if (!Array.isArray(data.images) || data.images.length > MAX_DOCUMENT_CELS) throw new Error('Invalid image resources');
     for (const image of data.images) {
       if (!image || typeof image.id !== 'string' || !image.id || image.id.length > 256 || images.has(image.id)) throw new Error('Invalid or duplicate image resource ID');
@@ -223,21 +210,10 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
     if (layer.depth !== undefined && (!Number.isInteger(layer.depth) || layer.depth < 0)) throw new Error('Invalid layer depth');
     if (layer.opacity !== undefined && (!Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1)) throw new Error('Invalid layer opacity');
     if (layer.blend !== undefined && !BLEND_MODES.includes(layer.blend)) throw new Error('Invalid layer blend mode');
-    if (layer.mask !== undefined) {
-      if (data.version < 7) throw new Error('Layer masks require pixprite version 7');
-      const mask = layer.mask;
-      if (!mask || typeof mask !== 'object' || !mask.image || mask.image.kind !== 'image' || !images.has(mask.image.id)
-        || !Number.isInteger(mask.x) || !Number.isInteger(mask.y) || !Number.isInteger(mask.outside) || mask.outside < 0 || mask.outside > 255
-        || typeof mask.enabled !== 'boolean' || typeof mask.inverted !== 'boolean' || layer.reference) throw new Error('Invalid layer mask');
-    }
     if (layer.effects !== undefined) validateLayerFX(layer.effects);
-    if (layer.bakedEffects !== undefined && data.version < 6) throw new Error('Layer baked effects require pixprite version 6');
-    if (layer.bakedEffects !== undefined && (!Array.isArray(layer.bakedEffects) || layer.bakedEffects.length !== data.frames.length
-      || layer.bakedEffects.some(ids => !Array.isArray(ids) || ids.length > 64 || new Set(ids).size !== ids.length
-        || ids.some(id => typeof id !== 'string' || !id || id.length > 256)))) throw new Error('Invalid baked layer effects');
     if (layer.celOpacity !== undefined && (!Array.isArray(layer.celOpacity) || layer.celOpacity.length !== data.frames.length
       || layer.celOpacity.some(v => !Number.isFinite(v) || v < 0 || v > 1))) throw new Error('Invalid cel opacity');
-    for (const key of ['visible', 'locked', 'lockAlpha', 'background', 'continuous', 'group', 'collapsed', 'clip'] as const)
+    for (const key of ['visible', 'locked', 'background', 'continuous', 'group', 'collapsed', 'clip'] as const)
       if (layer[key] !== undefined && typeof layer[key] !== 'boolean') throw new Error(`Invalid layer ${key}`);
     const tileset = layer.tileset ?? -1;
     if (!Number.isInteger(tileset) || tileset < -1 || tileset >= tilesets.length) throw new Error('Invalid layer tileset reference');
@@ -257,7 +233,7 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
         return;
       }
       if (!Number.isInteger(cel.x) || !Number.isInteger(cel.y)) throw new Error('Invalid cel coordinates');
-      if (data.version >= 5) {
+      if (data.version === 5) {
         if (!cel.image || cel.image.kind !== 'image' || typeof cel.image.id !== 'string' || !images.has(cel.image.id))
           throw new Error('Invalid image resource reference');
         validateCelTransform(cel);

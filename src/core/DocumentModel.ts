@@ -1,11 +1,8 @@
 import type { Bitmap } from './Image';
-import type { Cel, CelImage, ExtData, Layer } from './SpriteModel';
-import { applyColorEffect, applyOutline, effectBounds } from './LayerEffects';
+import type { Cel, CelImage, ExtData } from './SpriteModel';
 
 /** An immutable shared pixel resource. Its public data view is a defensive copy. */
 export type Image = Readonly<{ kind: 'image'; id: string; w: number; h: number; data: Uint32Array }>;
-/** One static transparency channel in sprite coordinates, shared by all frames. Only alpha is sampled. */
-export type LayerMask = Readonly<{ image: Image; x: number; y: number; outside: number; enabled: boolean; inverted: boolean }>;
 export type AssetRef<Kind extends string = 'image'> = Readonly<{ kind: Kind; id: string }>;
 export type CelTransform = { flipX: boolean; flipY: boolean; rotation: 0 | 90 | 180 | 270; opacity: number };
 export type CelInstance = CelImage & {
@@ -13,14 +10,8 @@ export type CelInstance = CelImage & {
   readonly asset: AssetRef;
   readonly transform: Readonly<CelTransform>;
 };
-/** Ordered pixel processors; every new discriminant must be validated before decoding. */
-export type LayerFX = Readonly<{ id: string; enabled: boolean } & (
-  { type: 'opacity'; amount: number } |
-  { type: 'shadow'; color: number; x: number; y: number; size: number } |
-  { type: 'glow'; color: number; size: number; position: 'inside' | 'outside' } |
-  { type: 'overlay'; color: number } |
-  { type: 'outline'; color: number; thickness: number; position: 'inside' | 'center' | 'outside'; join: 'round' | 'miter' | 'bevel' }
-)>;
+/** The first processing primitive; further effects can extend this discriminated union. */
+export type LayerFX = Readonly<{ id: string; type: 'opacity'; enabled: boolean; amount: number }>;
 
 const sourcePixels = new WeakMap<Image, Uint32Array>();
 const bufferIdentities = new WeakMap<object, object>();
@@ -185,95 +176,22 @@ export function validateLayerFX(effects: unknown): asserts effects is LayerFX[] 
   if (!Array.isArray(effects) || effects.length > 64) throw new Error('Invalid layer effects');
   const ids = new Set<string>();
   for (const effect of effects) {
-    if (!effect || typeof effect.id !== 'string' || !effect.id || effect.id.length > 256 || ids.has(effect.id)
-      || typeof effect.enabled !== 'boolean')
+    if (!effect || typeof effect.id !== 'string' || !effect.id || ids.has(effect.id) || effect.type !== 'opacity'
+      || typeof effect.enabled !== 'boolean' || !Number.isFinite(effect.amount) || effect.amount < 0 || effect.amount > 1)
       throw new Error('Invalid layer effect');
-    if (effect.type === 'opacity') {
-      if (!Number.isFinite(effect.amount) || effect.amount < 0 || effect.amount > 1) throw new Error('Invalid layer effect');
-    } else if (effect.type === 'outline') {
-      if (!Number.isInteger(effect.color) || effect.color < 0 || effect.color > 0xffffffff
-        || !Number.isInteger(effect.thickness) || effect.thickness < 1 || effect.thickness > 128
-        || !['inside', 'center', 'outside'].includes(effect.position) || !['round', 'miter', 'bevel'].includes(effect.join))
-        throw new Error('Invalid outline effect');
-    } else if (['shadow', 'glow', 'overlay'].includes(effect.type)) {
-      if (!Number.isInteger(effect.color) || effect.color < 0 || effect.color > 0xffffffff) throw new Error('Invalid effect color');
-      if (effect.type !== 'overlay' && (!Number.isInteger(effect.size) || effect.size < (effect.type === 'shadow' ? 0 : 1) || effect.size > 128))
-        throw new Error('Invalid effect size');
-      if (effect.type === 'shadow' && [effect.x, effect.y].some(v => !Number.isInteger(v) || Math.abs(v) > 1024))
-        throw new Error('Invalid shadow offset');
-      if (effect.type === 'glow' && !['inside', 'outside'].includes(effect.position)) throw new Error('Invalid glow position');
-    } else throw new Error('Invalid layer effect');
     ids.add(effect.id);
   }
 }
 
-/** Per-frame residual scope after baking. IDs follow timeline content, never source images. */
-export function effectsForFrame(layer: Pick<Layer, 'effects' | 'bakedEffects'>, frame: number): readonly LayerFX[] {
-  const baked = layer.bakedEffects?.[frame];
-  return baked?.length ? (layer.effects ?? []).filter(effect => !baked.includes(effect.id)) : layer.effects ?? [];
-}
+export const layerFXOpacity = (effects: readonly LayerFX[] = []) => effects.reduce((alpha, effect) => effect.enabled ? alpha * effect.amount : alpha, 1);
 
-export function copyEffectScope(layer: Pick<Layer, 'bakedEffects'>) {
-  return layer.bakedEffects?.map(ids => ids.slice());
-}
-
-/** Custom colors cannot be represented by grayscale; indexed also cannot retain arbitrary alpha. */
-export const hasColorEffects = (effects: readonly LayerFX[] = []) => effects.some(effect => effect.enabled && effect.type !== 'opacity' && (effect.color >>> 24) > 0);
-
-/** Conservative: arbitrary outline colors/alpha require RGB for indexed baking/export. */
-export const hasPixelEffects = (effects: readonly LayerFX[] = []) => effects.some(effect => effect.enabled && (effect.type !== 'opacity' ? (effect.color >>> 24) > 0 : effect.amount !== 1));
-
-/** Shared ordered pipeline for live rendering, baking and every export. Sources never change. */
+/** Shared pipeline used by live layer rendering and format conversion. Source resources never change. */
 export function bakeCel(cel: Cel, effects: readonly LayerFX[] = []): Cel {
   if (!cel) return null;
-  validateLayerFX(effects);
-  effectBounds(cel, effects); // Check the entire stack before any output allocation.
-  let result: CelImage = cel, opacity = 1;
-  const flushOpacity = () => {
-    if (opacity !== 1) result = { ...result, data: result.data.map(pixel => {
-      const alpha = Math.round((pixel >>> 24) * opacity);
-      return alpha ? ((pixel & 0xffffff) | (alpha << 24)) >>> 0 : 0;
-    }) };
-    opacity = 1;
-  };
-  for (const effect of effects) {
-    if (!effect.enabled) continue;
-    if (effect.type === 'opacity') opacity *= effect.amount;
-    else if (effect.color >>> 24) { flushOpacity(); result = effect.type === 'outline' ? applyOutline(result, effect) : applyColorEffect(result, effect); }
-  }
-  flushOpacity();
-  return { x: result.x, y: result.y, w: result.w, h: result.h, data: result.data,
-    ...(cel.ext ? { ext: cel.ext } : {}), ...(!hasPixelEffects(effects) && cel.tiles && !hasCelTransform(cel) ? { tiles: cel.tiles } : {}) };
-}
-
-/** Image resources own a private source buffer even when no cel references them (layer masks). */
-export function isImage(value: object): value is Image { return sourcePixels.has(value as Image); }
-export function visitImageBuffers(image: Image, visit: (identity: object, bytes: number) => void) {
-  const pixels = sourcePixels.get(image);
-  if (pixels) visit(retainedBufferIdentity(pixels.buffer), pixels.buffer.byteLength);
-}
-
-export function createLayerMask(image: Image, options: Partial<Omit<LayerMask, 'image'>> = {}): LayerMask {
-  if (!sourcePixels.has(image)) throw new Error('Invalid mask image');
-  const mask = { x: 0, y: 0, outside: 255, enabled: true, inverted: false, ...options, image };
-  if (!Number.isInteger(mask.x) || !Number.isInteger(mask.y) || !Number.isInteger(mask.outside) || mask.outside < 0 || mask.outside > 255
-    || typeof mask.enabled !== 'boolean' || typeof mask.inverted !== 'boolean') throw new Error('Invalid layer mask');
-  return Object.freeze(mask);
-}
-
-export function layerMaskAlpha(mask: LayerMask, x: number, y: number): number {
-  const { image } = mask, sx = x - mask.x, sy = y - mask.y;
-  const value = sx >= 0 && sy >= 0 && sx < image.w && sy < image.h
-    ? (sourcePixels.get(image)![sy * image.w + sx] >>> 24) : mask.outside;
-  return mask.inverted ? 255 - value : value;
-}
-
-/** Mask follows the layer FX stack, before outer layer opacity/blend/clipping. */
-export function applyLayerMask(cel: Cel, mask?: LayerMask): Cel {
-  if (!cel || !mask?.enabled) return cel;
-  const data = cel.data.map((pixel, i) => {
-    const alpha = Math.round((pixel >>> 24) * layerMaskAlpha(mask, cel.x + i % cel.w, cel.y + Math.floor(i / cel.w)) / 255);
+  const opacity = layerFXOpacity(effects);
+  const data = opacity === 1 ? cel.data : cel.data.map(pixel => {
+    const alpha = Math.round((pixel >>> 24) * opacity);
     return alpha ? ((pixel & 0xffffff) | (alpha << 24)) >>> 0 : 0;
   });
-  return { x: cel.x, y: cel.y, w: cel.w, h: cel.h, data, ...(cel.ext ? { ext: cel.ext } : {}) };
+  return { x: cel.x, y: cel.y, w: cel.w, h: cel.h, data, ...(cel.ext ? { ext: cel.ext } : {}), ...(cel.tiles && opacity === 1 && !hasCelTransform(cel) ? { tiles: cel.tiles } : {}) };
 }

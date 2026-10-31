@@ -305,8 +305,8 @@ describe('Corrupted files', () => {
   });
 
   test('.pixprite declares and accepts every supported format version', () => {
-    expect(PIXPRITE_VERSION).toBe(7);
-    expect([...SUPPORTED_PIXPRITE_VERSIONS]).toEqual([3, 4, 5, 6, 7]);
+    expect(PIXPRITE_VERSION).toBe(5);
+    expect([...SUPPORTED_PIXPRITE_VERSIONS]).toEqual([3, 4, 5]);
     expect(() => new Sprite().load(validPixprite())).not.toThrow();
 
     const legacy = validPixprite();

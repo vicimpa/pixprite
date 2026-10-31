@@ -477,7 +477,7 @@ export class State {
   /** Cels, frames or layers copied from the timeline */
   rangeClipboard: RangeClip | null = null;
   /** Where the timeline clipboard came from (outlined until pasted) */
-  @prop clipSource: { sprite: Sprite; range: Range; } | null = null;
+  @prop clipSource: { sprite: WeakRef<Sprite>; range: Range; } | null = null;
   /** Which of the two clipboards was filled last */
   clipKind: 'pixels' | 'range' = 'pixels';
 
@@ -1024,7 +1024,7 @@ export class State {
     if (doc.sessionId) void deleteSession(doc.sessionId);
     const i = this.docs.indexOf(doc);
     const rest = this.docs.filter(d => d !== doc);
-    if (this.clipSource?.sprite === doc) this.clipSource = null;
+    if (this.clipSource?.sprite.deref() === doc) this.clipSource = null;
     if (doc === this.sprite) this.playing = false;
     this.preparations.get(doc)?.controller.abort();
     if (!rest.length) {
@@ -1240,7 +1240,7 @@ effect(() => {
   void state.paletteSelection; void state.editPaletteEntry; void state.showPivot;
   for (const k of DOC_PREFS) void state.prefs[k];
   const doc = state.sprite;
-  void doc.frame; void doc.tags; void doc.hiddenFrameRanges; void doc.layer; void doc.range; void doc.mask; void doc.selectedSlices; void doc.tilesetMode; void doc.transformAlgo;
+  void doc.frame; void doc.tags; void doc.layer; void doc.range; void doc.mask; void doc.selectedSlices; void doc.tilesetMode; void doc.transformAlgo;
   clearTimeout(editorTimer);
   editorTimer = window.setTimeout(() => {
     // The last tools and view settings, for new documents and the next start

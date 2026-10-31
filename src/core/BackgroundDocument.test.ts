@@ -55,7 +55,7 @@ function fixture() {
   return doc;
 }
 
-test('async v6 encoding equals sync JSON, preserves IDs/aliases/extensions, and captures before live edits', async () => {
+test('async v5 encoding equals sync JSON, preserves IDs/aliases/extensions, and captures before live edits', async () => {
   workerMode();
   let release!: () => void;
   pause = () => new Promise<void>(resolve => { release = resolve; });
@@ -94,22 +94,6 @@ test('async decoding migrates v3/v4 identically and commits only a completely va
     await expect(async.loadAsync({ ...data, layers: [{ name: 'broken', cels: [{ link: 1 }, null] }] })).rejects.toThrow('linked cel');
     expect(async.toJSON()).toEqual(before);
   }
-});
-
-test('worker reads v5 live FX into v6, preserves v6 baked scopes and rejects v7 before replacing pixels/history', async () => {
-  workerMode(); installSoftwareCanvas();
-  const legacy = fixture().toJSON(); legacy.version = 5;
-  const sync = new Sprite(); sync.load(legacy);
-  const doc = new Sprite(); await doc.loadAsync(legacy);
-  expect(doc.toJSON()).toEqual(sync.toJSON());
-  expect(doc.toJSON().version).toBe(7);
-  doc.bakeLayerEffects('frame');
-  const baked = doc.toJSON(), history = doc.history.slice();
-  expect(baked.layers[0].bakedEffects).toEqual([['fx'], []]);
-  const restored = new Sprite(); await restored.loadAsync(baked);
-  expect(restored.toJSON()).toEqual(baked);
-  await expect(doc.loadAsync({ ...baked, version: 8 })).rejects.toThrow('Newer pixprite version: 8; supported up to 7');
-  expect(doc.toJSON()).toEqual(baked); expect(doc.history).toEqual(history);
 });
 
 test('async decode keeps shared resources distinct from continuous aliases and rejects malformed pixel/tile payloads', async () => {

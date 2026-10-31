@@ -1,4 +1,3 @@
-import { alphaLockedPixel } from './SpriteModel';
 /** Image filters over packed 0xAABBGGRR buffers. Every filter returns a new buffer. */
 
 import { packRgba, unpackRgba } from "~/core/Image";
@@ -13,7 +12,7 @@ export type FilterTarget = {
   mask?: Mask | null;
   tiledX?: boolean;
   tiledY?: boolean;
-  /** keep source alpha and silhouette (background or Lock Alpha layers) */
+  /** keep alpha untouched (background layers) */
   lockAlpha?: boolean;
 };
 
@@ -73,7 +72,7 @@ function perPixel(t: FilterTarget, fn: (v: number, x: number, y: number) => numb
       if (mask && !mask.has(x, y)) continue;
       const i = y * w + x, v = data[i];
       let n = fn(v, x, y) >>> 0;
-      if (lockAlpha) n = alphaLockedPixel(v, n);
+      if (lockAlpha) n = ((n & 0xffffff) | (v & 0xff000000)) >>> 0;
       out[i] = n;
     }
   return out;

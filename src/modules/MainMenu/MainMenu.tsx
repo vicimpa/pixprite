@@ -77,7 +77,7 @@ const MENUS: { label: string; items: () => MenuItems; }[] = [
       item('layer.new'), item('layer.newBelow'), item('layer.newGroup'), item('layer.duplicate'), item('layer.delete'), '-',
       item('layer.ungroup'), item('layer.outOfGroup'), '-',
       item('layer.newTilemap'), item('layer.toTilemap'), item('layer.toPixels'), item('layer.changeTileset'), '-',
-      item('layer.properties'), item('layer.effects'), item('layer.visible'), item('layer.lock'), item('layer.continuous'), item('layer.clip'), item('layer.solo'), item('layer.reference'), '-',
+      item('layer.properties'), item('layer.visible'), item('layer.lock'), item('layer.continuous'), item('layer.clip'), item('layer.solo'), item('layer.reference'), '-',
       item('layer.toBackground'), item('layer.fromBackground'), '-',
       item('layer.up'), item('layer.down'), '-',
       item('layer.mergeDown'), item('layer.mergeSelected'), item('layer.mergeVisible'), item('layer.flatten'),

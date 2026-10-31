@@ -17,7 +17,7 @@ and core pixel/canvas operations. Its operation methods delegate to these module
 `SpriteModel` contains shared types and pure model helpers. Existing imports from
 `~/core/Sprite` remain valid through re-exports. `DocumentModel` adds shared Image resources,
 placed CelInstance values, AssetRef descriptors and the common bake pipeline.
-The current `.pixprite` writer uses v7; readers migrate v3/v4/v5/v6 explicitly. v6 adds the per-frame residual Layer FX scope; v5 shared-image resources retain their schema.
+The current `.pixprite` writer uses v5; readers migrate v3/v4 explicitly.
 
 Operations receive the same `Sprite` instance as their typed `this` value. The
 internal `SpriteContext` describes its public interface and the private state that
@@ -45,7 +45,7 @@ writes cannot alter a sibling/source; before serialization or source reuse, an
 exact comparison detects those writes and detaches that instance to a new Image.
 Callers still use Sprite mutation/checkpoint methods for undo and invalidation.
 `imageOf` also accepts old plain cel objects, preserving their existing identities
-and data-buffer semantics. Loading v5/v6/v7 constructs canonical instances, sharing one
+and data-buffer semantics. Loading v5 constructs canonical instances, sharing one
 Image object for each stable ID. Shared sources do not imply linked timeline cels.
 
 `Sprite.setCelTransform` and `setLayerEffects` create undoable immutable updates.
@@ -56,9 +56,3 @@ Aseprite conversion; all raster exports already use the renderer. Indexed export
 with newly baked instance/effect alpha promote to RGB to retain that alpha; the
 editable document retains its indexed mode. See
 [pixprite-format.md](pixprite-format.md) for migration and export details.
-
-## Layer transparency channels
-
-`Layer.mask` holds an immutable Image resource plus position, outside coverage and enabled/inverted flags. `LayerMaskOperations` owns explicit creation/editing/editor-view paths; generic color cel accessors and extension RPC keep their source-color meaning. The shared renderer multiplies alpha after each node's residual FX stack, before outer opacity/blend/clip. Group FX baking includes descendant masks while keeping its own mask live; destructive compositing consumes mask metadata. Mask-only images join the same serializer/capture image table, immutable incremental cache, Worker validation and content-addressed storage as cel images. History traverses private Image buffers without getter materialization, deduplicating buffers shared by masks and cels. See [layer-masks.md](layer-masks.md) for channel behavior, geometry, export and coverage semantics.
-
-Состояние сворачивания кадров — UI metadata самого документа (`Tag.collapsed`, `Sprite.hiddenFrameRanges`). `TimelineFolding` строит мемоизированное разбиение видимых колонок без переиндексации модели; `Sprite.goToFrame` централизует раскрытие при явной навигации, а playback/restore сохраняют folds. Структурные операции remap-ят ручные диапазоны по source indices. Семантика и проверки — [Сворачивание таймлайна](timeline-folding.md).

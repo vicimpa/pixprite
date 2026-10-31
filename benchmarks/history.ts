@@ -60,11 +60,11 @@ const api = {
     return true;
   },
   async close() {
-    // transactionFailure deliberately disposes its host; close tests independent ownership cleanup.
+    // transactionFailure disposes its host; close checks independent ownership cleanup.
     host = makeHost(); call = { host } as Call;
     state.setPrefs({ historyOperationMB: 0, historyMB: 0 });
     const doc = state.sprite;
-    state.clipSource = { sprite: doc, range: { type: 'frames', layers: [0, 0], frames: [0, 0] } };
+    state.clipSource = { sprite: new WeakRef(doc), range: { type: 'frames', layers: [0, 0], frames: [0, 0] } };
     doc.addFrame('duplicate'); state.playing = true;
     doc.checkpoint('Retained pixels');
     doc.setCel(createCelInstance(createImage(32, 32, new Uint32Array(1024).fill(0xffffffff))));

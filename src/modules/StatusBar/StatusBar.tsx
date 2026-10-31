@@ -137,7 +137,7 @@ export const StatusBar: FC = () => {
         <NumberEntry
           value={sprite.frame + 1}
           title={t('common.goToFrame')}
-          onCommit={n => { sprite.dropFloating(); sprite.goToFrame(Math.max(0, Math.min(sprite.frames.length - 1, Math.round(n) - 1))); }}
+          onCommit={n => { sprite.dropFloating(); sprite.frame = Math.max(0, Math.min(sprite.frames.length - 1, Math.round(n) - 1)); }}
           suffix={` / ${sprite.frames.length}`} />
       </span>
       {sprite.frames.length > 1 && <Muted>{frame?.duration}ms</Muted>}

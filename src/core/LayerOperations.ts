@@ -1,89 +1,10 @@
 import { unionRect, type Rect } from "~/core/Image";
-import * as rendering from './SpriteRenderer';
-import type { LayerFX } from './DocumentModel';
 import type { SpriteContext } from "./SpriteContext";
-import { bakeCel, copyEffectScope, createCelInstance, effectsForFrame, imageOf, isCelInstance, hasPixelEffects, hasColorEffects, validateLayerFX } from './DocumentModel';
+import { validateLayerFX } from './DocumentModel';
 import {
   celRect, cloneCel, newLayer, normalizeDepths, parentOf, rootsOf, span, subtreeStart, trimCel, type Cel,
   type CelImage, type Layer, type RefImage,
 } from "./SpriteModel";
-
-/** Bake a stack in one transaction. Group content is rasterized only in the chosen
- * frames; its hierarchy and every other frame stay editable. */
-export function bakeLayerEffects(this: SpriteContext, scope: 'layer' | 'frame' | 'range' = 'layer', index = this.layer, draft?: readonly LayerFX[]): boolean {
-  const original = this.layers[index];
-  if (draft) validateLayerFX(draft);
-  const target = original && { ...original, effects: draft ? draft.map(effect => ({ ...effect })) : original.effects };
-  if (!target || target.reference || this.lockedDeep(index) || !target.effects?.length) return false;
-  const chosen = scope === 'layer' ? this.frames.map((_, f) => f)
-    : scope === 'frame' ? [this.frame] : this.selectedFrames;
-  const selected = new Set(chosen);
-  if (!chosen.some(f => effectsForFrame(target, f).length)) return false;
-  const start = subtreeStart(this.layers, index);
-  if (target.group && (this.layers.slice(start, index).some((l, i) => this.lockedDeep(start + i))
-    || this.refuse('layers', 'create'))) return false;
-  const proposed = { ...this, layers: this.layers.map((l, i) => i === index ? target : l), effectsPreview: null };
-  rendering.validateEffectBounds(proposed, chosen, [index]);
-  if (target.group) chosen.forEach(frame => {
-    rendering.groupBounds.call(proposed, index, frame);
-    rendering.nodeBounds(proposed, index, frame);
-  });
-  this.dropFloating();
-  const source = { ...this.layers[index], effects: target.effects };
-  const ids = new Set(source.effects.map(effect => effect.id));
-  const bakedEffects = this.frames.map((_, f) => selected.has(f) ? [...ids]
-    : (source.bakedEffects?.[f] ?? []).filter(id => ids.has(id)));
-  const complete = bakedEffects.every(baked => [...ids].every(id => baked.includes(id)));
-  let alpha = false, color = false;
-  let layers = this.layers.slice();
-  if (source.group) {
-    const child = newLayer(`${source.name} FX`, this.frames.length);
-    child.depth = source.depth + 1;
-    const context = { ...this, ...rendering, layers: layers.map((l, i) => i === index ? source : l), floating: null, effectsPreview: null };
-    child.cels = this.frames.map((_, f) => {
-      if (!selected.has(f)) return null;
-      alpha ||= hasPixelEffects(effectsForFrame(source, f)) || layers.slice(start, index).some(layer => layer.mask?.enabled || hasPixelEffects(effectsForFrame(layer, f)));
-      color ||= hasColorEffects(effectsForFrame(source, f)) || layers.slice(start, index).some(layer => hasColorEffects(effectsForFrame(layer, f)));
-      return rendering.groupCel.call(context, index, f);
-    });
-    layers = layers.map((layer, i) => i >= start && i < index ? {
-      ...layer, cels: layer.group ? layer.cels : layer.cels.map((cel, f) => selected.has(f) ? null : cel),
-      bakedEffects: layer.bakedEffects?.map((ids, f) => selected.has(f) ? [] : ids),
-    } : layer);
-    layers[index] = { ...source, effects: complete ? [] : source.effects, bakedEffects: complete ? undefined : bakedEffects };
-    layers.splice(index, 0, child);
-  } else {
-    const cache = new Map<CelImage, Map<string, Cel>>();
-    const cels = source.cels.map((cel, frame) => {
-      if (!cel) return null;
-      const effects = selected.has(frame) ? effectsForFrame(source, frame) : [];
-      alpha ||= hasPixelEffects(effects);
-      color ||= hasColorEffects(effects);
-      const key = JSON.stringify(effects.map(effect => effect.id));
-      const variants = cache.get(cel) ?? new Map<string, Cel>();
-      cache.set(cel, variants);
-      if (!variants.has(key)) {
-        let next = effects.length ? bakeCel(cel, effects) : cel;
-        // Baked results own immutable resources, including identity/disabled stacks.
-        // A tilemap converts as a layer; untouched frames keep their source resource.
-        if ((effects.length || source.tileset >= 0) && next) next = createCelInstance(imageOf(next), {
-          ...(isCelInstance(next) ? next.transform : {}), x: next.x, y: next.y, ext: next.ext,
-        });
-        variants.set(key, next);
-      }
-      return variants.get(key)!;
-    });
-    layers[index] = { ...source, cels, tileset: -1, background: alpha ? false : source.background,
-      effects: complete ? [] : source.effects, bakedEffects: complete ? undefined : bakedEffects };
-  }
-  this.checkpoint('Bake layer effects');
-  if ((alpha && this.colorMode === 'indexed') || (color && this.colorMode === 'gray')) { this.colorMode = 'rgb'; this.transparentIndex = -1; }
-  this.layers = layers;
-  this.layer = source.group ? index + 1 : index;
-  this.range = null;
-  this.touch();
-  return true;
-}
 
 export function getBackgroundIndex(this: SpriteContext): number {
   return this.layers.findIndex(l => l.background);
@@ -184,7 +105,6 @@ export function duplicateLayer(this: SpriteContext): void {
     background: false,
     cels: l.cels.map(c => c && (copies.get(c) ?? copies.set(c, cloneCel(c)).get(c)!)),
     celOpacity: l.celOpacity.slice(),
-    bakedEffects: copyEffectScope(l),
   }));
   layers.splice(this.layer + 1, 0, ...block);
   this.layers = normalizeDepths(layers);
@@ -290,11 +210,9 @@ export function toggleCollapsed(this: SpriteContext, i: number): void {
 
 export function updateLayer(this: SpriteContext, index: number, patch: Partial<Omit<Layer, 'cels' | 'celOpacity'>>, label = 'Layer properties'): boolean {
   if (!this.layers[index]) return false;
-  if (patch.lockAlpha !== undefined && typeof patch.lockAlpha !== 'boolean') throw new Error('Invalid layer lockAlpha');
   if (patch.effects !== undefined) {
     validateLayerFX(patch.effects);
     patch = { ...patch, effects: patch.effects.map(effect => ({ ...effect })) };
-    rendering.validateEffectChange(this, index, patch.effects!, this.frames.map((_, f) => f));
   }
   if (patch.name !== undefined && patch.name !== this.layers[index].name && this.refuse('layers', 'rename')) return false;
   this.checkpoint(label);
@@ -355,7 +273,7 @@ export function layerToBackground(this: SpriteContext): void {
     this.drawLayer(ctx, this.layer, f, true);
     return { ...this.canvasRect, data: new Uint32Array(ctx.getImageData(0, 0, this.width, this.height).data.buffer) };
   });
-  const bg: Layer = { ...l, mask: undefined, name: 'Background', background: true, opacity: 1, blend: 'source-over', cels, celOpacity: cels.map(() => 1), ...(l.effects ? { effects: [], bakedEffects: undefined } : {}) };
+  const bg: Layer = { ...l, name: 'Background', background: true, opacity: 1, blend: 'source-over', cels, celOpacity: cels.map(() => 1), ...(l.effects ? { effects: [] } : {}) };
   this.layers = [bg, ...this.layers.filter((_, i) => i !== this.layer)];
   this.layer = 0;
   this.touch();
@@ -391,7 +309,7 @@ export function mergeDown(this: SpriteContext): void {
   // Opacity is baked in; the blend mode stays, it still applies against what is under the result
   this.layers = this.layers
     .filter((_, i) => i !== top)
-    .map((l, i) => i === bottom ? { ...below, mask: undefined, visible: shown, opacity: 1, cels, celOpacity: cels.map(() => 1), ...(below.effects ? { effects: [], bakedEffects: undefined } : {}) } : l);
+    .map((l, i) => i === bottom ? { ...below, visible: shown, opacity: 1, cels, celOpacity: cels.map(() => 1), ...(below.effects ? { effects: [] } : {}) } : l);
   this.layer = bottom;
   this.range = null;
   this.touch();
@@ -516,7 +434,7 @@ export function moveLayers(this: SpriteContext, [a, b]: [number, number], before
   this.checkpoint(copy ? 'Copy layers' : 'Move layers');
   const copies = new Map<CelImage, Cel>();
   const moved = block.map(l => copy
-    ? { ...l, background: false, name: `${l.name} copy`, cels: l.cels.map(c => c && (copies.get(c) ?? copies.set(c, cloneCel(c)).get(c)!)), celOpacity: l.celOpacity.slice(), bakedEffects: copyEffectScope(l) }
+    ? { ...l, background: false, name: `${l.name} copy`, cels: l.cels.map(c => c && (copies.get(c) ?? copies.set(c, cloneCel(c)).get(c)!)), celOpacity: l.celOpacity.slice() }
     : l);
   let layers = this.layers.slice();
   let at = before;

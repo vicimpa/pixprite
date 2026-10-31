@@ -271,7 +271,7 @@ export const View: FC = () => {
   /** Selection tools (and the move tool on floating pixels) show transform handles */
   const handlesVisible = () => {
     const t = state.activeTool;
-    return !state.sprite.editingMask && !active.session && (SELECT_TOOLS.includes(t) && t !== 'wand' || t === 'move' && !!state.sprite.floating) && !!currentPlacement();
+    return !active.session && (SELECT_TOOLS.includes(t) && t !== 'wand' || t === 'move' && !!state.sprite.floating) && !!currentPlacement();
   };
 
   /** Is the (mirrored-space) point over the ruler that holds `axis` guides' marks */
@@ -506,7 +506,7 @@ export const View: FC = () => {
       return;
     }
     hover.current = symHit(sx, sy) ?? (handlesVisible() ? hitHandle(sx, sy, toScreen, HANDLE) : null);
-    if (!state.sprite.editingMask && !hover.current && SELECT_TOOLS.includes(state.activeTool) && state.sprite.mask?.has(p.x, p.y) && !p.shift && !p.alt)
+    if (!hover.current && SELECT_TOOLS.includes(state.activeTool) && state.sprite.mask?.has(p.x, p.y) && !p.shift && !p.alt)
       hover.current = 'move';
   };
 
@@ -662,16 +662,16 @@ export const View: FC = () => {
     const { cursorX: cx, cursorY: cy } = state;
     let override: { layer: number; data: Uint32Array; } | undefined;
     if (prefs.brushPreview === 'full' && !s && lp && !pan.current && !state.playing && sprite.inBounds(cx, cy) && !outlinePreview(tool)) {
-      const key = `${sprite.version}:${sprite.layer}:${sprite.editingChannel}:${tool}:${cx}:${cy}:${state.colorA.toHexString(true)}:${state.brushSize}:${state.brushShape}:${state.brushAngle}:${state.ink}:${state.opacity}:${state.symmetryX}:${state.symmetryY}:${state.symmetryD1}:${state.symmetryD2}`;
+      const key = `${sprite.version}:${tool}:${cx}:${cy}:${state.colorA.toHexString(true)}:${state.brushSize}:${state.brushShape}:${state.brushAngle}:${state.ink}:${state.opacity}:${state.symmetryX}:${state.symmetryY}:${state.symmetryD1}:${state.symmetryD2}`;
       if (preview.current.key !== key) preview.current = { key, data: previewDab(tool, cx, cy) };
       if (preview.current.data) override = { layer: sprite.layer, data: preview.current.data };
     }
 
     const fp = state.filterPreview;
-    if (!sprite.editingMask && fp && fp.frame === sprite.frame) override = { layer: fp.layer, data: fp.data };
+    if (fp && fp.frame === sprite.frame) override = { layer: fp.layer, data: fp.data };
     // While a stroke paints one layer, the layers below and above it are composited once
     sprite.focusLayer = s && pressed.current !== null && PAINT_TOOLS.includes(tool) ? sprite.layer : null;
-    const image = sprite.renderEditor(override);
+    const image = sprite.render(sprite.frame, undefined, override);
     const checker = Math.max(1, prefs.checkerSize) * (prefs.checkerFollowsZoom ? zoom : 1);
 
     // Tiled mode shows neighbours dimmed around the sprite
@@ -726,7 +726,7 @@ export const View: FC = () => {
     ctx.fillRect(ox + 3, oy + sh, sw, 3);
     ctx.fillRect(ox + sw, oy + 3, 3, sh);
 
-    const onion = state.onion && !state.playing && !(sprite.editingMask && sprite.maskView) ? onionFrames() : [];
+    const onion = state.onion && !state.playing ? onionFrames() : [];
     const drawOnion = () => {
       for (const o of onion.slice().sort((a, b) => b.k - a.k)) {
         const alpha = Math.max(0, prefs.onionOpacity - prefs.onionStep * (o.k - 1));

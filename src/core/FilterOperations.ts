@@ -36,7 +36,7 @@ export function filterTarget(data: Uint32Array, layer: number): FilterTarget {
   return {
     w: sprite.width, h: sprite.height, data, mask: sprite.mask,
     tiledX: state.tiledX, tiledY: state.tiledY,
-    lockAlpha: sprite.layers[layer]?.background || sprite.layers[layer]?.lockAlpha,
+    lockAlpha: sprite.layers[layer]?.background,
   };
 }
 

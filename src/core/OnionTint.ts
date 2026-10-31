@@ -1,10 +1,10 @@
 import type { Sprite } from './Sprite';
 
 /** Frame tinted red (past) or blue (future) by luminance, cached per sprite version */
-const tintCache = new WeakMap<Sprite, { version: number; preview: Sprite['effectsPreview']; frames: Map<string, OffscreenCanvas> }>();
+const tintCache = new WeakMap<Sprite, { version: number; frames: Map<string, OffscreenCanvas> }>();
 export function tinted(sprite: Sprite, frame: number, past: boolean) {
   let cache = tintCache.get(sprite);
-  if (!cache || cache.version !== sprite.version || cache.preview !== sprite.effectsPreview) tintCache.set(sprite, cache = { version: sprite.version, preview: sprite.effectsPreview, frames: new Map() });
+  if (!cache || cache.version !== sprite.version) tintCache.set(sprite, cache = { version: sprite.version, frames: new Map() });
   const key = `${frame}:${past}`;
   const hit = cache.frames.get(key);
   if (hit) return hit;

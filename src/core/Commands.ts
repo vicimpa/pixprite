@@ -60,7 +60,7 @@ function frameStep(dir: 1 | -1, inTag = false) {
   sprite.dropFloating();
   const { from, to } = inTag ? sprite.playRange() : { from: 0, to: sprite.frames.length - 1 };
   const len = to - from + 1;
-  sprite.goToFrame(from + (((sprite.frame - from + dir) % len) + len) % len);
+  sprite.frame = from + (((sprite.frame - from + dir) % len) + len) % len;
   sprite.range = null;
 }
 
@@ -98,16 +98,15 @@ const list: Command[] = [
   {
     id: 'edit.cut', group: 'menu.edit', keys: ['Ctrl+X'], run: changed(() => {
       // A timeline range without a pixel selection: copy it, then remove it
-      if (s().editingChannel !== 'mask' && s().range && !s().mask && !s().floating) {
+      if (s().range && !s().mask && !s().floating) {
         state.rangeClipboard = s().copyRange();
         state.clipSource = null;
         state.clipKind = 'range';
         return deleteRange();
       }
-      const origin = s().editingMask ? { x: 0, y: 0 } : s().selectionOrigin ?? s().getCel() ?? undefined;
+      const origin = s().selectionOrigin ?? s().getCel() ?? undefined;
       const bmp = s().copySelection();
       state.clipboard = bmp && { ...bmp, x: origin?.x, y: origin?.y };
-      state.clipKind = 'pixels';
       copyToSystemClipboard(state.clipboard);
       s().clearSelection();
     })
@@ -115,15 +114,15 @@ const list: Command[] = [
   {
     id: 'edit.copy', group: 'menu.edit', keys: ['Ctrl+C'], run: () => {
       // A timeline range without a pixel selection copies cels / frames / layers
-      if (s().editingChannel !== 'mask' && s().range && !s().mask && !s().floating) {
+      if (s().range && !s().mask && !s().floating) {
         state.rangeClipboard = s().copyRange();
-        state.clipSource = { sprite: s(), range: { ...s().range! } };
+        state.clipSource = { sprite: new WeakRef(s()), range: { ...s().range! } };
         state.clipKind = 'range';
         state.showNotice(`Copied ${s().range!.type}`);
         return;
       }
       state.clipKind = 'pixels';
-      const origin = s().editingMask ? { x: 0, y: 0 } : s().selectionOrigin ?? s().getCel() ?? undefined;
+      const origin = s().selectionOrigin ?? s().getCel() ?? undefined;
       const bmp = s().copySelection();
       state.clipboard = bmp && { ...bmp, x: origin?.x, y: origin?.y };
       copyToSystemClipboard(state.clipboard);
@@ -139,7 +138,6 @@ const list: Command[] = [
   },
   {
     id: 'edit.paste', group: 'menu.edit', run: changed(async () => {
-      if (s().editingChannel === 'mask') return;
       if (state.clipKind === 'range' && state.rangeClipboard) { state.clipSource = null; return s().pasteRange(state.rangeClipboard); }
       const bmp = await readSystemClipboard() ?? state.clipboard;
       if (bmp) { s().paste(bmp, state.pastePosition(bmp)); state.tool = 'move'; }
@@ -147,7 +145,6 @@ const list: Command[] = [
   },
   {
     id: 'edit.pasteAsLayer', group: 'menu.edit', keys: ['Ctrl+Shift+V'], run: changed(async () => {
-      if (s().editingChannel === 'mask') return;
       const bmp = await readSystemClipboard() ?? state.clipboard;
       if (!bmp) return state.showTip(t('msg.theClipboardHasNo'));
       s().addLayer();
@@ -157,10 +154,9 @@ const list: Command[] = [
   },
   {
     id: 'edit.clear', group: 'menu.edit', keys: ['Delete', 'Backspace'], run: changed(() => {
-      if (s().editingChannel === 'mask') return s().clearSelection();
       // With the slice tool, Delete removes the picked slices
       if (state.activeTool === 'slice' && s().selectedSlices.length) return s().removeSlices();
-      if (s().editingChannel !== 'mask' && s().range && !s().mask && !s().floating) return deleteRange();
+      if (s().range && !s().mask && !s().floating) return deleteRange();
       s().clearSelection();
     })
   },
@@ -265,8 +261,6 @@ const list: Command[] = [
   { id: 'layer.reference', group: 'menu.layer', run: () => void openReference() },
   { id: 'layer.clip', group: 'menu.layer', run: changed(() => s().updateLayer(s().layer, { clip: !s().current.clip }, 'Clipping')), checked: () => !!s().current?.clip, enabled: () => !!s().current && !s().current.background && !s().current.reference },
   { id: 'layer.solo', group: 'menu.layer', run: changed(() => s().soloLayer(s().layer)) },
-  { id: 'layer.mask', group: 'menu.layer', run: () => dialogs.layerMask(), enabled: () => !!s().current && !s().current.reference },
-  { id: 'layer.effects', group: 'menu.layer', run: () => dialogs.layerEffects(), enabled: () => !!s().current && !s().current.reference },
   { id: 'layer.properties', group: 'menu.layer', keys: ['Ctrl+Shift+L'], run: () => dialogs.layerProperties() },
   { id: 'layer.visible', group: 'menu.layer', run: changed(() => s().updateLayer(s().layer, { visible: !s().current.visible }, 'Toggle visibility')), checked: () => !!s().current?.visible },
   { id: 'layer.lock', group: 'menu.layer', run: changed(() => s().updateLayer(s().layer, { locked: !s().current.locked }, 'Toggle lock')), checked: () => !!s().current?.locked },
@@ -297,12 +291,12 @@ const list: Command[] = [
   { id: 'anim.moveRight', group: 'menu.animation', keys: ['Alt+Right'], run: changed(() => s().moveFrame(1)) },
   { id: 'anim.newTag', group: 'menu.animation', run: () => { s().addTag(); dialogs.tagProperties(s().tags.length - 1); } },
   { id: 'anim.loop', group: 'menu.animation', keys: ['Alt+L'], run: () => s().setLoopSection(), checked: () => !!s().loop },
-  { id: 'anim.first', group: 'menu.animation', keys: ['Home'], run: () => { s().dropFloating(); s().goToFrame(0); s().range = null; } },
+  { id: 'anim.first', group: 'menu.animation', keys: ['Home'], run: () => { s().dropFloating(); s().frame = 0; s().range = null; } },
   { id: 'anim.prev', group: 'menu.animation', keys: ['Left'], run: () => frameStep(-1) },
   { id: 'anim.next', group: 'menu.animation', keys: ['Right'], run: () => frameStep(1) },
   { id: 'anim.prevInTag', group: 'menu.animation', keys: [','], run: () => frameStep(-1, true) },
   { id: 'anim.nextInTag', group: 'menu.animation', keys: ['.'], run: () => frameStep(1, true) },
-  { id: 'anim.last', group: 'menu.animation', keys: ['End'], run: () => { s().dropFloating(); s().goToFrame(s().frames.length - 1); s().range = null; } },
+  { id: 'anim.last', group: 'menu.animation', keys: ['End'], run: () => { s().dropFloating(); s().frame = s().frames.length - 1; s().range = null; } },
   { id: 'anim.goto', group: 'menu.animation', keys: ['Alt+G'], run: () => dialogs.gotoFrame() },
   { id: 'cel.duplicate', group: 'menu.animation', keys: ['Alt+D'], run: changed(() => s().duplicateCels(false)) },
   { id: 'cel.duplicateLinked', group: 'menu.animation', keys: ['Alt+Shift+D'], run: changed(() => s().duplicateCels(true)) },

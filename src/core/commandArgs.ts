@@ -186,7 +186,7 @@ export const PARAMETRIC: Record<string, Parametric> = {
   },
   'image.spriteSize': {
     params: [],
-    apply: a => { if (s().scaleSprite(Number(a.width), Number(a.height)) === false) return state.showTip(t('mask.resizeBounds')); state.fit(); state.save(); },
+    apply: a => { s().scaleSprite(Number(a.width), Number(a.height)); state.fit(); state.save(); },
   },
   'image.colorMode': {
     params: [],
@@ -209,7 +209,7 @@ export const PARAMETRIC: Record<string, Parametric> = {
   },
   'anim.goto': {
     params: [],
-    apply: a => { const sprite = s(); sprite.dropFloating(); sprite.goToFrame(Number(a.frame)); sprite.range = null; },
+    apply: a => { const sprite = s(); sprite.dropFloating(); sprite.frame = Number(a.frame); sprite.range = null; },
   },
   'cel.properties': {
     params: [],

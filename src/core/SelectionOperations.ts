@@ -58,23 +58,15 @@ export function selectedBitmap(this: SpriteContext, layer = this.layer, frame = 
   return { bmp, rect, shape };
 }
 
-export function eraseSelection(this: SpriteContext, structural = false): void {
+export function eraseSelection(this: SpriteContext): void {
   const { mask } = this;
-  if (this.editingChannel === 'mask') {
-    if (!this.editingMask || !this.editable) return;
-    const out = this.layerMaskPixels();
-    for (let i = 0; i < out.length; i++) if (!mask || mask.data[i]) out[i] = 0xff000000;
-    this.putLayerMaskPixels(out);
-    return;
-  }
   const l = this.current;
-  if (l?.lockAlpha && !structural) return;
   const fill = l?.background ? this.backgroundFill : 0;
   if (!mask) return this.setCel(l?.background ? this.filledCel() : null);
   if (!this.getCel()) return;
   const out = this.canvasPixels();
   for (let i = 0; i < out.length; i++) if (mask.data[i]) out[i] = fill;
-  this.putCanvas(out, this.layer, this.frame, !structural);
+  this.putCanvas(out);
 }
 
 export function makeFloating(this: SpriteContext, src: Bitmap, shape: Uint8Array, place: Placement, layer = this.layer, frame = this.frame): Floating {
@@ -97,14 +89,13 @@ export function setFloating(this: SpriteContext, f: Floating | null): void {
 
 /** Lifts the selected pixels into a floating layer so they can be moved/transformed */
 export function liftSelection(this: SpriteContext, copy = false): Floating | null {
-  if (this.editingChannel === 'mask') return null;
   if (this.floating) return this.floating;
   if (!this.editable) return null;
   const { bmp, rect, shape } = this.selectedBitmap();
   this.floatingGuard = this.protectHistory();
   this.checkpoint(copy ? 'Duplicate selection' : 'Transform');
   this.floatingStart = this.historyPosition;
-  if (!copy) eraseSelection.call(this, true);
+  if (!copy) this.eraseSelection();
   this.setFloating(this.makeFloating(bmp, shape, {
     x: rect.x, y: rect.y, w: rect.w, h: rect.h, angle: 0,
     px: rect.x + rect.w / 2, py: rect.y + rect.h / 2,
@@ -195,7 +186,6 @@ export function stampFloating(this: SpriteContext): void {
 
 /** Replace the selected pixels (or the whole cel) through `fn` */
 export function transformSelection(this: SpriteContext, label: string, fn: (bmp: Bitmap) => Bitmap): void {
-  if (this.editingChannel === 'mask') return;
   const f = this.floating ?? (this.mask ? this.liftSelection() : null);
   if (f) {
     // Part of the floating session: one undo step for the whole transformation
@@ -225,7 +215,6 @@ export function transformSelection(this: SpriteContext, label: string, fn: (bmp:
 
 /** Rotate the selection by quarter turns as a live transform (the user can still move it) */
 export function rotateSelection(this: SpriteContext, turns: number): void {
-  if (this.editingChannel === 'mask') return;
   const f = this.floating ?? (this.mask ? this.liftSelection() : null);
   if (!f) return this.transformSelection('Turn', b => rotate(b, turns));
   this.placeFloating({ ...f.place, angle: ((f.place.angle + turns * 90) % 360 + 360) % 360 });
@@ -233,12 +222,6 @@ export function rotateSelection(this: SpriteContext, turns: number): void {
 
 /** Apply a per-pixel color function to the selection (or the whole cel) */
 export function mapPixels(this: SpriteContext, label: string, fn: (v: number) => number): void {
-  if (this.editingChannel === 'mask') {
-    if (!this.editingMask || !this.editable) return;
-    this.checkpoint(label);
-    this.putLayerMaskPixels(this.layerMaskPixels().map((v, i) => !this.mask || this.mask.data[i] ? fn(v) : v));
-    return;
-  }
   const f = this.floating;
   if (f) {
     this.setFloating(this.makeFloating({ ...f.src, data: f.src.data.map(fn) }, f.shape, f.place, f.layer, f.frame));
@@ -247,10 +230,7 @@ export function mapPixels(this: SpriteContext, label: string, fn: (v: number) =>
   const cel = this.getCel();
   if (!this.editable || !cel) return;
   this.checkpoint(label);
-  if (!this.mask) {
-    const next = { ...cel, data: cel.data.map(fn) };
-    return this.setCel(next, this.layer, this.frame, true);
-  }
+  if (!this.mask) return this.setCel({ ...cel, data: cel.data.map(fn) });
   const out = this.canvasPixels();
   for (let i = 0; i < out.length; i++)
     if (this.mask.data[i]) out[i] = fn(out[i]);
@@ -259,7 +239,6 @@ export function mapPixels(this: SpriteContext, label: string, fn: (v: number) =>
 
 /** Replace the selection's pixels with a whole-buffer filter result */
 export function applyFilter(this: SpriteContext, label: string, fn: (data: Uint32Array, mask: Mask | null, layer: number) => Uint32Array, cels: [number, number][] = [[this.layer, this.frame]]): void {
-  if (this.editingChannel === 'mask') return;
   this.dropFloating();
   this.checkpoint(label);
   const done = new Set<Cel>();
@@ -294,7 +273,6 @@ export function clearSelection(this: SpriteContext): void {
 export function copySelection(this: SpriteContext, merged = false): Bitmap | null {
   const f = this.floating;
   if (f) return { ...f.result.bmp, data: f.result.bmp.data.slice() };
-  if (this.editingChannel === 'mask') return this.editingMask ? { w: this.width, h: this.height, data: this.layerMaskPixels() } : null;
   if (!merged) return this.selectedBitmap().bmp;
   const rect = this.mask?.bounds ?? { x: 0, y: 0, w: this.width, h: this.height };
   const data = this.flatten(this.frame, rootsOf(this.layers).filter(i => this.layers[i].visible))!.data;
@@ -313,7 +291,6 @@ export function getSelectionOrigin(this: SpriteContext): { x: number; y: number;
 }
 
 export function paste(this: SpriteContext, bmp: Bitmap, at?: { x: number; y: number; }, label = 'Paste'): void {
-  if (this.editingChannel === 'mask') return;
   if (!this.editable) return;
   this.dropFloating();
   this.floatingGuard = this.protectHistory();

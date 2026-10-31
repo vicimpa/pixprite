@@ -1,4 +1,3 @@
-import { type FrameSpan } from './TimelineFolding';
 import { runTask, type TaskOptions } from './BackgroundTask';
 import { hydrateCapture } from './BackgroundDocument';
 import type { Locks, LocksRecord, MetaTarget } from "@pixprite/api";
@@ -10,14 +9,13 @@ import { Mask } from "~/core/Mask";
 import type { TileRefs, Tileset, TilesetMode } from "~/core/Tilemap";
 import type { Algorithm, Placement } from "~/core/Transform";
 import * as FrameOperations from "./FrameOperations";
-import * as LayerMasks from "./LayerMaskOperations";
 import * as LayerOperations from "./LayerOperations";
 import * as SelectionOperations from "./SelectionOperations";
 import type { SpriteContext } from "./SpriteContext";
 import * as SpriteHistory from "./SpriteHistory";
 import type { HistoryGuard, Snapshot } from "./SpriteHistory";
 import {
-  alphaLockedCel, alphaLockedPixel, celPixel, celRect, cleanInfo, keepExt, lockedNotice, lockOwners, newLayer, parentOf, reframeCel,
+  celPixel, celRect, cleanInfo, keepExt, lockedNotice, lockOwners, newLayer, parentOf, reframeCel,
   sliceKey, span, trimCel, type Cel, type CelImage, type ExtData, type Floating, type Frame,
   type FramePalette, type Guide, type Layer, type LockKind, type LockOp, type ProjectInfo, type Range,
   type RangeClip, type Slice, type SliceKey, type Tag, type TagDirection,
@@ -25,7 +23,7 @@ import {
 import * as SpriteRenderer from "./SpriteRenderer";
 import * as SpriteSerialization from "./SpriteSerialization";
 import * as TileOperations from "./TileOperations";
-import { createLayerMask, createImage, isCelInstance, moveCel, transformCel, validateCelTransform, validateLayerFX, type CelTransform, type LayerFX } from './DocumentModel';
+import { isCelInstance, moveCel, transformCel, validateCelTransform, validateLayerFX, type CelTransform, type LayerFX } from './DocumentModel';
 
 export { packRgba, unpackRgba } from '~/core/Image';
 export { historyLimits } from "./SpriteHistory";
@@ -37,7 +35,7 @@ export {
   type ProjectInfo, type Range, type Frame, type TagDirection, type Tag, type SliceKey, type Slice,
   type Floating, type RangeClip, type FramePalette, type LockKind, type LockOp,
 } from "./SpriteModel";
-export { migratePixpriteV3, migratePixpriteV4, migratePixpriteV5, migratePixpriteV6, PIXPRITE_VERSION, SUPPORTED_PIXPRITE_VERSIONS, type PixpriteData } from "./SpriteValidation";
+export { migratePixpriteV3, migratePixpriteV4, PIXPRITE_VERSION, SUPPORTED_PIXPRITE_VERSIONS, type PixpriteData } from "./SpriteValidation";
 
 @reactive()
 export class Sprite {
@@ -49,15 +47,8 @@ export class Sprite {
   @prop width = 32;
   @prop height = 32;
   @prop layers: Layer[] = [];
-  /** Editor-only FX draft, excluded from captures/history and document dirtiness. */
-  effectsPreview: { layer: number; effects: readonly LayerFX[] } | null = null;
-  /** Editor-only channel/view state. Color readers, exports and extension RPC stay independent. */
-  @prop editingChannel: 'color' | 'mask' = 'color';
-  @prop maskView = false;
-  get editingMask() { return this.editingChannel === 'mask' && !!this.current?.mask; }
   @prop frames: Frame[] = [];
   @prop tags: Tag[] = [];
-  @prop hiddenFrameRanges: FrameSpan[] = [];
   @prop slices: Slice[] = [];
   /** Guide lines of the document (replaced, never mutated) */
   @prop guides: Guide[] = [];
@@ -74,48 +65,6 @@ export class Sprite {
   @prop range: Range | null = null;
   /** Playback loop section (inclusive frames), used when no tag covers the current frame */
   @prop loop: [number, number] | null = null;
-
-  /** View-only transition counter: same-frame reveal also scrolls to its destination. Never serialized. */
-  @prop timelineReveal = 0;
-
-  /** Explicit navigation reveals every independent reason covering the destination. Playback/restore retain folds. */
-  goToFrame(frame: number) {
-    if (!Number.isFinite(frame)) return;
-    frame = Math.max(0, Math.min(this.frames.length - 1, Math.round(frame)));
-    this.revealFrames([frame, frame]);
-    this.frame = frame;
-    this.timelineReveal++;
-  }
-
-  revealFrames([from, to]: FrameSpan) {
-    const intersects = (a: number, b: number) => a <= to && b >= from;
-    const tags = this.tags.map(t => t.collapsed && intersects(t.from, t.to) ? { ...t, collapsed: false } : t);
-    const ranges = this.hiddenFrameRanges.filter(([a, b]) => !intersects(a, b));
-    if (tags.some((t, i) => t !== this.tags[i]) || ranges.length !== this.hiddenFrameRanges.length) {
-      this.tags = tags; this.hiddenFrameRanges = ranges; this.touch();
-    }
-  }
-
-  collapseFrames(range: FrameSpan = this.range && this.range.type !== 'layers' ? this.range.frames : [this.frame, this.frame]) {
-    this.checkpoint('Collapse frames');
-    this.hiddenFrameRanges = [...this.hiddenFrameRanges, [...range] as FrameSpan];
-    this.touch();
-  }
-
-  collapseTag(index: number) {
-    const tag = this.tags[index];
-    if (!tag) return;
-    this.checkpoint('Fold tag');
-    this.tags = this.tags.map((t, i) => i === index ? { ...t, collapsed: !t.collapsed } : t);
-    this.touch();
-  }
-
-  foldAll(collapse: boolean) {
-    this.checkpoint(collapse ? 'Collapse all frames' : 'Expand all frames');
-    this.tags = this.tags.map(t => ({ ...t, collapsed: collapse }));
-    this.hiddenFrameRanges = collapse ? (this.tags.length ? this.hiddenFrameRanges : [[0, this.frames.length - 1]]) : [];
-    this.touch();
-  }
 
   /** Pixels are always RGBA; indexed / gray sprites keep every written pixel on the palette / gray */
   @prop colorMode: ColorMode = 'rgb';
@@ -274,7 +223,7 @@ export class Sprite {
   get canUndo() { return this.history.length > 0; }
   get canRedo() { return this.future.length > 0; }
   get current() { return this.layers[this.layer]; }
-  get editable() { return !!this.current && (this.editingChannel === 'mask' ? !!this.current.mask && !this.maskBoundsNotice : !this.current.group) && !this.current.reference && this.visibleDeep(this.layer) && !this.lockedDeep(this.layer); }
+  get editable() { return !!this.current && !this.current.group && !this.current.reference && this.visibleDeep(this.layer) && !this.lockedDeep(this.layer); }
 
   /** Visible itself and inside visible groups */
   visibleDeep(i: number): boolean {
@@ -296,13 +245,9 @@ export class Sprite {
     this.colorMode = 'rgb';
     this.width = width;
     this.height = height;
-    this.effectsPreview = null;
-    this.editingChannel = 'color';
-    this.maskView = false;
     this.layers = [newLayer('Layer 1', 1)];
     this.frames = [{ duration: 100 }];
     this.tags = [];
-    this.hiddenFrameRanges = [];
     this.slices = [];
     this.guides = [];
     this.selectedSlices = [];
@@ -516,36 +461,6 @@ export class Sprite {
     return this.layers[layer]?.cels[frame] ?? null;
   }
 
-  get maskBoundsNotice() { return this.editingMask && !LayerMasks.maskFitsCanvas(this.current.mask!, this.canvasRect); }
-
-  setEditingChannel(channel: 'color' | 'mask') {
-    if (channel === 'mask' && !this.current?.mask) return false;
-    this.cancelFloating();
-    this.editingChannel = channel;
-    return true;
-  }
-
-  createLayerMask(source: 'reveal' | 'selection' | 'alpha' | 'color' = 'reveal', sourceLayer = -1, color = 0, index = this.layer) {
-    return LayerMasks.createMask.call(this.operationContext, source, sourceLayer, color, index);
-  }
-
-  updateLayerMask(patch: Partial<Pick<import('./DocumentModel').LayerMask, 'enabled' | 'inverted'>> | null, index = this.layer) {
-    return LayerMasks.updateMask.call(this.operationContext, patch, index);
-  }
-
-  layerMaskPixels(index = this.layer) {
-    const mask = this.layers[index]?.mask;
-    return mask ? LayerMasks.maskPixels(mask, this.canvasRect) : new Uint32Array(this.size);
-  }
-
-  putLayerMaskPixels(data: Uint32Array, index = this.layer) {
-    return LayerMasks.putMaskPixels.call(this.operationContext, data, index);
-  }
-
-  renderEditor(override?: { layer: number; data: Uint32Array }) {
-    return LayerMasks.renderEditor.call(this.operationContext, override);
-  }
-
   get canvasRect(): Rect {
     return { x: 0, y: 0, w: this.width, h: this.height };
   }
@@ -568,22 +483,15 @@ export class Sprite {
    * Replaces a cel (and every frame linked to it) with `cel`.
    * Transparent layers are trimmed to their content, background cels always cover the canvas.
    */
-  setCel(cel: Cel, layer = this.layer, frame = this.frame, pixelEdit = false) {
+  setCel(cel: Cel, layer = this.layer, frame = this.frame) {
     const l = this.layers[layer];
     if (!l) return;
-    const lockedSource = pixelEdit && l.lockAlpha ? this.getCel(layer, frame) : null;
-    if (pixelEdit && l.lockAlpha) {
-      if (!cel) return;
-      cel = alphaLockedCel(lockedSource, cel);
-    }
-    if (l.tileset >= 0) return this.setTilemapCel(pixelEdit ? cel && { ...cel, tiles: undefined } : cel, layer, frame);
+    if (l.tileset >= 0) return this.setTilemapCel(cel, layer, frame);
     let next = l.background ? reframeCel(cel, this.canvasRect, this.backgroundFill) : trimCel(cel);
     // Everything written lands on the palette (indexed) or on gray
     if (next && this.colorMode !== 'rgb') {
       next = { ...next, data: next.data.slice() };
       convertPixels(next.data, next.w, next.h, this.colorMode, this.palette);
-      // A transparent palette key must not erase pixels on an alpha-locked layer.
-      if (pixelEdit && l.lockAlpha) next = alphaLockedCel(lockedSource, next);
       if (!l.background) next = trimCel(next);
     }
     const old = l.cels[frame];
@@ -596,25 +504,14 @@ export class Sprite {
    * Writes a canvas-sized buffer into a cel. The cel grows to cover the canvas while editing,
    * so pixels it had outside the canvas survive, then it is trimmed again.
    */
-  putCanvas(data: Uint32Array, layer = this.layer, frame = this.frame, respectAlpha = true) {
+  putCanvas(data: Uint32Array, layer = this.layer, frame = this.frame) {
     const cel = this.getCel(layer, frame);
     const rect = unionRect(cel && celRect(cel), this.canvasRect)!;
     const out = reframeCel(cel, rect);
     const ox = -rect.x, oy = -rect.y;
-    if (respectAlpha && this.layers[layer]?.lockAlpha) {
-      let changed = false;
-      for (let y = 0; y < this.height; y++) for (let x = 0; x < this.width; x++) {
-        const i = (y + oy) * rect.w + x + ox;
-        const next = alphaLockedPixel(out.data[i], data[y * this.width + x]);
-        changed ||= next !== out.data[i];
-        out.data[i] = next;
-      }
-      if (!changed) return;
-    } else {
-      for (let y = 0; y < this.height; y++)
-        out.data.set(data.subarray(y * this.width, (y + 1) * this.width), (y + oy) * rect.w + ox);
-    }
-    this.setCel(out, layer, frame, respectAlpha);
+    for (let y = 0; y < this.height; y++)
+      out.data.set(data.subarray(y * this.width, (y + 1) * this.width), (y + oy) * rect.w + ox);
+    this.setCel(out, layer, frame);
   }
 
   get tileset(): Tileset | null {
@@ -756,33 +653,14 @@ export class Sprite {
     return true;
   }
 
-  /** Geometry can grow after Apply. Keep edits saveable, show a notice and resume FX on shrink. */
-  get effectsBoundsNotice(): boolean {
-    void this.version;
-    return SpriteRenderer.effectBoundsFailures(this.operationContext, [this.frame]).length > 0;
-  }
-
-  previewLayerEffects(effects: readonly LayerFX[] | null, layer = this.layer) {
-    if (effects) validateLayerFX(effects);
-    if (effects) SpriteRenderer.validateEffectChange(this.operationContext, layer, effects, this.frames.map((_, f) => f));
-    this.effectsPreview = effects ? { layer, effects: effects.map(effect => ({ ...effect })) } : null;
-    this.cache.clear();
-    this.split = null;
-  }
-
   setLayerEffects(effects: LayerFX[], layer = this.layer): boolean {
     validateLayerFX(effects);
     const target = this.layers[layer];
     if (!target || target.reference || this.lockedDeep(layer)) return false;
-    SpriteRenderer.validateEffectChange(this.operationContext, layer, effects, this.frames.map((_, f) => f));
     this.checkpoint('Layer effects');
     this.layers = this.layers.map((item, i) => i === layer ? { ...item, effects: effects.map(effect => ({ ...effect })) } : item);
     this.touch();
     return true;
-  }
-
-  bakeLayerEffects(scope: 'layer' | 'frame' | 'range' = 'layer', layer = this.layer, draft?: readonly LayerFX[]): boolean {
-    return LayerOperations.bakeLayerEffects.call(this.operationContext, scope, layer, draft);
   }
 
   /** Frames of `layer` sharing the cel at `frame` (including itself) */
@@ -1387,15 +1265,6 @@ export class Sprite {
     this.slices = this.slices.map(sl => ({ ...sl, keys: sl.keys.map(fn) }));
   }
 
-  private mapLayerMasks(fn: (cel: CelImage, mask: import('./DocumentModel').LayerMask) => CelImage) {
-    this.layers = this.layers.map(layer => {
-      const mask = layer.mask;
-      if (!mask) return layer;
-      const result = fn({ x: mask.x, y: mask.y, w: mask.image.w, h: mask.image.h, data: mask.image.data }, mask);
-      return { ...layer, mask: createLayerMask(createImage(result.w, result.h, result.data), { ...mask, x: result.x, y: result.y }) };
-    });
-  }
-
   /** Background cels always cover exactly the canvas */
   private refitBackgrounds() {
     this.layers = this.layers.map(l => l.background
@@ -1411,8 +1280,6 @@ export class Sprite {
     width = Math.max(1, Math.min(4096, Math.round(width)));
     height = Math.max(1, Math.min(4096, Math.round(height)));
     if (width === this.width && height === this.height && !dx && !dy) return;
-    if (this.layers.some(l => l.mask && (!Number.isInteger(width) || !Number.isInteger(height)
-      || !Number.isInteger(l.mask.x + dx) || !Number.isInteger(l.mask.y + dy)))) return false;
     if (this.refuseSize(width, height)) return;
     this.dropFloating();
     this.checkpoint('Canvas size');
@@ -1420,10 +1287,6 @@ export class Sprite {
     this.mapAllCels(c => {
       const moved = { ...c, x: c.x + dx, y: c.y + dy };
       return trimOutside ? trimCel(reframeCel(moved, canvas)) : moved;
-    });
-    this.mapLayerMasks((c, mask) => {
-      const moved = { ...c, x: c.x + dx, y: c.y + dy };
-      return trimOutside ? reframeCel(moved, canvas, ((mask?.outside ?? 255) << 24) >>> 0) : moved;
     });
     this.mask = this.mask?.reframe(width, height, dx, dy) ?? null;
     this.mapSliceKeys(k => ({ ...k, x: k.x + dx, y: k.y + dy }));
@@ -1436,23 +1299,15 @@ export class Sprite {
   scaleSprite(width: number, height: number) {
     width = Math.max(1, Math.min(4096, Math.round(width)));
     height = Math.max(1, Math.min(4096, Math.round(height)));
-    const sx = width / this.width, sy = height / this.height;
-    const scaledRect = (c: Rect): Rect => {
-      const x = Math.round(c.x * sx), y = Math.round(c.y * sy);
-      return { x, y, w: Math.max(1, Math.round((c.x + c.w) * sx) - x), h: Math.max(1, Math.round((c.y + c.h) * sy) - y) };
-    };
-    // Preflight metadata before floating commit, history, source edits or output allocation.
-    if (this.layers.some(l => {
-      if (!l.mask) return false;
-      const r = scaledRect({ x: l.mask.x, y: l.mask.y, w: l.mask.image.w, h: l.mask.image.h });
-      return !Number.isInteger(r.x) || !Number.isInteger(r.y) || !Number.isInteger(r.w) || !Number.isInteger(r.h) || r.w > 4096 || r.h > 4096;
-    })) return false;
     if (this.refuseSize(width, height)) return;
     this.dropFloating();
     this.checkpoint('Sprite size');
-    const scaled = (c: CelImage) => { const r = scaledRect(c); return { ...r, data: scaleNearest(c, r.w, r.h).data }; };
-    this.mapAllCels(scaled);
-    this.mapLayerMasks(scaled);
+    const sx = width / this.width, sy = height / this.height;
+    this.mapAllCels(c => {
+      const x = Math.round(c.x * sx), y = Math.round(c.y * sy);
+      const w = Math.max(1, Math.round((c.x + c.w) * sx) - x), h = Math.max(1, Math.round((c.y + c.h) * sy) - y);
+      return { x, y, w, h, data: scaleNearest(c, w, h).data };
+    });
     this.mapSliceKeys(k => ({
       ...k, x: Math.round(k.x * sx), y: Math.round(k.y * sy), w: Math.max(1, Math.round(k.w * sx)), h: Math.max(1, Math.round(k.h * sy)),
       center: k.center && { x: Math.round(k.center.x * sx), y: Math.round(k.center.y * sy), w: Math.max(1, Math.round(k.center.w * sx)), h: Math.max(1, Math.round(k.center.h * sy)) },
@@ -1470,9 +1325,6 @@ export class Sprite {
     this.dropFloating();
     this.checkpoint(axis === 'h' ? 'Flip canvas horizontal' : 'Flip canvas vertical');
     this.mapAllCels(c => axis === 'h'
-      ? { ...c, x: this.width - c.x - c.w, data: flipH(c).data }
-      : { ...c, y: this.height - c.y - c.h, data: flipV(c).data });
-    this.mapLayerMasks(c => axis === 'h'
       ? { ...c, x: this.width - c.x - c.w, data: flipH(c).data }
       : { ...c, y: this.height - c.y - c.h, data: flipV(c).data });
     this.mapSliceKeys(k => axis === 'h'
@@ -1496,12 +1348,6 @@ export class Sprite {
       const y = turns === 1 ? c.x : turns === 2 ? H - c.y - c.h : W - c.x - c.w;
       return { x, y, w: r.w, h: r.h, data: r.data };
     });
-    this.mapLayerMasks(c => {
-      const r = rotate(c, turns);
-      const x = turns === 1 ? H - c.y - c.h : turns === 2 ? W - c.x - c.w : c.y;
-      const y = turns === 1 ? c.x : turns === 2 ? H - c.y - c.h : W - c.x - c.w;
-      return { x, y, w: r.w, h: r.h, data: r.data };
-    });
     // Slices keep their boxes (9-slice centers and pivots are dropped: they no longer fit the turned art)
     this.mapSliceKeys(k => {
       const x = turns === 1 ? H - k.y - k.h : turns === 2 ? W - k.x - k.w : k.y;
@@ -1519,7 +1365,6 @@ export class Sprite {
     this.dropFloating();
     this.checkpoint(label);
     this.mapAllCels(c => ({ ...c, x: c.x - r.x, y: c.y - r.y }));
-    this.mapLayerMasks(c => ({ ...c, x: c.x - r.x, y: c.y - r.y }));
     this.mapSliceKeys(k => ({ ...k, x: k.x - r.x, y: k.y - r.y }));
     this.width = r.w;
     this.height = r.h;
@@ -1612,7 +1457,6 @@ export class Sprite {
     this.layers = model.layers;
     this.frames = model.frames;
     this.tags = model.tags ?? [];
-    this.hiddenFrameRanges = model.hiddenFrameRanges ?? [];
     this.slices = model.slices ?? [];
     this.guides = model.guides ?? [];
     this.framePalettes = model.framePalettes ?? [];

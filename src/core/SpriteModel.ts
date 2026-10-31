@@ -4,9 +4,9 @@ import { opaqueBounds, type Bitmap, type Rect } from "~/core/Image";
 import type { UserData } from "~/core/Tilemap";
 import type { TileRefs } from "~/core/Tilemap";
 import type { Placement } from "~/core/Transform";
-import { copyEffectScope, createCelInstance, isCelInstance, transformCel, type LayerFX, type LayerMask } from './DocumentModel';
+import { createCelInstance, isCelInstance, transformCel, type LayerFX } from './DocumentModel';
 
-export { createImage, createCelInstance, imageOf, transformCel, bakeCel, type Image, type AssetRef, type CelInstance, type CelTransform, type LayerFX, type LayerMask } from './DocumentModel';
+export { createImage, createCelInstance, imageOf, transformCel, bakeCel, type Image, type AssetRef, type CelInstance, type CelTransform, type LayerFX } from './DocumentModel';
 
 /** Data that extensions attach to a document part, one JSON value per extension id */
 export type ExtData = Record<string, unknown>;
@@ -94,8 +94,6 @@ export type Layer = {
   name: string;
   visible: boolean;
   locked: boolean;
-  /** Pixel edits retain the existing silhouette and every alpha byte. Structural transforms are independent. */
-  lockAlpha?: boolean;
   /** Bottom-most opaque layer: always full, can't be moved, erasing paints the secondary color */
   background: boolean;
   /** New frames link this layer's cels instead of copying them */
@@ -126,10 +124,6 @@ export type Layer = {
   ext?: ExtData;
   /** Ordered nondestructive processors; an absent stack is equivalent to an empty stack. */
   effects?: LayerFX[];
-  /** Immutable static transparency channel, applied after this node's FX. */
-  mask?: LayerMask;
-  /** IDs already baked into each frame; later edits to those effects leave baked frames alone. */
-  bakedEffects?: string[][];
 };
 
 /** Image of a reference layer placed in sprite coordinates; `src` is a data URL */
@@ -166,8 +160,6 @@ export type Frame = {
 export type TagDirection = 'forward' | 'reverse' | 'pingpong' | 'pingpong-reverse';
 
 export type Tag = {
-  /** Document UI metadata; rendering/export always includes every frame. */
-  collapsed?: boolean;
   name: string;
   from: number;
   to: number;
@@ -222,8 +214,8 @@ export type Floating = {
 /** Timeline content copied for pasting back into the timeline */
 export type RangeClip =
   | { type: 'layers'; layers: Layer[]; }
-  | { type: 'frames'; frames: { duration: number; cels: { cel: Cel; op: number; fx?: string[]; }[]; }[]; }
-  | { type: 'cels'; rows: { layer: number; cels: { cel: Cel; op: number; fx?: string[]; }[]; }[]; };
+  | { type: 'frames'; frames: { duration: number; cels: { cel: Cel; op: number; }[]; }[]; }
+  | { type: 'cels'; rows: { layer: number; cels: { cel: Cel; op: number; }[]; }[]; };
 
 /** A palette that applies from `frame` until the next one */
 export type FramePalette = { frame: number; colors: string[]; };
@@ -250,7 +242,7 @@ export function keepExt(prev: CelImage, next: Cel): Cel {
 }
 
 export function copyLayers(layers: Layer[]) {
-  return layers.map(l => ({ ...l, cels: l.cels.slice(), celOpacity: l.celOpacity.slice(), ...(l.effects ? { effects: l.effects.map(effect => ({ ...effect })) } : {}), ...(l.bakedEffects ? { bakedEffects: copyEffectScope(l) } : {}) }));
+  return layers.map(l => ({ ...l, cels: l.cels.slice(), celOpacity: l.celOpacity.slice(), ...(l.effects ? { effects: l.effects.map(effect => ({ ...effect })) } : {}) }));
 }
 
 export function newLayer(name: string, frames: number): Layer {
@@ -305,15 +297,3 @@ export function normalizeDepths(layers: Layer[]) {
 }
 
 export const span = ([a, b]: [number, number]) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
-
-
-/** Lock Alpha is source-atop editing. Transparent/erasing results retain the source color. */
-export function alphaLockedPixel(source: number, next: number): number {
-  if (!(source >>> 24) || !(next >>> 24)) return source;
-  return ((source & 0xff000000) | (next & 0xffffff)) >>> 0;
-}
-
-/** Pixel editing only; cel placement/structural transformations deliberately use setCel directly. */
-export function alphaLockedCel(source: Cel, next: CelImage): CelImage {
-  return { ...next, data: next.data.map((pixel, i) => alphaLockedPixel(celPixel(source, next.x + i % next.w, next.y + Math.floor(i / next.w)), pixel)) };
-}

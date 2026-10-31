@@ -93,7 +93,7 @@ export const uiHandlers: Handlers = {
     const index = (v: unknown, list: unknown[], what: string) =>
       typeof v === 'number' && Number.isInteger(v) && list[v] ? v : fail('not-found', `No ${what} ${String(v)}`);
     if (o.layer !== undefined) s.layer = index(o.layer, s.layers, 'layer');
-    if (o.frame !== undefined) s.goToFrame(index(o.frame, s.frames, 'frame'));
+    if (o.frame !== undefined) s.frame = index(o.frame, s.frames, 'frame');
     if (!isObject(o.rect)) return;
     const r = o.rect;
     const rect = { x: Number(r.x) || 0, y: Number(r.y) || 0, w: Math.max(1, Number(r.w) || 1), h: Math.max(1, Number(r.h) || 1) };
@@ -140,6 +140,6 @@ export const uiHandlers: Handlers = {
     const s = state.sprite;
     const f = Number(frame);
     if (!Number.isInteger(f) || !s.frames[f]) fail('not-found', `No frame ${frame}`);
-    s.goToFrame(f);
+    s.frame = f;
   },
 };

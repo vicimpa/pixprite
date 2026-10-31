@@ -305,10 +305,10 @@ describe('History memory boundaries', () => {
     visitCelBuffers(a, (_, size) => { bytes += size; });
     expect(bytes).toBe(128 * 128 * 4);
     sprite.undo();
-    expect(sprite.layers[0].effects![0]).toMatchObject({ type: 'opacity', amount: .5 });
+    expect(sprite.layers[0].effects![0].amount).toBe(.5);
     expect(sprite.layers[0].cels[0]).toBe(sprite.layers[0].cels[2]);
     sprite.redo();
-    expect(sprite.layers[0].effects![0]).toMatchObject({ type: 'opacity', amount: .75 });
+    expect(sprite.layers[0].effects![0].amount).toBe(.75);
   });
 
   test('metadata payload, including UTF-8 extension strings, participates in total and operation budgets', () => {
@@ -475,4 +475,39 @@ test('undo restores a cancelled floating lifetime and its rollback guard without
   sprite.cancelFloating();
   expect(sprite.layers[0].cels[0]!.data[0]).toBe(A);
   expect(sprite.floating).toBeNull(); expect(sprite.historyGuardCount).toBe(0);
+});
+
+test('saved tag metadata edits invalidate cached captures without changing cel resources', () => {
+  const sprite = spriteWith([cel(A), cel(B), cel(C)]), source = sprite.getCel();
+  sprite.projectId = 'saved-tags'; sprite.markSaved();
+  expect(sprite.modified).toBe(false);
+  sprite.addTag(); expect(sprite.modified).toBe(true);
+  sprite.markSaved();
+  sprite.updateTag(0, { name: 'Renamed' }); expect(sprite.modified).toBe(true);
+  sprite.markSaved(); const version = sprite.version;
+  sprite.updateTag(0, { from: 1, to: 2 }, false);
+  expect(sprite.version).toBeGreaterThan(version); expect(sprite.modified).toBe(true);
+  expect(sprite.tags[0]).toMatchObject({ name: 'Renamed', from: 1, to: 2 });
+  sprite.markSaved(); sprite.removeTag(0);
+  expect(sprite.modified).toBe(true); expect(sprite.tags).toEqual([]);
+  expect(sprite.getCel()).toBe(source);
+});
+
+test('range filters skip locked descendants and reference layers and use the actual target layer', () => {
+  const sprite = spriteWith([cel(A)]), layer = sprite.layers[0];
+  const copy = () => ({ ...layer, cels: layer.cels.slice(), celOpacity: layer.celOpacity.slice() });
+  sprite.layers = [
+    { ...copy(), depth: 1 },
+    { ...copy(), group: true, locked: true, cels: [null] },
+    { ...copy(), reference: { src: '', x: 0, y: 0, scale: 1 } },
+    copy(),
+  ];
+  const source = sprite.layers[0].cels[0], visited: number[] = [];
+  sprite.applyFilter('Range filter', (_data, _mask, index) => {
+    visited.push(index); return new Uint32Array([B]);
+  }, [[0, 0], [2, 0], [3, 0]]);
+  expect(visited).toEqual([3]);
+  expect(sprite.layers[0].cels[0]).toBe(source);
+  expect(sprite.layers[2].cels[0]).toBe(source);
+  expect(sprite.layers[3].cels[0]!.data[0]).toBe(B);
 });

@@ -37,7 +37,6 @@ const CanvasSize: FC<{ close: () => void; }> = ({ close }) => {
   const { sprite } = state;
   const W = sprite.width, H = sprite.height;
   const [m, setM] = useState({ l: 0, t: 0, r: 0, b: 0 });
-  const [error, setError] = useState('');
   const [anchor, setAnchor] = useState<[number, number]>([0.5, 0.5]);
   const w = W + m.l + m.r, h = H + m.t + m.b;
   const fromSize = (nw: number, nh: number, a = anchor) => {
@@ -47,11 +46,10 @@ const CanvasSize: FC<{ close: () => void; }> = ({ close }) => {
   };
   return (
     <Dialog title={t('dialog.canvasSize.title')} onClose={close} onSubmit={() => {
-      if (sprite.canvasSize(Math.max(1, w), Math.max(1, h), m.l, m.t) === false) { setError(t('mask.resizeBounds')); return false; }
+      sprite.canvasSize(Math.max(1, w), Math.max(1, h), m.l, m.t);
       state.fit();
       state.save();
     }}>
-      {error && <span role="alert">{error}</span>}
       <Muted>Current: {W}×{H}. Pixels are not scaled; negative margins crop.</Muted>
       <Row>
         <FieldLabel>{t('common.size')}</FieldLabel>
@@ -95,17 +93,15 @@ const SpriteSize: FC<{ close: () => void; }> = ({ close }) => {
   const [w, setW] = useState(sprite.width);
   const [h, setH] = useState(sprite.height);
   const [lock, setLock] = useState(true);
-  const [error, setError] = useState('');
   const ratio = sprite.width / sprite.height;
   const setWidth = (v: number) => { setW(v); if (lock) setH(Math.max(1, Math.round(v / ratio))); };
   const setHeight = (v: number) => { setH(v); if (lock) setW(Math.max(1, Math.round(v * ratio))); };
   return (
     <Dialog title={t('dialog.spriteSize.scaleImage')} onClose={close} onSubmit={() => {
-      if (sprite.scaleSprite(w, h) === false) { setError(t('mask.resizeBounds')); return false; }
+      sprite.scaleSprite(w, h);
       state.fit();
       state.save();
     }}>
-      {error && <span role="alert">{error}</span>}
       <Muted>{t('dialog.spriteSize.nearestNeighbourScalingKeeps')}</Muted>
       <Row>
         <FieldLabel>{t('common.width')}</FieldLabel>
@@ -165,7 +161,6 @@ const LayerProperties: FC<{ close: () => void; index: number; }> = ({ close, ind
   const [opacity, setOpacity] = useState(Math.round(layer.opacity * 255));
   const [blend, setBlend] = useState<BlendMode>(layer.blend);
   const [clip, setClip] = useState(!!layer.clip);
-  const [lockAlpha, setLockAlpha] = useState(!!layer.lockAlpha);
   const [note, setNote] = useState(layer.userData?.text ?? '');
   const ref = layer.reference;
   const [refX, setRefX] = useState(String(Math.round(ref?.x ?? 0)));
@@ -174,7 +169,7 @@ const LayerProperties: FC<{ close: () => void; index: number; }> = ({ close, ind
   return (
     <Dialog title={t('common.layerProperties')} onClose={close} onSubmit={() => {
       const reference = ref && { ...ref, x: num(refX, ref.x), y: num(refY, ref.y), scale: Math.max(0.001, num(refScale, ref.scale * 100) / 100) };
-      sprite.updateLayer(index, { name: name || layer.name, opacity: opacity / 255, blend, clip, lockAlpha, userData: note ? { ...layer.userData, text: note } : layer.userData?.color ? { color: layer.userData.color } : undefined, ...(reference ? { reference } : {}) });
+      sprite.updateLayer(index, { name: name || layer.name, opacity: opacity / 255, blend, clip, userData: note ? { ...layer.userData, text: note } : layer.userData?.color ? { color: layer.userData.color } : undefined, ...(reference ? { reference } : {}) });
       state.save();
     }}>
       <Field label={t('common.name')}><Input value={name} style={{ width: 160 }} onChange={e => setName(e.target.value)} /></Field>
@@ -188,7 +183,6 @@ const LayerProperties: FC<{ close: () => void; index: number; }> = ({ close, ind
         <Range min={0} max={255} value={opacity} onChange={e => setOpacity(+e.target.value)} />
         <Input type="number" min={0} max={255} value={opacity} onChange={e => setOpacity(Math.max(0, Math.min(255, +e.target.value)))} />
       </Field>
-      {!layer.group && !layer.background && !ref && <Label><Check checked={lockAlpha} onChange={e => setLockAlpha(e.target.checked)} /> {t('dialog.layerProperties.lockAlpha')}</Label>}
       {!layer.background && !ref && <Label><Check checked={clip} onChange={e => setClip(e.target.checked)} /> {t('dialog.layerProperties.clipToLayerBelow')}</Label>}
       {ref && <>
         <Muted>{t('dialog.layerProperties.referenceImageShownIn')}</Muted>
@@ -307,7 +301,7 @@ const GotoFrame: FC<{ close: () => void; }> = ({ close }) => {
   return (
     <Dialog title={t('common.goToFrame')} onClose={close} submitLabel={t('dialog.gotoFrame.go')} onSubmit={() => {
       sprite.dropFloating();
-      sprite.goToFrame(Math.max(0, Math.min(sprite.frames.length - 1, (num(n, 1) | 0) - 1)));
+      sprite.frame = Math.max(0, Math.min(sprite.frames.length - 1, (num(n, 1) | 0) - 1));
       sprite.range = null;
     }}>
       <NumberField label={t('common.frame')} value={n} onChange={setN} min={1} max={sprite.frames.length} suffix={`of ${sprite.frames.length}`} />

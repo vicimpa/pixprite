@@ -1,8 +1,4 @@
-import { beforeAll, describe, expect, mock, test } from 'bun:test';
-
-import { canvasPixels, installSoftwareCanvas } from './Canvas.test-helper';
-import { migratePixpriteV5 } from './SpriteValidation';
-beforeAll(installSoftwareCanvas);
+import { describe, expect, mock, test } from 'bun:test';
 
 mock.module('@vicimpa/decorators', () => ({
   prop: () => {},
@@ -32,15 +28,15 @@ const legacyDocument = (): any => {
 };
 
 describe('.pixprite migrations', () => {
-  test('v3 full-canvas cels migrate through v4/v5 into v6 image resources and save stably', () => {
+  test('v3 full-canvas cels migrate to v5 image resources and save stably', () => {
     const legacy = legacyDocument();
     const loaded = new Sprite();
 
     loaded.load(legacy);
     const saved = loaded.toJSON();
 
-    expect(PIXPRITE_VERSION).toBe(7);
-    expect(saved.version).toBe(7);
+    expect(PIXPRITE_VERSION).toBe(5);
+    expect(saved.version).toBe(5);
     expect(saved.layers[0].cels[0]).toMatchObject({ x: 0, y: 0, image: { kind: 'image' } });
     expect(saved.images[0]).toMatchObject({ w: 2, h: 1 });
     expect([...loaded.layers[0].cels[0]!.data]).toEqual([RED, GREEN]);
@@ -49,34 +45,6 @@ describe('.pixprite migrations', () => {
     const second = new Sprite();
     second.load(JSON.parse(JSON.stringify(saved)));
     expect(second.toJSON()).toEqual(saved);
-  });
-
-  test('real v5 shared resources, transforms, links and live FX migrate to v6 without changing pixels or metadata', () => {
-    const legacy = {
-      format: 'pixprite' as const, version: 5, name: 'v5 FX baseline', width: 3, height: 2,
-      frames: [{ duration: 80 }, { duration: 120 }],
-      images: [{ id: 'shared-v5', w: 2, h: 1, d: b64(RED, GREEN) }],
-      layers: [{ name: 'v5 layer', cels: [
-        { x: 1, y: 0, image: { kind: 'image', id: 'shared-v5' }, flipX: true, rotation: 90, opacity: .5, ext: { absent: { value: 42 } } },
-        { link: 0 },
-      ], effects: [{ id: 'alpha', type: 'opacity' as const, enabled: true, amount: .5 }] }],
-      ext: { absent: [null, true, 'legacy'] },
-    };
-    const migrated = migratePixpriteV5(legacy);
-    expect(migrated).toEqual({ ...legacy, version: 6 });
-    expect(legacy.version).toBe(5);
-    const sprite = new Sprite(); sprite.load(legacy);
-    expect([...canvasPixels(sprite.render(0))]).toEqual([0, 0x4000ff00, 0, 0, 0x400000ff, 0]);
-    expect(canvasPixels(sprite.render(1))).toEqual(canvasPixels(sprite.render(0)));
-    expect(sprite.layers[0].cels[0]).toBe(sprite.layers[0].cels[1]);
-    const saved = sprite.toJSON();
-    expect(saved.version).toBe(7);
-    expect(saved.images).toEqual(legacy.images);
-    expect(saved.layers[0].effects).toEqual(legacy.layers[0].effects);
-    expect(saved.layers[0].bakedEffects).toBeUndefined();
-    expect(saved.layers[0].cels).toEqual(legacy.layers[0].cels);
-    expect(saved.ext).toEqual(legacy.ext);
-    const second = new Sprite(); second.load(saved); expect(second.toJSON()).toEqual(saved);
   });
 
   test('v3 preserves null and empty cels', () => {
@@ -99,7 +67,7 @@ describe('.pixprite migrations', () => {
     const before = current.toJSON();
     const newer = { ...before, version: PIXPRITE_VERSION + 1 };
 
-    expect(() => current.load(newer)).toThrow('Newer pixprite version: 8; supported up to 7');
+    expect(() => current.load(newer)).toThrow('Newer pixprite version: 6; supported up to 5');
     expect(current.toJSON()).toEqual(before);
     expect(current.layers[0].cels[0]!.data[0]).toBe(BLUE);
   });

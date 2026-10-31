@@ -1,8 +1,6 @@
 import { lazyDialog } from "~/ui/LazyFeature";
 
 export const dialogs = {
-  layerMask: lazyDialog(async () => (await import("./LayerMask")).layerMask),
-  layerEffects: lazyDialog(async () => (await import("./LayerFX")).layerEffects),
   newSprite: lazyDialog(async () => (await import("./NewSprite")).newSprite),
   canvasSize: lazyDialog(async () => (await import("./Common")).dialogs.canvasSize),
   spriteSize: lazyDialog(async () => (await import("./Common")).dialogs.spriteSize),
