@@ -28,15 +28,26 @@ export async function nativeFixture(env: Record<string, string> = {}) {
       } catch (error) { return `${String(error)} ${logs.join('').slice(-1000)}`; }
     }, { timeout: 45_000 }).toBe('ready');
   }
+  async function exited(child: ChildProcess) {
+    if (!child.pid) return;
+    await expect.poll(() => child.exitCode !== null || child.signalCode !== null,
+      { timeout: 10_000, message: 'The isolated native process must exit before its profile is reused' }).toBe(true);
+  }
   async function stop() {
+    const child = processes.find(process => process.pid === knownPid);
     try { await call('shutdown'); } catch { /* process can exit before the HTTP response */ }
     await expect.poll(async () => { try { await readFile(connection); return false; } catch { return true; } }).toBe(true);
+    if (child) await exited(child);
     knownPid = undefined;
   }
   async function dispose() {
     if (knownPid) { try { await stop(); } catch { try { process.kill(knownPid, 'SIGKILL'); } catch {} } }
-    for (const child of processes) if (child.exitCode === null) child.kill('SIGKILL');
-    await rm(directory, { recursive: true, force: true });
+    for (const child of processes) {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+      await exited(child);
+    }
+    // WebView2 can retain its lockfile briefly after the owning process exits.
+    await rm(directory, { recursive: true, force: true, maxRetries: 15, retryDelay: 100 });
   }
   return { directory, profile, connection, call, launch, ready, stop, dispose, logs };
 }
