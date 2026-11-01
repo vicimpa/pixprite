@@ -4,6 +4,7 @@
   "deleteChat": "Delete the chat “{title}”?",
   "deleteChatTitle": "Delete",
   "description": "Chat with an AI model that can inspect and edit your sprite",
+  "error.documentChanged": "The active document changed. Stopped before running further tools; send a new request for the selected document.",
   "error.empty": "The model sent an empty answer",
   "error.http": "Request failed ({status}): {body}",
   "error.rounds": "Paused after {count} requests to the model",
