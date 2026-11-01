@@ -1,12 +1,19 @@
 {
-  "version": 2,
+  "version": 3,
   "extensions": [
     {
       "id": "ai-assistant",
       "name": "AI assistant",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "description": "Chat with an AI model that can inspect and edit your sprite",
       "author": "Pixprite contributors",
+      "minEditorVersion": "0.0.4",
+      "category": "automation",
+      "tags": [
+        "ai",
+        "chat",
+        "assistant"
+      ],
       "permissions": [
         "sprite:read",
         "sprite:write",
@@ -18,14 +25,14 @@
         "network:localhost:11434",
         "network:localhost:1234"
       ],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/ai-assistant/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@43c71a61eda7641761254a15cab46318d1a1e6f6/ai-assistant/",
       "files": {
         "locales/en.json": "sha256-7oFaUo169jh5uUCEE8Jd1CciQUZi3JcrcOgCjzKfaHw=",
         "locales/ru.json": "sha256-iROA3CgqAY3d6m++mFM8xsZHzbV/u5ntLQpbpxgh9Kk=",
-        "manifest.json": "sha256-lLLUN+AxEpXUQvES14iyg2dic7eNBrdipP9UY6WO2Rc=",
-        "src/chat.html": "sha256-87Y3ZTuOD+Kr9D363ZVffcWuO1aZvoaaUUAfAPACkJc=",
-        "src/chat.ts": "sha256-WcNlcRlDUnlz5D+EeTsKYmjFJ0EBCvr166LzLZzSIBM=",
+        "manifest.json": "sha256-Gn9XH+6sDR643sTQ3NxgX2bAMZ50p+n1+Msx0v24PWE=",
+        "src/chat.tsx": "sha256-63bTnbwLT97nU1a/brY6KyaSPX91srN49v7U4RQQwmw=",
         "src/markdown.ts": "sha256-0pYiMvqWVfutVrjU4iN/1Bbj5nAuxqpX7/ws3W21+KA=",
+        "src/styles.ts": "sha256-lRKYt8A2MG/5/dQ2AKfH9HrjQU0Rt/SQoHh/gcR/ZbE=",
         "src/tools.ts": "sha256-wEmDy7aznDnNMUnXyXs5uYKdQB7RUBmRTXqZDS59qrk="
       },
       "i18n": {
@@ -33,31 +40,149 @@
           "name": "ИИ-ассистент",
           "description": "Чат с ИИ-моделью, которая может смотреть и править ваш спрайт"
         }
-      }
+      },
+      "versions": [
+        {
+          "id": "ai-assistant",
+          "name": "AI assistant",
+          "version": "0.2.0",
+          "description": "Chat with an AI model that can inspect and edit your sprite",
+          "author": "Pixprite contributors",
+          "minEditorVersion": "0.0.4",
+          "category": "automation",
+          "tags": [
+            "ai",
+            "chat",
+            "assistant"
+          ],
+          "permissions": [
+            "sprite:read",
+            "sprite:write",
+            "ui:panel",
+            "storage",
+            "network:api.deepseek.com",
+            "network:api.openai.com",
+            "network:openrouter.ai",
+            "network:localhost:11434",
+            "network:localhost:1234"
+          ],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@43c71a61eda7641761254a15cab46318d1a1e6f6/ai-assistant/",
+          "files": {
+            "locales/en.json": "sha256-7oFaUo169jh5uUCEE8Jd1CciQUZi3JcrcOgCjzKfaHw=",
+            "locales/ru.json": "sha256-iROA3CgqAY3d6m++mFM8xsZHzbV/u5ntLQpbpxgh9Kk=",
+            "manifest.json": "sha256-Gn9XH+6sDR643sTQ3NxgX2bAMZ50p+n1+Msx0v24PWE=",
+            "src/chat.tsx": "sha256-63bTnbwLT97nU1a/brY6KyaSPX91srN49v7U4RQQwmw=",
+            "src/markdown.ts": "sha256-0pYiMvqWVfutVrjU4iN/1Bbj5nAuxqpX7/ws3W21+KA=",
+            "src/styles.ts": "sha256-lRKYt8A2MG/5/dQ2AKfH9HrjQU0Rt/SQoHh/gcR/ZbE=",
+            "src/tools.ts": "sha256-wEmDy7aznDnNMUnXyXs5uYKdQB7RUBmRTXqZDS59qrk="
+          },
+          "i18n": {
+            "ru": {
+              "name": "ИИ-ассистент",
+              "description": "Чат с ИИ-моделью, которая может смотреть и править ваш спрайт"
+            }
+          }
+        },
+        {
+          "id": "ai-assistant",
+          "name": "AI assistant",
+          "version": "0.1.1",
+          "description": "Chat with an AI model that can inspect and edit your sprite",
+          "author": "Pixprite contributors",
+          "permissions": [
+            "sprite:read",
+            "sprite:write",
+            "ui:panel",
+            "storage",
+            "network:api.deepseek.com",
+            "network:api.openai.com",
+            "network:openrouter.ai",
+            "network:localhost:11434",
+            "network:localhost:1234"
+          ],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/ai-assistant/",
+          "files": {
+            "locales/en.json": "sha256-7oFaUo169jh5uUCEE8Jd1CciQUZi3JcrcOgCjzKfaHw=",
+            "locales/ru.json": "sha256-iROA3CgqAY3d6m++mFM8xsZHzbV/u5ntLQpbpxgh9Kk=",
+            "manifest.json": "sha256-lLLUN+AxEpXUQvES14iyg2dic7eNBrdipP9UY6WO2Rc=",
+            "src/chat.html": "sha256-87Y3ZTuOD+Kr9D363ZVffcWuO1aZvoaaUUAfAPACkJc=",
+            "src/chat.ts": "sha256-WcNlcRlDUnlz5D+EeTsKYmjFJ0EBCvr166LzLZzSIBM=",
+            "src/markdown.ts": "sha256-0pYiMvqWVfutVrjU4iN/1Bbj5nAuxqpX7/ws3W21+KA=",
+            "src/tools.ts": "sha256-wEmDy7aznDnNMUnXyXs5uYKdQB7RUBmRTXqZDS59qrk="
+          },
+          "i18n": {
+            "ru": {
+              "name": "ИИ-ассистент",
+              "description": "Чат с ИИ-моделью, которая может смотреть и править ваш спрайт"
+            }
+          }
+        },
+        {
+          "id": "ai-assistant",
+          "name": "AI assistant",
+          "version": "0.1.0",
+          "description": "Chat with an AI model that can inspect and edit your sprite",
+          "author": "Pixprite contributors",
+          "permissions": [
+            "sprite:read",
+            "sprite:write",
+            "ui:panel",
+            "storage",
+            "network:api.deepseek.com",
+            "network:api.openai.com",
+            "network:openrouter.ai",
+            "network:localhost:11434",
+            "network:localhost:1234"
+          ],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@34eb3bd10d491ad3c474f7638b010ff191c4ff36/ai-assistant/",
+          "files": {
+            "locales/en.json": "sha256-7oFaUo169jh5uUCEE8Jd1CciQUZi3JcrcOgCjzKfaHw=",
+            "locales/ru.json": "sha256-iROA3CgqAY3d6m++mFM8xsZHzbV/u5ntLQpbpxgh9Kk=",
+            "manifest.json": "sha256-mVz0RjHZjpHtrenNxv1cHo2K3+8v/dlsLcVoqY6AdR4=",
+            "src/chat.html": "sha256-87Y3ZTuOD+Kr9D363ZVffcWuO1aZvoaaUUAfAPACkJc=",
+            "src/chat.ts": "sha256-19DxnVtex+VPIrtgkUL3BRWZbERwd7qwic5ea5WRTfo=",
+            "src/markdown.ts": "sha256-0pYiMvqWVfutVrjU4iN/1Bbj5nAuxqpX7/ws3W21+KA=",
+            "src/tools.ts": "sha256-wEmDy7aznDnNMUnXyXs5uYKdQB7RUBmRTXqZDS59qrk="
+          },
+          "i18n": {
+            "ru": {
+              "name": "ИИ-ассистент",
+              "description": "Чат с ИИ-моделью, которая может смотреть и править ваш спрайт"
+            }
+          }
+        }
+      ]
     },
     {
       "id": "game-rig",
       "name": "Game rig",
-      "version": "0.5.1",
+      "version": "0.6.0",
       "description": "Map tags to a game character's states and directions, tune movement, transitions, collider and camera, and play it in a preview",
       "author": "Pixprite contributors",
+      "minEditorVersion": "0.0.4",
+      "category": "animation",
+      "tags": [
+        "rig",
+        "game-development",
+        "preview"
+      ],
       "permissions": [
         "sprite:read",
         "sprite:write",
         "tags:lock",
         "ui:panel"
       ],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/game-rig/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@43c71a61eda7641761254a15cab46318d1a1e6f6/game-rig/",
       "files": {
         "locales/en.json": "sha256-lBEdmFMbdbX0gTnQe96X2bk6IgIXssp35uJvjNMfkDQ=",
         "locales/ru.json": "sha256-tdcVtRzJMZ0sdvfc952839rRb9iJTUmkO/Bj6c3wTkQ=",
-        "manifest.json": "sha256-BVijokQTSBLdoFPUiJb41TTPlEZULoqxAURHjgYS9eI=",
-        "src/main.ts": "sha256-hPapzO4m9mdJMiwlDFW/7M3uVIAuaaflVN3i8VPP5lk=",
-        "src/preview.html": "sha256-1P2rWNuHXrnG3DmEdNb+C8mgvl9uzEufJ+auSHZFq3I=",
-        "src/preview.ts": "sha256-IKaxRz3GfSOQK+JB7kBKTceDucuvlUR/azi5lCqva/E=",
-        "src/rig.ts": "sha256-FcXeh9Wrox9vlqrGqkY5UDuge6kX82j6eZ6mOYWcUjY=",
-        "src/settings.html": "sha256-7gdbRtj7WfIde51f0wkzjtb5BnDo1VtzTd7WKrd3x50=",
-        "src/settings.ts": "sha256-kM79006k6xpHcl2KF130QGSZ5wnpNM5uMv1MWJ5l/f0=",
+        "manifest.json": "sha256-dalaPe44rACX9qJqe2bjjZKU0V5tzj0YFsxl+ZU84HU=",
+        "src/main.ts": "sha256-tdMTB6vTSuBoeiR7kLGxD5/xw/cSnhBYHlOGgzGslk0=",
+        "src/physics.ts": "sha256-cngFWA4s5Kay9ZZaCWzcazOy9WLwTT1Gm+xqS0HOJWI=",
+        "src/preview.tsx": "sha256-nd8o9kX7JGQ+NQs9oGTYJOQ9Inee+R6UNnkyektcx8M=",
+        "src/rig.ts": "sha256-uUcXJNnxfXZ4A8srttf+t284VSprpLKXsLheJKxE8Zw=",
+        "src/settings.tsx": "sha256-t6TiuxSfPrntExJn/dxkvXRa2frG6FFE2OskkF0S9GQ=",
+        "src/styles.ts": "sha256-X2VlzcDMDbUfbFbzT0LWlQ8u9bllM7dVB9+WkoT1ChQ=",
         "src/zip.ts": "sha256-sPFEG0DpUAUss0mrSWZdkDe7ngzTMaiHUQXIUE1dXZI="
       },
       "i18n": {
@@ -65,60 +190,307 @@
           "name": "Игровой риг",
           "description": "Привязка тегов к состояниям и направлениям игрового персонажа, настройка движения, переходов, коллайдера и камеры, проверка в игровом превью"
         }
-      }
+      },
+      "versions": [
+        {
+          "id": "game-rig",
+          "name": "Game rig",
+          "version": "0.6.0",
+          "description": "Map tags to a game character's states and directions, tune movement, transitions, collider and camera, and play it in a preview",
+          "author": "Pixprite contributors",
+          "minEditorVersion": "0.0.4",
+          "category": "animation",
+          "tags": [
+            "rig",
+            "game-development",
+            "preview"
+          ],
+          "permissions": [
+            "sprite:read",
+            "sprite:write",
+            "tags:lock",
+            "ui:panel"
+          ],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@43c71a61eda7641761254a15cab46318d1a1e6f6/game-rig/",
+          "files": {
+            "locales/en.json": "sha256-lBEdmFMbdbX0gTnQe96X2bk6IgIXssp35uJvjNMfkDQ=",
+            "locales/ru.json": "sha256-tdcVtRzJMZ0sdvfc952839rRb9iJTUmkO/Bj6c3wTkQ=",
+            "manifest.json": "sha256-dalaPe44rACX9qJqe2bjjZKU0V5tzj0YFsxl+ZU84HU=",
+            "src/main.ts": "sha256-tdMTB6vTSuBoeiR7kLGxD5/xw/cSnhBYHlOGgzGslk0=",
+            "src/physics.ts": "sha256-cngFWA4s5Kay9ZZaCWzcazOy9WLwTT1Gm+xqS0HOJWI=",
+            "src/preview.tsx": "sha256-nd8o9kX7JGQ+NQs9oGTYJOQ9Inee+R6UNnkyektcx8M=",
+            "src/rig.ts": "sha256-uUcXJNnxfXZ4A8srttf+t284VSprpLKXsLheJKxE8Zw=",
+            "src/settings.tsx": "sha256-t6TiuxSfPrntExJn/dxkvXRa2frG6FFE2OskkF0S9GQ=",
+            "src/styles.ts": "sha256-X2VlzcDMDbUfbFbzT0LWlQ8u9bllM7dVB9+WkoT1ChQ=",
+            "src/zip.ts": "sha256-sPFEG0DpUAUss0mrSWZdkDe7ngzTMaiHUQXIUE1dXZI="
+          },
+          "i18n": {
+            "ru": {
+              "name": "Игровой риг",
+              "description": "Привязка тегов к состояниям и направлениям игрового персонажа, настройка движения, переходов, коллайдера и камеры, проверка в игровом превью"
+            }
+          }
+        },
+        {
+          "id": "game-rig",
+          "name": "Game rig",
+          "version": "0.5.1",
+          "description": "Map tags to a game character's states and directions, tune movement, transitions, collider and camera, and play it in a preview",
+          "author": "Pixprite contributors",
+          "permissions": [
+            "sprite:read",
+            "sprite:write",
+            "tags:lock",
+            "ui:panel"
+          ],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/game-rig/",
+          "files": {
+            "locales/en.json": "sha256-lBEdmFMbdbX0gTnQe96X2bk6IgIXssp35uJvjNMfkDQ=",
+            "locales/ru.json": "sha256-tdcVtRzJMZ0sdvfc952839rRb9iJTUmkO/Bj6c3wTkQ=",
+            "manifest.json": "sha256-BVijokQTSBLdoFPUiJb41TTPlEZULoqxAURHjgYS9eI=",
+            "src/main.ts": "sha256-hPapzO4m9mdJMiwlDFW/7M3uVIAuaaflVN3i8VPP5lk=",
+            "src/preview.html": "sha256-1P2rWNuHXrnG3DmEdNb+C8mgvl9uzEufJ+auSHZFq3I=",
+            "src/preview.ts": "sha256-IKaxRz3GfSOQK+JB7kBKTceDucuvlUR/azi5lCqva/E=",
+            "src/rig.ts": "sha256-FcXeh9Wrox9vlqrGqkY5UDuge6kX82j6eZ6mOYWcUjY=",
+            "src/settings.html": "sha256-7gdbRtj7WfIde51f0wkzjtb5BnDo1VtzTd7WKrd3x50=",
+            "src/settings.ts": "sha256-kM79006k6xpHcl2KF130QGSZ5wnpNM5uMv1MWJ5l/f0=",
+            "src/zip.ts": "sha256-sPFEG0DpUAUss0mrSWZdkDe7ngzTMaiHUQXIUE1dXZI="
+          },
+          "i18n": {
+            "ru": {
+              "name": "Игровой риг",
+              "description": "Привязка тегов к состояниям и направлениям игрового персонажа, настройка движения, переходов, коллайдера и камеры, проверка в игровом превью"
+            }
+          }
+        },
+        {
+          "id": "game-rig",
+          "name": "Game rig",
+          "version": "0.5.0",
+          "description": "Map tags to a game character's states and directions, tune movement, transitions, collider and camera, and play it in a preview",
+          "author": "Pixprite contributors",
+          "permissions": [
+            "sprite:read",
+            "sprite:write",
+            "tags:lock",
+            "ui:panel"
+          ],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@2754633682616ce553da1e6fe855e9548b7828a5/game-rig/",
+          "files": {
+            "locales/en.json": "sha256-lBEdmFMbdbX0gTnQe96X2bk6IgIXssp35uJvjNMfkDQ=",
+            "locales/ru.json": "sha256-tdcVtRzJMZ0sdvfc952839rRb9iJTUmkO/Bj6c3wTkQ=",
+            "manifest.json": "sha256-eiJZSXDrGWnPIz2eLkujHmYAMSpg7UCCQ5sRCXrvtyg=",
+            "src/main.ts": "sha256-hPapzO4m9mdJMiwlDFW/7M3uVIAuaaflVN3i8VPP5lk=",
+            "src/preview.html": "sha256-1P2rWNuHXrnG3DmEdNb+C8mgvl9uzEufJ+auSHZFq3I=",
+            "src/preview.ts": "sha256-ySkIFw6XPFJIWMn+Os6mjHY7Jja0aiSaZNORfJoIFbI=",
+            "src/rig.ts": "sha256-+ar+KrTh5rLX4z/o9uuevHBmmNDGuQWcueZ0D9E3R5Q=",
+            "src/settings.html": "sha256-7gdbRtj7WfIde51f0wkzjtb5BnDo1VtzTd7WKrd3x50=",
+            "src/settings.ts": "sha256-iIzMIH0DCE54H5/uxUIAl7rsopAann2TYnHgQf1nT8c=",
+            "src/zip.ts": "sha256-sPFEG0DpUAUss0mrSWZdkDe7ngzTMaiHUQXIUE1dXZI="
+          },
+          "i18n": {
+            "ru": {
+              "name": "Игровой риг",
+              "description": "Привязка тегов к состояниям и направлениям игрового персонажа, настройка движения, переходов, коллайдера и камеры, проверка в игровом превью"
+            }
+          }
+        }
+      ]
     },
     {
       "id": "icons-duotone",
       "name": "Duotone icons",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "description": "An icon pack example with 16 original two-color icons. Accent-filled shapes follow the theme; remaining icons use the built-in Outline set.",
       "icon": "icon.svg",
       "author": "Pixprite contributors",
+      "category": "icons",
+      "tags": [
+        "duotone",
+        "interface"
+      ],
       "permissions": [],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/icons-duotone/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@43c71a61eda7641761254a15cab46318d1a1e6f6/icons-duotone/",
       "files": {
         "icon.svg": "sha256-pK9MlqLcQ+TFhm2VTZfa2rYYguAGHNtczFVSh7aPxXk=",
         "icons.json": "sha256-tDfFu3D9RCvYDLhkYWvQme+baBZMiQsjOReuhSZX3Ss=",
         "locales/en.json": "sha256-Dre9ohZ9xdQrt1syqvUTsqR+Ou7WpmGRHEYuA2wEask=",
         "locales/ru.json": "sha256-E+nQzbe3pSAV3gUMZiBgI67DDdbxaHp7TW3t9TCVAYY=",
-        "manifest.json": "sha256-tWMXA3q5pb90SDR8ji7YcOvwZEGAoP1VQlloe54Ws4U="
+        "manifest.json": "sha256-JGgV28k+ECcH5No+zKMERhwoDFhUYxlWuZZI27avxSU="
       },
       "i18n": {
         "ru": {
           "name": "Двухцветные иконки",
           "description": "Пример набора с 16 оригинальными двухцветными иконками. Акцентные заливки следуют теме; остальные иконки берутся из встроенного контурного набора."
         }
-      }
+      },
+      "versions": [
+        {
+          "id": "icons-duotone",
+          "name": "Duotone icons",
+          "version": "1.1.0",
+          "description": "An icon pack example with 16 original two-color icons. Accent-filled shapes follow the theme; remaining icons use the built-in Outline set.",
+          "icon": "icon.svg",
+          "author": "Pixprite contributors",
+          "category": "icons",
+          "tags": [
+            "duotone",
+            "interface"
+          ],
+          "permissions": [],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@43c71a61eda7641761254a15cab46318d1a1e6f6/icons-duotone/",
+          "files": {
+            "icon.svg": "sha256-pK9MlqLcQ+TFhm2VTZfa2rYYguAGHNtczFVSh7aPxXk=",
+            "icons.json": "sha256-tDfFu3D9RCvYDLhkYWvQme+baBZMiQsjOReuhSZX3Ss=",
+            "locales/en.json": "sha256-Dre9ohZ9xdQrt1syqvUTsqR+Ou7WpmGRHEYuA2wEask=",
+            "locales/ru.json": "sha256-E+nQzbe3pSAV3gUMZiBgI67DDdbxaHp7TW3t9TCVAYY=",
+            "manifest.json": "sha256-JGgV28k+ECcH5No+zKMERhwoDFhUYxlWuZZI27avxSU="
+          },
+          "i18n": {
+            "ru": {
+              "name": "Двухцветные иконки",
+              "description": "Пример набора с 16 оригинальными двухцветными иконками. Акцентные заливки следуют теме; остальные иконки берутся из встроенного контурного набора."
+            }
+          }
+        },
+        {
+          "id": "icons-duotone",
+          "name": "Duotone icons",
+          "version": "1.0.0",
+          "description": "An icon pack example with 16 original two-color icons. Accent-filled shapes follow the theme; remaining icons use the built-in Outline set.",
+          "icon": "icon.svg",
+          "author": "Pixprite contributors",
+          "permissions": [],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/icons-duotone/",
+          "files": {
+            "icon.svg": "sha256-pK9MlqLcQ+TFhm2VTZfa2rYYguAGHNtczFVSh7aPxXk=",
+            "icons.json": "sha256-tDfFu3D9RCvYDLhkYWvQme+baBZMiQsjOReuhSZX3Ss=",
+            "locales/en.json": "sha256-Dre9ohZ9xdQrt1syqvUTsqR+Ou7WpmGRHEYuA2wEask=",
+            "locales/ru.json": "sha256-E+nQzbe3pSAV3gUMZiBgI67DDdbxaHp7TW3t9TCVAYY=",
+            "manifest.json": "sha256-tWMXA3q5pb90SDR8ji7YcOvwZEGAoP1VQlloe54Ws4U="
+          },
+          "i18n": {
+            "ru": {
+              "name": "Двухцветные иконки",
+              "description": "Пример набора с 16 оригинальными двухцветными иконками. Акцентные заливки следуют теме; остальные иконки берутся из встроенного контурного набора."
+            }
+          }
+        }
+      ]
     },
     {
       "id": "lang-uk",
       "name": "Українська",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "description": "Ukrainian interface translation",
       "author": "Pixprite contributors",
+      "category": "languages",
+      "tags": [
+        "ukrainian",
+        "translation"
+      ],
       "permissions": [],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/lang-uk/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@43c71a61eda7641761254a15cab46318d1a1e6f6/lang-uk/",
       "files": {
         "ai-assistant.uk.json": "sha256-2ArPSUm8SNrQ+445pOqa9jn285LnT5NJhMPZmfqqhjw=",
         "game-rig.uk.json": "sha256-2xpYJEe3Jimm+0Ic42ofMrEv7WvP33l45qlqSw+RxiE=",
-        "manifest.json": "sha256-tP2/otqj+bQvIKgIfZAKlAAL/VjBpNPIL5iUwx//qLc=",
-        "uk.json": "sha256-8NMz5J+b5UaW61A0bzddN8Ma8Az28h+ENw7oGPXz//U="
+        "manifest.json": "sha256-iqRzjEUfJWgvFv6aLIKTTv17Kx4OpomX0RCL4NMabas=",
+        "uk.json": "sha256-lEb4gLOXazpdsRZjRGsdhxwHq2ZfmcBtu/cECNpGK6E="
       },
       "completeness": {
-        "uk": 95
-      }
+        "uk": 95.1
+      },
+      "versions": [
+        {
+          "id": "lang-uk",
+          "name": "Українська",
+          "version": "1.1.0",
+          "description": "Ukrainian interface translation",
+          "author": "Pixprite contributors",
+          "category": "languages",
+          "tags": [
+            "ukrainian",
+            "translation"
+          ],
+          "permissions": [],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@43c71a61eda7641761254a15cab46318d1a1e6f6/lang-uk/",
+          "files": {
+            "ai-assistant.uk.json": "sha256-2ArPSUm8SNrQ+445pOqa9jn285LnT5NJhMPZmfqqhjw=",
+            "game-rig.uk.json": "sha256-2xpYJEe3Jimm+0Ic42ofMrEv7WvP33l45qlqSw+RxiE=",
+            "manifest.json": "sha256-iqRzjEUfJWgvFv6aLIKTTv17Kx4OpomX0RCL4NMabas=",
+            "uk.json": "sha256-lEb4gLOXazpdsRZjRGsdhxwHq2ZfmcBtu/cECNpGK6E="
+          },
+          "completeness": {
+            "uk": 95.1
+          }
+        },
+        {
+          "id": "lang-uk",
+          "name": "Українська",
+          "version": "1.0.0",
+          "description": "Ukrainian interface translation",
+          "author": "Pixprite contributors",
+          "permissions": [],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/lang-uk/",
+          "files": {
+            "ai-assistant.uk.json": "sha256-2ArPSUm8SNrQ+445pOqa9jn285LnT5NJhMPZmfqqhjw=",
+            "game-rig.uk.json": "sha256-2xpYJEe3Jimm+0Ic42ofMrEv7WvP33l45qlqSw+RxiE=",
+            "manifest.json": "sha256-tP2/otqj+bQvIKgIfZAKlAAL/VjBpNPIL5iUwx//qLc=",
+            "uk.json": "sha256-8NMz5J+b5UaW61A0bzddN8Ma8Az28h+ENw7oGPXz//U="
+          },
+          "completeness": {
+            "uk": 95
+          }
+        }
+      ]
     },
     {
       "id": "theme-neon",
       "name": "Neon Night",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "description": "Deep teal-black with magenta and lime highlights",
       "author": "Pixprite contributors",
+      "category": "themes",
+      "tags": [
+        "dark",
+        "neon"
+      ],
       "permissions": [],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/theme-neon/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@43c71a61eda7641761254a15cab46318d1a1e6f6/theme-neon/",
       "files": {
-        "manifest.json": "sha256-HIqKMOBsvYiU7wxpQ/UBNvAVwVhYLmmRMDGtpW8ce2w="
-      }
+        "manifest.json": "sha256-WgYHdxu7v+/TeKZvG8eND4x/JoiNbkgRZD/MzLr6CpQ="
+      },
+      "versions": [
+        {
+          "id": "theme-neon",
+          "name": "Neon Night",
+          "version": "0.2.0",
+          "description": "Deep teal-black with magenta and lime highlights",
+          "author": "Pixprite contributors",
+          "category": "themes",
+          "tags": [
+            "dark",
+            "neon"
+          ],
+          "permissions": [],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@43c71a61eda7641761254a15cab46318d1a1e6f6/theme-neon/",
+          "files": {
+            "manifest.json": "sha256-WgYHdxu7v+/TeKZvG8eND4x/JoiNbkgRZD/MzLr6CpQ="
+          }
+        },
+        {
+          "id": "theme-neon",
+          "name": "Neon Night",
+          "version": "0.1.0",
+          "description": "Deep teal-black with magenta and lime highlights",
+          "author": "Pixprite contributors",
+          "permissions": [],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/theme-neon/",
+          "files": {
+            "manifest.json": "sha256-HIqKMOBsvYiU7wxpQ/UBNvAVwVhYLmmRMDGtpW8ce2w="
+          }
+        }
+      ]
     }
   ]
 }
