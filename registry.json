@@ -4,7 +4,7 @@
     {
       "id": "ai-assistant",
       "name": "AI assistant",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "Chat with an AI model that can inspect and edit your sprite",
       "author": "Pixprite contributors",
       "permissions": [
@@ -18,13 +18,13 @@
         "network:localhost:11434",
         "network:localhost:1234"
       ],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@34eb3bd10d491ad3c474f7638b010ff191c4ff36/ai-assistant/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/ai-assistant/",
       "files": {
         "locales/en.json": "sha256-7oFaUo169jh5uUCEE8Jd1CciQUZi3JcrcOgCjzKfaHw=",
         "locales/ru.json": "sha256-iROA3CgqAY3d6m++mFM8xsZHzbV/u5ntLQpbpxgh9Kk=",
-        "manifest.json": "sha256-mVz0RjHZjpHtrenNxv1cHo2K3+8v/dlsLcVoqY6AdR4=",
+        "manifest.json": "sha256-lLLUN+AxEpXUQvES14iyg2dic7eNBrdipP9UY6WO2Rc=",
         "src/chat.html": "sha256-87Y3ZTuOD+Kr9D363ZVffcWuO1aZvoaaUUAfAPACkJc=",
-        "src/chat.ts": "sha256-19DxnVtex+VPIrtgkUL3BRWZbERwd7qwic5ea5WRTfo=",
+        "src/chat.ts": "sha256-WcNlcRlDUnlz5D+EeTsKYmjFJ0EBCvr166LzLZzSIBM=",
         "src/markdown.ts": "sha256-0pYiMvqWVfutVrjU4iN/1Bbj5nAuxqpX7/ws3W21+KA=",
         "src/tools.ts": "sha256-wEmDy7aznDnNMUnXyXs5uYKdQB7RUBmRTXqZDS59qrk="
       },
@@ -47,7 +47,7 @@
         "tags:lock",
         "ui:panel"
       ],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@34eb3bd10d491ad3c474f7638b010ff191c4ff36/game-rig/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/game-rig/",
       "files": {
         "locales/en.json": "sha256-lBEdmFMbdbX0gTnQe96X2bk6IgIXssp35uJvjNMfkDQ=",
         "locales/ru.json": "sha256-tdcVtRzJMZ0sdvfc952839rRb9iJTUmkO/Bj6c3wTkQ=",
@@ -75,7 +75,7 @@
       "icon": "icon.svg",
       "author": "Pixprite contributors",
       "permissions": [],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@34eb3bd10d491ad3c474f7638b010ff191c4ff36/icons-duotone/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/icons-duotone/",
       "files": {
         "icon.svg": "sha256-pK9MlqLcQ+TFhm2VTZfa2rYYguAGHNtczFVSh7aPxXk=",
         "icons.json": "sha256-tDfFu3D9RCvYDLhkYWvQme+baBZMiQsjOReuhSZX3Ss=",
@@ -97,7 +97,7 @@
       "description": "Ukrainian interface translation",
       "author": "Pixprite contributors",
       "permissions": [],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@34eb3bd10d491ad3c474f7638b010ff191c4ff36/lang-uk/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/lang-uk/",
       "files": {
         "ai-assistant.uk.json": "sha256-2ArPSUm8SNrQ+445pOqa9jn285LnT5NJhMPZmfqqhjw=",
         "game-rig.uk.json": "sha256-2xpYJEe3Jimm+0Ic42ofMrEv7WvP33l45qlqSw+RxiE=",
@@ -115,7 +115,7 @@
       "description": "Deep teal-black with magenta and lime highlights",
       "author": "Pixprite contributors",
       "permissions": [],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@34eb3bd10d491ad3c474f7638b010ff191c4ff36/theme-neon/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@5ce9abcbd02737c7a52f4ddda58245504b362dba/theme-neon/",
       "files": {
         "manifest.json": "sha256-HIqKMOBsvYiU7wxpQ/UBNvAVwVhYLmmRMDGtpW8ce2w="
       }
