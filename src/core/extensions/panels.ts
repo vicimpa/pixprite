@@ -5,6 +5,7 @@
  * remembered in this browser.
  */
 
+import { deferSetting } from '../DeferredSettings';
 import { computed, signal } from "@preact/signals-react";
 
 export type Dock = 'left' | 'right' | 'bottom' | 'float';
@@ -17,7 +18,7 @@ export type PanelPlace = {
   x?: number; y?: number; w?: number; h?: number;
 };
 
-type Layout = {
+export type ExtensionPanelLayout = {
   panels: Record<string, PanelPlace>;
   sides: Partial<Record<Side, number>>;
   /** Docked panels of a side share it as tabs: the open tab of each side */
@@ -26,25 +27,40 @@ type Layout = {
   focus?: string;
 };
 
+type Layout = ExtensionPanelLayout;
+export const EMPTY_PANEL_LAYOUT: ExtensionPanelLayout = { panels: {}, sides: {}, tabs: {} };
 const STORE = 'pixprite:extPanels';
 
+export function normalizePanelLayout(value: unknown): ExtensionPanelLayout {
+  const obj = (x: unknown): Record<string, unknown> => x && typeof x === 'object' && !Array.isArray(x) ? x as Record<string, unknown> : {};
+  const v = obj(value), panels: Record<string, PanelPlace> = {}, sides: Layout['sides'] = {}, tabs: Layout['tabs'] = {};
+  for (const [key, raw] of Object.entries(obj(v.panels))) {
+    if (!key.includes('/') || key.length > 200) continue;
+    const p = obj(raw), item: PanelPlace = {};
+    if (typeof p.hidden === 'boolean') item.hidden = p.hidden;
+    if (['left', 'right', 'bottom', 'float'].includes(String(p.dock))) item.dock = p.dock as Dock;
+    for (const key of ['x', 'y', 'w', 'h'] as const) if (typeof p[key] === 'number' && Number.isFinite(p[key])) {
+      item[key] = Math.max(key === 'w' || key === 'h' ? 60 : -100000, Math.min(key === 'w' || key === 'h' ? 4000 : 100000, p[key]));
+    }
+    panels[key] = item;
+  }
+  for (const side of ['left', 'right', 'bottom'] as const) {
+    const size = obj(v.sides)[side], tab = obj(v.tabs)[side];
+    if (typeof size === 'number' && Number.isFinite(size)) sides[side] = Math.max(60, Math.min(4000, size));
+    if (typeof tab === 'string') tabs[side] = tab;
+  }
+  return { panels, sides, tabs, ...(typeof v.focus === 'string' ? { focus: v.focus } : {}) };
+}
 function read(): Layout {
-  try {
-    const v = JSON.parse(localStorage.getItem(STORE) ?? '{}');
-    const obj = (x: unknown) => x && typeof x === 'object' ? x : {};
-    return { panels: obj(v?.panels) as Layout['panels'], sides: obj(v?.sides) as Layout['sides'], tabs: obj(v?.tabs) as Layout['tabs'], focus: typeof v?.focus === 'string' ? v.focus : undefined };
-  } catch { return { panels: {}, sides: {}, tabs: {} }; }
+  try { return normalizePanelLayout(JSON.parse(localStorage.getItem(STORE) ?? '{}')); }
+  catch { return normalizePanelLayout(null); }
 }
-
 export const panelLayout = signal<Layout>(read());
-
-let timer: ReturnType<typeof setTimeout> | undefined;
-function update(fn: (l: Layout) => Layout) {
-  panelLayout.value = fn(panelLayout.peek());
-  // Dragging changes it every frame; storage is written once things settle
-  clearTimeout(timer);
-  timer = setTimeout(() => { try { localStorage.setItem(STORE, JSON.stringify(panelLayout.peek())); } catch { /* storage off: this session only */ } }, 250);
+export function restorePanelLayout(value: unknown) {
+  panelLayout.value = normalizePanelLayout(value);
+  deferSetting(STORE, panelLayout.peek());
 }
+function update(fn: (l: Layout) => Layout) { restorePanelLayout(fn(panelLayout.peek())); }
 
 /** Panels the manifest declares `hidden` (until shown) */
 const hiddenByDefault = signal<ReadonlySet<string>>(new Set());

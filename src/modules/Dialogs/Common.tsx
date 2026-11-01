@@ -1,3 +1,4 @@
+import { openExtensions } from '~/modules/Extensions';
 import { VirtualList } from "~/ui/VirtualList";
 import { ColorInput as ColorField } from "~/ui/ColorInput";
 import { Color } from "~/core/Color";
@@ -756,6 +757,9 @@ const Preferences: FC<{ close: () => void; section?: string; }> = ({ close }) =>
         {(['pencil', 'eraser', 'fill', 'move', 'folder', 'gear', 'play', 'trash'] as const).map(name => <Icon key={name} name={name} />)}
       </Row>
       <Muted style={{ whiteSpace: 'normal' }}>{t('dialog.preferences.iconPacksHint')}</Muted>
+      <Row style={{ flexWrap: 'wrap' }}>{(['themes', 'icons', 'languages'] as const).map(category => <Button key={category} type="button" onClick={() => openExtensions('store', category)}>
+        {t('extensions.browseCategory', { category: t(`extensions.category.${category}`) })}
+      </Button>)}</Row>
 
       <Section>{t('dialog.preferences.canvas')}</Section>
       <Field label={t('dialog.preferences.checkerboard')}>
@@ -815,6 +819,9 @@ const Preferences: FC<{ close: () => void; section?: string; }> = ({ close }) =>
         <Range min={5} max={100} value={Math.round(p.onionOpacity * 100)} onChange={e => set({ onionOpacity: +e.target.value / 100 })} />
         <Muted>{Math.round(p.onionOpacity * 100)}%, −{Math.round(p.onionStep * 100)}% per frame</Muted>
       </Field>
+      <Field label={t('playback.scope')}><Select aria-label={t('playback.scope')} value={p.playScope} onChange={e => set({ playScope: e.target.value as typeof p.playScope })}>
+        {(['tag', 'loop', 'all'] as const).map(v => <option key={v} value={v}>{t(`playback.scope.${v}`)}</option>)}
+      </Select></Field>
       <Label><Check checked={p.playOnce} onChange={e => set({ playOnce: e.target.checked })} /> {t('common.playOnce')}</Label>
       <Label><Check checked={p.rewindOnStop} onChange={e => set({ rewindOnStop: e.target.checked })} /> {t('dialog.preferences.returnToTheStart')}</Label>
 

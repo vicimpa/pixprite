@@ -1,3 +1,4 @@
+import { EMPTY_PANEL_LAYOUT, normalizePanelLayout, panelLayout, restorePanelLayout, type ExtensionPanelLayout } from './extensions/panels';
 import { deferSetting, flushSettings } from './DeferredSettings';
 import { IncrementalDocument } from './IncrementalDocument';
 import { Cancelled, isCancelled, runTask } from './BackgroundTask';
@@ -17,7 +18,7 @@ import { Mask, type SelectMode } from "~/core/Mask";
 import type { TilesetMode } from "~/core/Tilemap";
 import { historyLimits, Sprite, type Guide, type Range, type RangeClip } from "~/core/Sprite";
 import { prop, reactive } from "@vicimpa/decorators";
-import { effect, untracked } from "@preact/signals-react";
+import { batch, effect, untracked } from "@preact/signals-react";
 
 /** Default palette: 32 hand-picked colors, dark to light per hue ramp */
 export const DEFAULT_PALETTE = [
@@ -111,6 +112,7 @@ export type Prefs = {
   onionFront: boolean;
   onionInTag: boolean;
   rightClick: RightClick;
+  playScope: import('./PlaybackCursor').PlayScope;
   playOnce: boolean;
   rewindOnStop: boolean;
   playSpeed: number;
@@ -136,6 +138,7 @@ export type Prefs = {
 };
 
 export type Layout = {
+  extensionPanels?: ExtensionPanelLayout;
   toolbar: Side;
   colors: Side;
   timeline: TimelineDock;
@@ -188,6 +191,7 @@ export const DEFAULT_PREFS: Prefs = {
   onionFront: false,
   onionInTag: true,
   rightClick: 'secondary',
+  playScope: 'tag',
   playOnce: false,
   rewindOnStop: false,
   playSpeed: 1,
@@ -234,7 +238,7 @@ export const DEFAULT_LAYOUT: Layout = {
 const DOC_PREFS = [
   'gridX', 'gridY', 'gridW', 'gridH', 'gridColor', 'gridAutoOpacity', 'pixelGridColor',
   'onionBefore', 'onionAfter', 'onionOpacity', 'onionStep', 'onionMode', 'onionFront', 'onionInTag',
-  'playOnce', 'rewindOnStop', 'playSpeed', 'checkerSize', 'checkerA', 'checkerB', 'checkerFollowsZoom',
+  'playScope', 'playOnce', 'rewindOnStop', 'playSpeed', 'checkerSize', 'checkerA', 'checkerB', 'checkerFollowsZoom',
 ] as const;
 
 type EncodedMask = { w: number; h: number; runs: number[]; };
@@ -285,7 +289,7 @@ const lastSnapshot = new WeakMap<Sprite, number>();
 /** Layout fields that are personal habits rather than part of an arrangement */
 const PERSONAL = ['pickerTab', 'previewX', 'previewY', 'previewW', 'previewH', 'previewFollow', 'previewPlaying'] as const;
 const personal = (l: Layout) => Object.fromEntries(PERSONAL.map(k => [k, l[k]])) as Partial<Layout>;
-const panelsOf = (l: Layout) => Object.fromEntries(Object.entries({ ...DEFAULT_LAYOUT, ...l }).filter(([k]) => !(PERSONAL as readonly string[]).includes(k)));
+const panelsOf = (l: Layout) => Object.fromEntries(Object.entries({ ...DEFAULT_LAYOUT, ...l }).filter(([k]) => k !== 'extensionPanels' && !(PERSONAL as readonly string[]).includes(k)));
 
 /** Built-in panel arrangements */
 export const LAYOUT_PRESETS: Record<string, Layout> = {
@@ -451,22 +455,34 @@ export class State {
   /** The active built-in arrangement was changed since it was applied */
   get layoutModified() {
     const base = LAYOUT_PRESETS[this.layoutName];
-    return !!base && JSON.stringify(panelsOf(base)) !== JSON.stringify(panelsOf(this.layout));
+    return !!base && JSON.stringify({ ...panelsOf(base), extensionPanels: normalizePanelLayout(base.extensionPanels) }) !== JSON.stringify({ ...panelsOf(this.layout), extensionPanels: normalizePanelLayout(panelLayout.value) });
   }
 
   applyLayout(name: string) {
     const l = this.savedLayouts[name] ?? LAYOUT_PRESETS[name];
     if (!l) return;
     // Name first: the auto-save of user layouts must not see the new panels under the old name
+    batch(() => {
     this.layoutName = name;
     // Only the panel arrangement changes; picker tab and preview window stay as they are
-    this.layout = { ...DEFAULT_LAYOUT, ...panelsOf(l), ...personal(this.layout) };
+    const extensionPanels = normalizePanelLayout(l.extensionPanels ?? (this.savedLayouts[name] ? panelLayout.peek() : EMPTY_PANEL_LAYOUT));
+    this.layout = { ...DEFAULT_LAYOUT, ...panelsOf(l), ...personal(this.layout), extensionPanels };
+    restorePanelLayout(extensionPanels);
+    });
+  }
+
+  resetLayout() {
+    batch(() => {
+      this.layoutName = 'Default';
+      this.layout = { ...DEFAULT_LAYOUT, extensionPanels: normalizePanelLayout(EMPTY_PANEL_LAYOUT) };
+      restorePanelLayout(EMPTY_PANEL_LAYOUT);
+    });
   }
 
   saveLayoutAs(name: string) {
     name = name.trim();
     if (!name || LAYOUT_PRESETS[name]) return false;
-    this.savedLayouts = { ...this.savedLayouts, [name]: { ...this.layout } };
+    this.savedLayouts = { ...this.savedLayouts, [name]: { ...this.layout, extensionPanels: normalizePanelLayout(panelLayout.peek()) } };
     this.layoutName = name;
     return true;
   }
@@ -1002,7 +1018,10 @@ export class State {
       if (d.transformAlgo) doc.transformAlgo = d.transformAlgo;
       if (!doc.floating) doc.mask = d.mask && d.mask.w === doc.width && d.mask.h === doc.height ? decodeMask(d.mask) : null;
     }
-    if (e.layout && typeof e.layout === 'object') this.layout = { ...DEFAULT_LAYOUT, ...e.layout as Partial<Layout> };
+    if (e.layout && typeof e.layout === 'object') {
+      this.layout = { ...DEFAULT_LAYOUT, ...e.layout as Partial<Layout> };
+      if (this.layout.extensionPanels) restorePanelLayout(this.layout.extensionPanels);
+    }
     if (typeof e.layoutName === 'string') this.layoutName = e.layoutName;
     if (typeof e.zoom === 'number') {
       this.zoom = this.zoomTarget = e.zoom;
@@ -1285,6 +1304,14 @@ effect(() => {
 });
 effect(() => { state.sprite.sliceKeysPerFrame = state.prefs.sliceKeysPerFrame; });
 effect(() => store('pixprite:layoutName', { name: state.layoutName }));
+// Migrate the legacy panel key once, then keep the current arrangement and its extension panels together.
+if (state.layout.extensionPanels) restorePanelLayout(state.layout.extensionPanels);
+effect(() => {
+  const extensionPanels = panelLayout.value;
+  untracked(() => {
+    if (JSON.stringify(state.layout.extensionPanels) !== JSON.stringify(extensionPanels)) state.setLayout({ extensionPanels: normalizePanelLayout(extensionPanels) });
+  });
+});
 // A user arrangement in use keeps every change made to the panels
 effect(() => {
   const l = state.layout;

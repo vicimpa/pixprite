@@ -3,6 +3,7 @@
   "compilerOptions": {
     "tsBuildInfoFile": "../node_modules/.tmp/src.tsbuildinfo",
     "jsx": "react-jsx",
+    "resolveJsonModule": true,
     "experimentalDecorators": true,
     "types": ["vite/client", "vite-plugin-glsl/ext"],
     "paths": {

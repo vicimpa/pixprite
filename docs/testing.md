@@ -20,7 +20,7 @@ The suite performs real pointer drawing, command palette actions, file selection
 
 `e2e/responsive.e2e.ts` checks the tool options, timeline actions and status strip at 800, 1024 and 1280 px with large Russian and English UI. It detects clipped controls as well as scrollbars, verifies the extra-tools palette, and exercises draft/preset retention when controls move into More, nested dropdowns and Escape during a pending transform.
 
-`e2e/ui-elements.e2e.ts` checks the shared Web Components' labels, native FormData/reset/required behavior, numeric drafts, readonly/fieldset semantics and virtual-list keys. `e2e/composite-ui.e2e.ts` covers React/native dialog adoption, menu keyboard/ARIA behavior, declarative forms and drag/reconnect cleanup. `e2e/game-rig.e2e.ts` installs the actual extension and checks dropdowns and dock resizing; `e2e/visual-ui.e2e.ts` checks canvas cleanup and GPU/Canvas gradient color/alpha parity. These scenarios run in Chromium and WebKit using the same production bundle.
+`e2e/ui-elements.e2e.ts` checks the shared Web Components' labels, native FormData/reset/required behavior, numeric drafts, readonly/fieldset semantics and virtual-list keys. `e2e/composite-ui.e2e.ts` covers React/native dialog adoption, menu keyboard/ARIA behavior, declarative forms and drag/reconnect cleanup. `e2e/game-rig.e2e.ts` installs the actual TSX extension and checks dropdowns, dock resizing, input focus, saved settings, collider drags and the game preview; compatibility scenarios also cover catalog gating, rejected updates, stored packages and an older host without version metadata; `e2e/visual-ui.e2e.ts` checks canvas cleanup and GPU/Canvas gradient color/alpha parity. These scenarios run in Chromium and WebKit using the same production bundle.
 
 `e2e/react-widget.e2e.ts` installs the template's real TSX widget, exercises React state
 and removes the extension. The TSX cases in `e2e/security.e2e.ts` cover default exports,
@@ -66,3 +66,16 @@ The preceding budget change on 2026-10-31 accounted for all built-in UI/codecs s
 The desktop workflow builds the Tauri executable/installers and runs `bun run test:native` plus `bun run test:desktop`. The native scenarios use the actual system WebView and standalone stdio MCP. They cover documents, files, sessions, menu removal, authentication and background release notifications. `scripts/check-desktop-package.ts` validates prepared content and the native executable/resources before release artifacts are uploaded.
 
 Optional WebKit regression checks: `bunx playwright install webkit`, then `bun run test:webview`. This covers editor round trips and the extension sandbox with WebKit alongside the native scenarios.
+
+`e2e/package-history.e2e.ts` checks category/tag search, compatible version selection,
+downgrades and offline restore. `e2e/ai-assistant.e2e.ts` uses a local mocked model
+to cover TSX controls, queued prompts, real Extension API tool calls and stored chats.
+`e2e/playback.e2e.ts` covers live seeks across tags, layer selection, scope changes,
+and independent play-once/rewind settings. Security fixtures also check portable
+backups, interrupted activation, disabled updates, invalid panel imports and unified
+workspace migration. `scripts/extension-publication.test.ts` publishes only into a
+temporary Git repository and checks history, tags and immutable version bytes.
+
+Game rig physics checks cover zero coyote time, grace expiration, jump cut, air control,
+fast swept collisions, refresh-rate stability and animation finish duration. Browser checks
+exercise the real platformer TSX panel and native selection in shared number fields.

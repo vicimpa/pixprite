@@ -12,6 +12,9 @@ on:
       - 'extensions/**'
       - 'scripts/extensions.ts'
       - 'scripts/build-extensions.ts'
+      - 'scripts/publish-extensions.ts'
+      - 'src/core/extensions/versions.ts'
+      - 'packages/api/src/types.ts'
       - 'src/core/extensions/manifest.ts'
       - 'src/core/extensions/iconPack.ts'
       - '.github/workflows/extensions.yml'
@@ -20,6 +23,9 @@ on:
       - 'extensions/**'
       - 'scripts/extensions.ts'
       - 'scripts/build-extensions.ts'
+      - 'scripts/publish-extensions.ts'
+      - 'src/core/extensions/versions.ts'
+      - 'packages/api/src/types.ts'
       - 'src/core/extensions/manifest.ts'
       - 'src/core/extensions/iconPack.ts'
   workflow_dispatch:
@@ -36,6 +42,9 @@ jobs:
       # Manifests, sources, locales and %key% references
       - name: Check
         run: bun scripts/build-extensions.ts
+
+      - name: Publication tests
+        run: bun test scripts/extension-publication.test.ts scripts/extension-artifacts.test.ts
 
       # A changed public extension needs a new version, or installed copies never update
       - name: Versions
@@ -69,23 +78,12 @@ jobs:
           else
             git worktree add --orphan -b extensions pub
           fi
-          # The branch is the catalog and nothing else: start from empty
-          find pub -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
 
-      # Two commits: the sources first, then registry.json with package paths pinned to that commit,
-      # so a cached manifest never meets newer sources (pinned files are cached forever)
-      - name: Publish
+      # Package bytes are pinned to a source commit; tags keep each package version discoverable.
+      - name: Publish versioned packages
         run: |
-          bun scripts/build-extensions.ts --out pub
-          # Sources only in this commit: the catalog keeps pointing at the last commit that changed them
-          git -C pub checkout HEAD -- registry.json 2>/dev/null || rm -f pub/registry.json
-          git -C pub add -A
-          git -C pub diff --cached --quiet || git -C pub commit -m "Extensions from ${GITHUB_SHA::7}"
-          SOURCES=$(git -C pub log -1 --format=%H -- . ':(exclude)registry.json')
-          bun scripts/build-extensions.ts --out pub --base "$CDN@$SOURCES/"
-          git -C pub add -A
-          git -C pub diff --cached --quiet || git -C pub commit -m "Catalog for ${SOURCES::7}"
-          git -C pub push origin extensions
+          bun scripts/publish-extensions.ts --worktree pub --cdn "$CDN" --source "$GITHUB_SHA"
+          git -C pub push --atomic origin extensions 'refs/tags/ext-*:refs/tags/ext-*'
 
       # The branch url is cached by jsDelivr for hours; the pinned package paths need nothing
       - name: Refresh the CDN

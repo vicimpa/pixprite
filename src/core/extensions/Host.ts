@@ -22,6 +22,7 @@ import { BOOT_END, BOOT_START, compile, LINKER, sourceOf } from "./compile";
 import { report } from "./DevLink";
 import { readFile, type InstalledExtension } from "./Registry";
 import { API_VERSION } from "@pixprite/api";
+import { assertCompatible, editorVersion } from './compatibility';
 import { SANDBOX_POLICY } from './sandbox';
 
 const HANDLERS: Handlers = { ...spriteHandlers, ...uiHandlers, ...runtimeHandlers, ...eventHandlers };
@@ -127,12 +128,13 @@ export class ExtensionHost {
 
   private init(role: Endpoint['role'], contribution?: string): WireMessage {
     const snap = this.translator.snapshot();
-    return { type: 'init', id: this.id, version: this.manifest.version, apiVersion: API_VERSION, role, contribution, ...snap };
+    return { type: 'init', id: this.id, version: this.manifest.version, apiVersion: API_VERSION, editorVersion, role, contribution, ...snap };
   }
 
   /** Starts the worker (when the manifest has an `entry`) and waits for `activate` */
   async start() {
     if (this.disposed) return;
+    assertCompatible(this.manifest);
     const texts = () => this.broadcast(I18N_CHANGE, (({ lang, dir, strings, core }) => ({ lang, dir, strings, core }))(this.translator.snapshot()));
     this.disposers.push(this.translator.on('change', texts));
     // Panels may have connected while the texts were still loading
@@ -199,6 +201,7 @@ export class ExtensionHost {
    */
   connectFrame(iframe: HTMLIFrameElement, role: 'panel' | 'widget', contribution: string) {
     this.assertActive();
+    assertCompatible(this.manifest);
     if (!this.can('ui:panel')) fail('permission', 'Permission "ui:panel" is not granted');
     const ep: Endpoint = {
       role, contribution,

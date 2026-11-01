@@ -1,7 +1,8 @@
 /**
  * Manifest validation and `%key%` resolution. No dependencies: also used by scripts/build-extensions.ts.
  */
-import { API_VERSION, type FormSchema, type Manifest } from "@pixprite/api";
+import { API_VERSION, EXTENSION_CATEGORIES, type FormSchema, type Manifest } from "@pixprite/api";
+import { isVersion } from './versions';
 import { safePath } from './paths';
 
 export type { Manifest } from "@pixprite/api";
@@ -29,6 +30,9 @@ export function validateManifest(m: unknown): string[] {
   if (!isStr(m.id) || !ID.test(m.id)) err('id', 'lowercase letters, digits, "." and "-"');
   if (!isStr(m.name)) err('name', 'required');
   if (!isStr(m.version) || !SEMVER.test(m.version)) err('version', 'semver expected');
+  if (m.minEditorVersion !== undefined && !isVersion(m.minEditorVersion)) err('minEditorVersion', 'semver expected');
+  if (m.category !== undefined && !EXTENSION_CATEGORIES.includes(m.category as never)) err('category', EXTENSION_CATEGORIES.join(' | '));
+  if (m.tags !== undefined && (!Array.isArray(m.tags) || m.tags.length > 16 || new Set(m.tags).size !== m.tags.length || !m.tags.every(t => typeof t === 'string' && t.length <= 40 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(t)))) err('tags', 'up to 16 unique lowercase slugs expected');
   if (m.apiVersion !== API_VERSION) err('apiVersion', `must be ${API_VERSION}`);
   for (const k of ['author', 'description'] as const) if (m[k] !== undefined && typeof m[k] !== 'string') err(k, 'string expected');
   for (const k of ['icon', 'entry'] as const) if (m[k] !== undefined && !(isStr(m[k]) && PATH.test(m[k]))) err(k, 'relative path expected');

@@ -5,6 +5,11 @@ export type RegistryEntryLike = {
   id: string;
   name: string;
   version: string;
+  minEditorVersion?: string;
+  category?: import('@pixprite/api').ExtensionCategory;
+  tags?: string[];
+  /** Immutable package versions, newest first; legacy catalogs may omit them. */
+  versions?: Omit<RegistryEntryLike, 'versions'>[];
   description?: string;
   icon?: string;
   permissions?: string[];

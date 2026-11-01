@@ -17,6 +17,11 @@ const CORE_EN: Record<string, string> = JSON.parse(readFileSync(join(ROOT, 'src/
 
 export type RegistryEntry = {
   id: string; name: string; version: string; description?: string; icon?: string; author?: string;
+  minEditorVersion?: string;
+  category?: import('@pixprite/api').ExtensionCategory;
+  tags?: string[];
+  /** Immutable package versions, newest first; legacy catalogs may omit them. */
+  versions?: Omit<RegistryEntry, 'versions'>[];
   permissions: string[]; path: string;
   /** Package path → `sha256-<base64>` of every file the editor downloads */
   files: Record<string, string>;
@@ -115,7 +120,7 @@ export function indexEntry(dir: string, m: Manifest): RegistryEntry {
   const text = (v: string | undefined, lang = 'en') => v && resolveString(v, { ...en, ...strings[lang] });
   const entry: RegistryEntry = {
     id: m.id, name: text(m.name)!, version: m.version, description: text(m.description), icon: m.icon, author: m.author,
-    permissions: m.permissions ?? [], path: `${m.id}/`, files,
+    minEditorVersion: m.minEditorVersion, category: m.category, tags: m.tags, permissions: m.permissions ?? [], path: `${m.id}/`, files,
   };
   const langs = Object.keys(strings).filter(l => l !== 'en');
   if (langs.length) entry.i18n = Object.fromEntries(langs.map(l => [l, { name: text(m.name, l)!, description: text(m.description, l) }]));

@@ -52,8 +52,8 @@ export default defineExtension(ctx => {
 extensions/<id>/
   manifest.json
   src/main.ts          → main.js      (manifest "entry": "main.js")
-  src/panel.ts         → panel.js     (page "panel.html")
-  src/panel.html       optional; otherwise a bare page loading panel.js is generated
+  src/panel.tsx        default React component (page "panel.tsx")
+  src/panel.html       optional alternative: a legacy HTML page with src/panel.ts
   src/widget.tsx       default React component (page "widget.tsx", no HTML needed)
   locales/en.json      own strings, required when the manifest uses %key%
   locales/ru.json …
@@ -160,7 +160,7 @@ Add `"widget.clicks": "Clicks: {count}"` to the extension's English locale (and 
 A component with no props, such as `export default () => <Button>Hello</Button>`, works too.
 `ctx` includes `role` (`panel`/`widget`), `contribution`, and the same permission-checked APIs as
 `connect()`. React hooks and relative TSX component imports work normally. The kit exports
-`Button`, `Input`, `Check`, `Range`, `Label`, `Muted`, `Separator` and `Select`.
+`Button`, `Input`, `TextArea`, `Check`, `Range`, `Label`, `Muted`, `Separator` and `Select`.
 
 Pixprite supplies React, React DOM and the kit at its installed versions inside the iframe;
 there is no CDN or access to the parent document. Built-in modules are shared across page scripts.
@@ -180,6 +180,9 @@ is a working example. React UI imports are intended for panel/widget iframes, no
   "name": "%name%",            // %key% = from locales/<lang>.json
   "version": "1.0.0",          // semver
   "apiVersion": 1,
+  "minEditorVersion": "0.0.4", // optional inclusive minimum editor version, not a range
+  "category": "animation",
+  "tags": ["rig", "game-development"],
   "author": "you",
   "description": "%description%",
   "icon": "assets/icon.svg",
@@ -205,6 +208,26 @@ is a working example. React UI imports are intended for panel/widget iframes, no
   }
 }
 ```
+
+`minEditorVersion` is an optional inclusive SemVer minimum (for example `"0.0.4"`,
+not `">=0.0.4"`). Build metadata is ignored and prereleases sort before the stable release.
+Editors from 0.0.4 check it before installation/update, enabling and startup; incompatible
+packages cannot register contributions or execute workers/pages. The catalog carries the
+same field: its install button explains the required editor version, and incompatible updates
+are excluded from update-all. The downloaded manifest is checked again before replacing
+an installed version. Extensions without the field keep working.
+
+The context exposes `ctx.editorVersion` independently of `ctx.apiVersion`. Editors before
+0.0.4 do not enforce this manifest field. Code extensions that require the new host should
+also reject a missing `ctx.editorVersion` at the beginning of `activate`, before registering
+commands or changing documents; see [Game rig](../../extensions/game-rig/src/main.ts).
+The TSX Game rig panels and template widget require 0.0.4.
+
+`category` is one of `tools`, `animation`, `panels`, `palettes`, `themes`, `icons`,
+`languages`, `automation`, `other`. `tags` contains up to 16 unique lowercase slugs
+(up to 40 characters each, letters/digits separated by hyphens). Both are optional
+for legacy packages. The catalog filters by category and includes tags in text search.
+Preferences and the icon menu can open the catalog with a category already selected.
 
 Rules checked by `ext:check` (and again by the editor on install):
 
@@ -343,6 +366,28 @@ orphan branch `extensions`: the sources of every extension that isn't `"public":
 The store reads it through jsDelivr (`https://cdn.jsdelivr.net/gh/vicimpa/pixprite@extensions/registry.json`);
 each package path in it is pinned to the commit of its sources, so files are cached for good and a manifest
 never meets older sources. More catalogs can be added in Preferences → Extension catalogs.
+
+Publication creates an annotated Git tag `ext-<id>-v<version>` for each package,
+including older versions found in published catalog commits. Tags point at the
+published source tree, with the package in `<id>/`. `registry.json` v3 retains the
+usual `extensions` list and adds a `versions` array to each entry. Its records carry
+the same package metadata, immutable commit URL, permissions, editor minimum and file
+hashes. Older v2 catalogs and bare arrays are still accepted. An already-published
+version with different bytes fails publication; use a new version instead.
+The workflow pushes the catalog branch and version tags atomically.
+
+The store selects the newest compatible release and lets the user install an older
+one after confirming permissions. An update saves one previous package locally;
+**Restore version** uses those bytes offline. Failed contribution loading or worker
+activation restores the previous package. A candidate is staged in memory until
+activation completes, so closing during activation keeps the last committed package.
+Disabled packages stay disabled when updated or restored. Only package files are
+restored; extension storage and completed document edits are retained.
+
+Named editor layouts also save extension panel docking, geometry, visibility and the
+active dock tabs. Legacy layouts keep the current extension arrangement when first
+applied. Missing extensions retain their positions for later installation. Reset layout
+restores editor and extension defaults without overwriting a named workspace.
 
 ## Samples
 

@@ -120,6 +120,9 @@ const PlayOptions: FC<{ close: () => void; x: number; y: number; }> = ({ close, 
           {[0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4].map(v => <option key={v} value={v}>×{v}</option>)}
         </Select>
       </Label>
+      <Label>{t('playback.scope')}<Select aria-label={t('playback.scope')} value={prefs.playScope} onChange={e => set({ playScope: e.target.value as typeof prefs.playScope })}>
+        {(['tag', 'loop', 'all'] as const).map(v => <option key={v} value={v}>{t(`playback.scope.${v}`)}</option>)}
+      </Select></Label>
       <Label><Check checked={prefs.playOnce} onChange={e => set({ playOnce: e.target.checked })} /> {t('common.playOnce')}</Label>
       <Label><Check checked={prefs.rewindOnStop} onChange={e => set({ rewindOnStop: e.target.checked })} /> {t('timeline.returnToTheStart')}</Label>
     </styled.Popup>,
@@ -232,7 +235,6 @@ export const Timeline: FC = () => {
 
   const pick = (h: Hit) => {
     sprite.dropFloating();
-    state.playing = false;
     if (h.kind !== 'frame') sprite.layer = h.l;
     if (h.kind !== 'layer') sprite.frame = h.f;
   };
@@ -255,6 +257,7 @@ export const Timeline: FC = () => {
 
     // Dragging inside the selection moves (or with Ctrl/Alt copies) it
     if (inside && r) {
+      if (state.playing) pick(h);
       setDrag({ mode: 'move', range: r, from: h, target: null });
       return;
     }
@@ -380,9 +383,9 @@ export const Timeline: FC = () => {
     <styled.Root>
       <styled.Toolbar>
         <AdaptiveBar label={t('timeline.moreControls')}>
-          <AdaptiveItem priority={50}><Button $square $active={state.playing} title={t('timeline.playStopEnterRight')}
+          <AdaptiveItem priority={50}><Button data-testid="timeline-play" $square $active={state.playing} title={t('timeline.playStopEnterRight')}
             onClick={() => runCommand('anim.play')}
-            onContextMenu={e => popupAt(e, 'play', 110)}>
+            onContextMenu={e => popupAt(e, 'play', 160)}>
             <Icon name={state.playing ? 'pause' : 'play'} scale="glyph" />
           </Button>
           <Button $square $active={state.onion} title={t('timeline.onionSkinORight')}

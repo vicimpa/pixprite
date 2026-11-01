@@ -130,6 +130,9 @@ export type Contributes = {
   locales?: string;
 };
 
+export const EXTENSION_CATEGORIES = ['tools', 'animation', 'panels', 'palettes', 'themes', 'icons', 'languages', 'automation', 'other'] as const;
+export type ExtensionCategory = typeof EXTENSION_CATEGORIES[number];
+
 /** manifest.json */
 export type Manifest = {
   /** Lowercase, `[a-z0-9-.]`, unique; also the i18n namespace `ext.<id>.*` */
@@ -138,6 +141,11 @@ export type Manifest = {
   /** Semver */
   version: string;
   apiVersion: 1;
+  /** Minimum Pixprite editor version (inclusive SemVer, not a range). Optional for older extensions. */
+  minEditorVersion?: string;
+  category?: ExtensionCategory;
+  /** Searchable lowercase slugs, e.g. pixel-art or game-development. */
+  tags?: string[];
   author?: string;
   description?: LocalizedString;
   icon?: string;

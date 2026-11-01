@@ -13,6 +13,15 @@ test('AI assistant and game-rig remain independent catalog artifacts after reloc
     const { registry, problems } = buildIndex(root, [], { publicOnly: true, base: 'https://example.test/pinned-commit/' });
     expect(problems).toEqual([]);
     expect(registry.extensions.map(e => e.id)).toEqual(['ai-assistant', 'game-rig']);
+    const rig = registry.extensions.find(e => e.id === 'game-rig')!;
+    expect(rig.minEditorVersion).toBe('0.0.4');
+    expect(rig.files['src/settings.tsx']).toBeDefined();
+    expect(rig.files['src/preview.tsx']).toBeDefined();
+    expect(rig.files['src/settings.html']).toBeUndefined();
+    const ai = registry.extensions.find(e => e.id === 'ai-assistant')!;
+    expect(ai.files['src/chat.tsx']).toBeDefined();
+    expect(ai.category).toBe('automation');
+    expect(ai.tags).toContain('ai');
     for (const entry of registry.extensions) {
       expect(entry.path).toBe(`https://example.test/pinned-commit/${entry.id}/`);
       expect(entry.files['manifest.json']).toBeDefined();
@@ -21,7 +30,7 @@ test('AI assistant and game-rig remain independent catalog artifacts after reloc
       for (const [file, integrity] of Object.entries(entry.files)) {
         const source = await readFile(join(root, entry.id, file));
         expect(integrity).toBe('sha256-' + createHash('sha256').update(source).digest('base64'));
-        if (file.endsWith('.ts')) expect(source.toString()).not.toMatch(/(?:from\s*|import\s*\()\s*['"](?:~\/|.*\/src\/core\/)/);
+        if (/\.tsx?$/.test(file)) expect(source.toString()).not.toMatch(/(?:from\s*|import\s*\()\s*['"](?:~\/|.*\/src\/core\/)/);
       }
     }
   } finally { await rm(root, { recursive: true, force: true }); }

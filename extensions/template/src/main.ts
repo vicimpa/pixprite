@@ -5,6 +5,7 @@
 import { defineExtension } from "@pixprite/api";
 
 export default defineExtension(ctx => {
+  if (!ctx.editorVersion) throw new Error('This extension requires Pixprite 0.0.4 or newer.');
   const { t } = ctx.i18n;
 
   // Command declared in manifest.json → contributes.commands

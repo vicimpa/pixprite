@@ -7,7 +7,8 @@ import { lockOwners } from "~/core/Sprite";
 import { state } from "~/core/State";
 import { hosts } from "./api/common";
 import { installDevLink } from "./DevLink";
-import { dropTexts, installValidation, loadContributions, loadLocales } from "./Contributions";
+import { dropTexts, installValidation, loadContributions, loadLocales, framePage } from "./Contributions";
+import { compatibilityError } from './compatibility';
 import { ExtensionHost } from "./Host";
 import { installed, lifecycle, loadInstalled, type InstalledExtension } from "./Registry";
 
@@ -27,11 +28,21 @@ async function launch(ext: InstalledExtension, worker = true) {
   const host = new ExtensionHost(ext);
   hosts.set(ext.id, host);
   hostsVersion.value++;
+  const error = compatibilityError(ext.manifest);
+  if (error) {
+    await loadLocales(ext).catch(() => {});
+    host.error.value = error;
+    host.status.value = 'failed';
+    return host;
+  }
   try {
     await loadContributions(host);
   } catch (e) {
     console.error(`[ext ${ext.id}] contributions failed to load`, e);
     host.error.value = e instanceof Error ? e.message : String(e);
+    host.dispose('failed');
+    refreshLocks();
+    return host;
   }
   refreshLocks();
   const started = host.start().then(() => { hostsVersion.value++; });
@@ -39,8 +50,14 @@ async function launch(ext: InstalledExtension, worker = true) {
   return host;
 }
 
+/** Check page import graphs without executing extension code or replacing the running host. */
+export async function validateExtension(ext: InstalledExtension) {
+  for (const page of [...ext.manifest.contributes?.panels ?? [], ...ext.manifest.contributes?.widgets ?? []]) await framePage(ext, page.page);
+}
+
 export async function startExtension(ext: InstalledExtension) {
-  await launch(ext);
+  const host = await launch(ext);
+  return host.status.peek() === 'running' ? null : host.error.peek() ?? 'Extension stopped during activation';
 }
 
 export async function stopExtension(id: string) {
@@ -60,6 +77,7 @@ let installedOnce = false;
 export async function installExtensions() {
   if (installedOnce) return;
   installedOnce = true;
+  lifecycle.validate = validateExtension;
   lifecycle.start = startExtension;
   lifecycle.stop = stopExtension;
   lifecycle.texts = ext => loadLocales(ext).catch(e => console.error(`[ext ${ext.id}] texts failed to load`, e));

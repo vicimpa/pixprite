@@ -23,13 +23,14 @@ function open() {
   });
 }
 
-const done = <T>(req: IDBRequest<T>) => new Promise<T>((resolve, reject) => {
-  req.onsuccess = () => resolve(req.result);
-  req.onerror = () => reject(req.error);
-});
-
-/** Runs one request against `store` */
+/** Resolve on transaction commit, not request success: an abort must never look like a saved package. */
 export async function idb<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>) {
   const d = await open();
-  return done(fn(d.transaction(store, mode).objectStore(store)));
+  return new Promise<T>((resolve, reject) => {
+    const tx = d.transaction(store, mode);
+    let request: IDBRequest<T>;
+    try { request = fn(tx.objectStore(store)); } catch (error) { tx.abort(); reject(error); return; }
+    tx.oncomplete = () => resolve(request.result);
+    tx.onabort = tx.onerror = () => reject(tx.error ?? request.error ?? new Error('Extension transaction aborted'));
+  });
 }

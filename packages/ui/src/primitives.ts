@@ -173,20 +173,23 @@ export class PxInput extends NativeElement<HTMLInputElement> {
       if (input.matches(':disabled') || (input.type === 'number' && input.readOnly) || !['number', 'range'].includes(input.type)) return;
       event.preventDefault();
       const direction = (event.deltaY || event.deltaX) > 0 ? -1 : 1;
-      const step = input.type === 'range' ? Number(input.step) || 1 : 1;
+      const step = Number(input.step) || 1;
       this.commit(Number(input.value || 0) + direction * step * (event.shiftKey ? 10 : 1));
     }, { passive: false, signal });
     input.addEventListener('pointerdown', event => {
-      if (input.matches(':disabled') || input.readOnly || input.type !== 'number' || event.button !== 0) return;
+      // Ordinary dragging belongs to native text selection. Scrubbing is explicit,
+      // so double-click, Shift-selection and touch selection keep working too.
+      if (input.matches(':disabled') || input.readOnly || input.type !== 'number' || event.button !== 0 || !event.altKey) return;
+      event.preventDefault();
       const view = this.ownerDocument.defaultView!;
-      const x = event.clientX, start = Number(input.value) || 0;
+      const x = event.clientX, start = Number(input.value) || 0, step = Number(input.step) || 1;
       let scrubbing = false;
       this.scrubCleanup?.();
       const move = (next: PointerEvent) => {
         const dx = next.clientX - x;
         if (!scrubbing && Math.abs(dx) < 4) return;
         if (!scrubbing) { scrubbing = true; input.blur(); this.ownerDocument.body.style.cursor = 'ew-resize'; }
-        this.commit(start + (next.shiftKey ? dx / 8 : dx / 3));
+        this.commit(start + Math.round(next.shiftKey ? dx / 8 : dx / 3) * step);
       };
       const stop = () => {
         view.removeEventListener('pointermove', move);
@@ -215,7 +218,7 @@ export class PxInput extends NativeElement<HTMLInputElement> {
 
   private commit(value: number) {
     const input = this.ensureControl();
-    const next = String(this.clamp(input.type === 'range' ? value : Math.round(value)));
+    const next = String(this.clamp(Number(value.toPrecision(12))));
     if (input.value === next && !this.draft) return;
     this.draft = false;
     this.setNative(next);

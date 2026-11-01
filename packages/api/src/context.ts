@@ -69,6 +69,8 @@ export interface ExtensionContext {
   readonly id: string;
   /** Host API version */
   readonly apiVersion: number;
+  /** Version of the editor providing this context. Older hosts may omit it at runtime. */
+  readonly editorVersion: string;
 
   sprite: SpriteApi;
 

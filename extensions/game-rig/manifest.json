@@ -1,8 +1,9 @@
 {
   "id": "game-rig",
   "name": "%name%",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "apiVersion": 1,
+  "minEditorVersion": "0.0.4",
   "author": "Pixprite contributors",
   "description": "%description%",
   "entry": "main.js",
@@ -47,7 +48,7 @@
         "id": "settings",
         "label": "%panel.settings%",
         "dock": "right",
-        "page": "settings.html",
+        "page": "settings.tsx",
         "hidden": true,
         "minWidth": 220,
         "minHeight": 200,
@@ -57,7 +58,7 @@
         "id": "preview",
         "label": "%panel.preview%",
         "dock": "float",
-        "page": "preview.html",
+        "page": "preview.tsx",
         "hidden": true,
         "width": 640,
         "height": 420,
@@ -75,5 +76,11 @@
       }
     ],
     "locales": "locales/"
-  }
+  },
+  "category": "animation",
+  "tags": [
+    "rig",
+    "game-development",
+    "preview"
+  ]
 }

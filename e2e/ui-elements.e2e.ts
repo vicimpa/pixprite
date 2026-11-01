@@ -87,6 +87,28 @@ test('number drafts survive prop sync and commit one clamped value on blur', asy
   await expect(host).toHaveAttribute('data-change', '2');
 });
 
+test('number inputs select text normally and only scrub with Alt, respecting fractional steps', async ({ page }) => {
+  await page.locator('#ui-fixture').evaluate(fixture => {
+    fixture.innerHTML = '<px-input><input type="number" step="0.05" value="123456" style="width:180px"></px-input>';
+  });
+  const field = page.locator('#ui-fixture input');
+  const rect = (await field.boundingBox())!;
+  await page.mouse.move(rect.x + 6, rect.y + rect.height / 2); await page.mouse.down();
+  await page.mouse.move(rect.x + 70, rect.y + rect.height / 2, { steps: 8 }); await page.mouse.up();
+  await expect(field).toBeFocused(); await expect(field).toHaveValue('123456');
+  await field.dblclick({ position: { x: 15, y: rect.height / 2 } });
+  await page.keyboard.type('5'); await expect(field).toHaveValue('5');
+  await field.press('Shift+ArrowLeft'); await page.keyboard.type('7');
+  await expect(field).toHaveValue('7');
+  await field.fill('0.5');
+  await page.keyboard.down('Alt');
+  await page.mouse.move(rect.x + 15, rect.y + rect.height / 2); await page.mouse.down();
+  await page.mouse.move(rect.x + 45, rect.y + rect.height / 2, { steps: 10 }); await page.mouse.up();
+  await page.keyboard.up('Alt');
+  await expect(field).toHaveValue('1');
+  await field.hover(); await page.mouse.wheel(0, -100); await expect(field).toHaveValue('1.05');
+});
+
 test('virtual list reconciles changed keys and leaves text editing keys to the input', async ({ page }) => {
   await page.locator('#ui-fixture').evaluate(fixture => {
     const list = document.createElement('px-virtual-list') as PxVirtualList;

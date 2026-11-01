@@ -7,6 +7,7 @@ import { languages } from "~/core/i18n";
 import { parseManifest, type Manifest } from "./manifest";
 import { idb, INSTALLED, STORAGE } from "./idb";
 import { packFiles, unpackFiles } from "./packageStorage";
+import { assertCompatible } from './compatibility';
 import { safePath } from './paths';
 export { safePath } from './paths';
 
@@ -22,6 +23,8 @@ export type InstalledExtension = {
   /** Folder the package came from (registry) or the dev server address */
   url?: string;
   installedAt: number;
+  /** One previous package, including its bytes, for offline recovery. No document/storage data is copied. */
+  previous?: Omit<InstalledExtension, 'previous'>;
 };
 
 /** One row of registry.json */
@@ -29,6 +32,11 @@ export type RegistryEntry = {
   id: string;
   name: string;
   version: string;
+  minEditorVersion?: string;
+  category?: import('@pixprite/api').ExtensionCategory;
+  tags?: string[];
+  /** Immutable package versions, newest first; legacy catalogs may omit them. */
+  versions?: Omit<RegistryEntry, 'versions'>[];
   description?: string;
   icon?: string;
   permissions?: string[];
@@ -62,7 +70,8 @@ export const installedById = (id: string) => installed.peek().find(e => e.id ===
 
 /** Hooks of the runtime: start / stop an extension when it is installed, enabled or removed */
 export const lifecycle = {
-  start: async (_ext: InstalledExtension) => { },
+  validate: async (_ext: InstalledExtension) => { },
+  start: async (_ext: InstalledExtension): Promise<string | null | void> => { },
   stop: async (_id: string) => { },
   /** A disabled extension still shows its own name and description in the interface language */
   texts: async (_ext: InstalledExtension) => { },
@@ -71,16 +80,16 @@ export const lifecycle = {
 export async function loadInstalled() {
   try {
     const all = (await idb<Awaited<ReturnType<typeof packFiles<InstalledExtension>>>[]>(INSTALLED, 'readonly', s => s.getAll())).map(unpackFiles);
-    installed.value = all.sort((a, b) => a.installedAt - b.installedAt);
+    installed.value = (all as InstalledExtension[]).sort((a, b) => a.installedAt - b.installedAt);
   } catch (e) {
     console.error('Failed to read installed extensions', e);
   }
   return installed.peek();
 }
 
-async function store(ext: InstalledExtension) {
+async function store(ext: InstalledExtension, persist = true) {
   // Dev extensions are never stored: they live as long as the session
-  if (ext.source !== 'dev') {
+  if (persist && ext.source !== 'dev') {
     const stored = await packFiles(ext);
     await idb(INSTALLED, 'readwrite', s => s.put(stored));
   }
@@ -179,12 +188,13 @@ export async function fetchRegistry(url = registryUrl.peek()): Promise<RegistryE
   const rows: RegistryEntry[] = Array.isArray(json) ? json : json?.extensions ?? [];
   return rows
     .filter(r => r && typeof r.id === 'string' && typeof r.path === 'string')
-    .map(r => ({ ...r, path: new URL(r.path.replace(/\/?$/, '/'), base).href }));
+    .map(r => ({ ...r, path: new URL(r.path.replace(/\/?$/, '/'), base).href, versions: (Array.isArray(r.versions) ? r.versions.filter(v => v && v.id === r.id && typeof v.version === 'string' && typeof v.path === 'string') : undefined)?.map(v => ({ ...v, path: new URL(v.path.replace(/\/?$/, '/'), base).href })) }));
 }
 
 /** Installs (or updates) an extension from a registry row; enabled right away */
 export async function installFromRegistry(entry: RegistryEntry) {
   const { manifest, files } = await fetchPackage(entry.path, entry.integrity, entry.files);
+  if (entry.version !== undefined && manifest.version !== entry.version) throw new Error(`Package version does not match ${entry.id}@${entry.version}`);
   if (manifest.id !== entry.id) throw new Error(`Package id "${manifest.id}" doesn't match "${entry.id}"`);
   return install({ id: manifest.id, manifest, files, enabled: true, source: 'registry', url: entry.path, installedAt: installedById(manifest.id)?.installedAt ?? Date.now() });
 }
@@ -212,28 +222,67 @@ export async function reloadDev(id: string) {
   return loadDev(ext.url);
 }
 
+const mutations = new Map<string, Promise<unknown>>();
+function mutate<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  const task = (mutations.get(id) ?? Promise.resolve()).catch(() => {}).then(fn);
+  mutations.set(id, task);
+  return task.finally(() => { if (mutations.get(id) === task) mutations.delete(id); });
+}
+const snapshot = ({ previous: _previous, ...ext }: InstalledExtension) => ext;
+
 async function install(ext: InstalledExtension) {
-  await lifecycle.stop(ext.id);
-  await store(ext);
-  if (ext.enabled) await lifecycle.start(ext);
-  return ext;
+  return mutate(ext.id, async () => {
+    assertCompatible(ext.manifest);
+    await lifecycle.validate(ext);
+    const old = installedById(ext.id);
+    const next = { ...ext, enabled: old && ext.source !== 'dev' ? old.enabled : ext.enabled, previous: old && old.source !== 'dev' && ext.source !== 'dev' ? snapshot(old) : undefined };
+    await lifecycle.stop(ext.id);
+    try {
+      await store(next, false);
+      const error = next.enabled ? await lifecycle.start(next) : (await lifecycle.texts(next), null);
+      if (error && old) throw new Error(error);
+      await store(next);
+      return next;
+    } catch (error) {
+      if (old) {
+        await lifecycle.stop(ext.id);
+        await store(old);
+        const restored = old.enabled ? await lifecycle.start(old) : (await lifecycle.texts(old), null);
+        const message = error instanceof Error ? error.message : String(error);
+        if (restored) throw new Error(`${message}\nPrevious package restored but could not start: ${restored}`);
+        throw new Error(`${message}\nPrevious version ${old.manifest.version} restored.`);
+      }
+      throw error;
+    }
+  });
+}
+
+export async function rollbackExtension(id: string) {
+  const ext = installedById(id);
+  if (!ext?.previous) throw new Error(`${id} has no previous package`);
+  // install serializes this with other updates and backs up the currently installed package.
+  return install({ ...ext.previous, installedAt: ext.installedAt, enabled: ext.enabled });
 }
 
 export async function setEnabled(id: string, enabled: boolean) {
-  const ext = installedById(id);
-  if (!ext || ext.enabled === enabled) return;
-  const next = { ...ext, enabled };
-  await store(next);
-  if (enabled) await lifecycle.start(next);
-  else { await lifecycle.stop(id); await lifecycle.texts(next); }
+  return mutate(id, async () => {
+    const ext = installedById(id);
+    if (!ext || ext.enabled === enabled) return;
+    if (enabled) assertCompatible(ext.manifest);
+    const next = { ...ext, enabled };
+    await store(next);
+    if (enabled) await lifecycle.start(next);
+    else { await lifecycle.stop(id); await lifecycle.texts(next); }
+  });
 }
 
 export async function uninstall(id: string) {
-  await lifecycle.stop(id);
-  if (installedById(id)?.source !== 'dev') await idb(INSTALLED, 'readwrite', s => s.delete(id));
-  // Its stored data goes too: a later package with the same id must not read it
-  await idb(STORAGE, 'readwrite', s => s.delete(IDBKeyRange.bound(`${id}\n`, `${id}\n\uffff`)));
-  installed.value = installed.peek().filter(e => e.id !== id);
+  return mutate(id, async () => {
+    await lifecycle.stop(id);
+    if (installedById(id)?.source !== 'dev') await idb(INSTALLED, 'readwrite', s => s.delete(id));
+    await idb(STORAGE, 'readwrite', s => s.delete(IDBKeyRange.bound(`${id}\n`, `${id}\n\uffff`)));
+    installed.value = installed.peek().filter(e => e.id !== id);
+  });
 }
 
 /** Text of a package file (dev extensions: fetched from the dev server) */

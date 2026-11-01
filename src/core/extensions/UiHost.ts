@@ -32,6 +32,7 @@ const installed = computed<UiInstalled[]>(() => {
       enabled: e.enabled,
       status: h ? STATUS[h.status.value] ?? 'inactive' : 'inactive',
       error: h?.error.value ?? undefined,
+      previousVersion: e.previous?.manifest.version,
       devUrl: e.source === 'dev' ? e.url : undefined,
       registry: e.source === 'registry' ? e.url : undefined,
     };
@@ -63,11 +64,13 @@ const host: ExtensionsHost = {
 
   async install(entry, registryUrl) {
     const rows = await registry.fetchRegistry(registryUrl);
-    const row = rows.find(r => r.id === entry.id);
+    const latest = rows.find(r => r.id === entry.id);
+    const row = latest?.version === entry.version ? latest : latest?.versions?.find(v => v.version === entry.version);
     if (!row) throw new Error(`${entry.id} is not in ${registryUrl}`);
     await registry.installFromRegistry(row);
   },
   uninstall: registry.uninstall,
+  async rollback(id) { await registry.rollbackExtension(id); },
   setEnabled: registry.setEnabled,
   async loadDev(url) { return (await registry.loadDev(url)).manifest; },
   async reload(id) {
@@ -86,7 +89,7 @@ const host: ExtensionsHost = {
   async fileUrl(id, path) {
     const ext = byId(id);
     if (ext.source === 'dev') return new URL(path, ext.url).href;
-    const key = `${id}/${path}/${ext.installedAt}`;
+    const key = `${id}/${ext.manifest.version}/${path}/${ext.installedAt}`;
     if (!blobUrls.has(key)) {
       const blob = await registry.readFile(ext, path);
       if (!blob) throw new Error(`${path} is missing from ${id}`);

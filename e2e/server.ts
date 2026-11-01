@@ -1,4 +1,5 @@
 /** Production assets plus deterministic deployment/extension fixtures, bound to loopback only. */
+import { versionedFixtures } from './versioned-fixtures';
 import { resolve, sep } from 'node:path';
 import { pwaFixtures } from './pwa-fixtures';
 import { securityFixtures } from './security-fixtures';
@@ -13,6 +14,8 @@ const iconCatalog = buildIndex(SRC, ['icons-duotone'], { base: '/__e2e__/icon-pa
 const rigCatalog = buildIndex(SRC, ['game-rig'], { base: '/__e2e__/game-rig/' }).registry;
 const reactCatalog = buildIndex(SRC, ['template'], { base: '/__e2e__/react-widget/' }).registry;
 const pwa = await pwaFixtures(root);
+const versions = await versionedFixtures();
+const aiCatalog = buildIndex(SRC, ['ai-assistant'], { base: '/__e2e__/ai/' }).registry;
 const manifest = {
   id: 'e2e-permissions', name: 'E2E permissions', version: '1.0.0', apiVersion: 1,
   entry: 'main.js', permissions: [],
@@ -40,6 +43,7 @@ Bun.serve({
   hostname: '127.0.0.1', port: 4173,
   async fetch(request) {
     const url = new URL(request.url);
+    const versioned = versions(request); if (versioned) return versioned;
     const security = securityFixtures(request);
     if (security) return security;
     if (url.pathname.startsWith('/__security__/')) {
@@ -52,6 +56,13 @@ Bun.serve({
     if (fixtureResponse) return fixtureResponse;
     if (url.pathname === '/__e2e__/icon-packs/registry.json') return Response.json(iconCatalog);
     if (url.pathname === '/__e2e__/game-rig/registry.json') return Response.json(rigCatalog);
+    if (url.pathname === '/__e2e__/ai/registry.json') return Response.json(aiCatalog);
+    if (url.pathname.startsWith('/__e2e__/ai/')) {
+      const [id, ...parts] = decodeURIComponent(url.pathname.slice('/__e2e__/ai/'.length)).split('/');
+      const path = parts.join('/'), entry = aiCatalog.extensions.find(e => e.id === id);
+      if (!entry?.files[path]) return new Response('Not found', { status: 404 });
+      return new Response(Bun.file(resolve(SRC, id, path)));
+    }
     if (url.pathname === '/__e2e__/react-widget/registry.json') return Response.json(reactCatalog);
     if (url.pathname.startsWith('/__e2e__/react-widget/')) {
       const [id, ...parts] = decodeURIComponent(url.pathname.slice('/__e2e__/react-widget/'.length)).split('/');

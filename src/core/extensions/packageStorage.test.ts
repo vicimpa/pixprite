@@ -14,3 +14,12 @@ test('older installations with Blob package records remain readable', async () =
   const loaded = unpackFiles({ id: 'legacy', files: { 'main.js': new Blob(['legacy']) } });
   expect(await loaded.files['main.js'].text()).toBe('legacy');
 });
+
+test('previous package bytes survive a portable IndexedDB round trip independently of the current version', async () => {
+  const value = { id: 'backup', files: { 'main.js': new Blob(['new']) }, previous: { id: 'backup', manifest: { version: '1.0.0' }, files: { 'main.js': new Blob(['old']) } } };
+  const encoded = await packFiles(value);
+  expect(encoded.previous!.files['main.js']).not.toBeInstanceOf(Blob);
+  const decoded = unpackFiles(structuredClone(encoded));
+  expect(await decoded.previous!.files['main.js'].text()).toBe('old');
+  expect(await decoded.files['main.js'].text()).toBe('new');
+});

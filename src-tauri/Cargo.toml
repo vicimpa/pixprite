@@ -1,6 +1,6 @@
 [package]
 name = "pixprite"
-version = "0.0.3"
+version = "0.0.4"
 description = "Pixel art and animation editor"
 authors = ["vicimpa"]
 license = "MIT"

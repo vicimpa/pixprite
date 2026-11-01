@@ -17,6 +17,7 @@ export type InstalledExtension = {
   enabled: boolean;
   status: ExtensionStatus;
   error?: string;
+  previousVersion?: string;
   /** Dev mode: the URL it was loaded from (reloadable) */
   devUrl?: string;
   /** Registry the extension came from, for updates */
@@ -51,6 +52,7 @@ export interface ExtensionsHost {
   /** Downloads `entry` from `registryUrl`, checks integrity and stores it; enables it */
   install(entry: RegistryEntryLike, registryUrl: string): Promise<void>;
   uninstall(id: string): Promise<void>;
+  rollback(id: string): Promise<void>;
   setEnabled(id: string, enabled: boolean): Promise<void>;
   /** Loads an unpacked extension from a dev server URL (manifest.json under it) */
   loadDev(url: string): Promise<Manifest>;

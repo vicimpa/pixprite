@@ -3,6 +3,7 @@
  * command labels / menus / hotkeys, tools, panels…) are loaded without running any code;
  * the callable parts become live once the worker registers them.
  */
+import { assertCompatible } from './compatibility';
 import type { FormSchema, FormValues, PixelData, PointerInfo, Problem, SpriteSnapshot } from "@pixprite/api";
 import { effect, signal } from "@preact/signals-react";
 import { registerCommand, type Command } from "~/core/Commands";
@@ -99,6 +100,7 @@ const dataUrl = (b: Blob) => new Promise<string>((resolve, reject) => {
  * its styles inlined and its images turned into data urls.
  */
 export async function framePage(ext: InstalledExtension, page: string): Promise<{ srcdoc: string; }> {
+  assertCompatible(ext.manifest);
   if (!safePath(page)) throw new Error(`Bad page path "${page}"`);
   const read = async (p: string) => (await readFile(ext, p))?.text() ?? null;
   const componentPage = /\.(tsx|jsx)$/.test(page);
@@ -241,6 +243,7 @@ export function runExtensionCommand(ext: string, id: string, args: unknown[] = [
  * commands / tools / filters / importers / exporters run once the worker registers their callbacks.
  */
 export async function loadContributions(host: ExtensionHost) {
+  assertCompatible(host.manifest);
   const { ext } = host;
   const c = ext.manifest.contributes ?? {};
   const off = (fn: () => void) => host.onDispose(fn);

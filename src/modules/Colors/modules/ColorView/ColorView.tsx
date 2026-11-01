@@ -14,7 +14,7 @@ export type ColorViewProps = {
 
 export const ColorView: FC<ColorViewProps> = ({ color, index = -1, onClick }) => {
   return (
-    <styled.ColorBox $grow onClick={onClick}>
+    <styled.ColorBox onClick={onClick}>
       <Panel>
         <Grid inset />
         <Variables color={color.toHexString(true)}>

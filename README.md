@@ -22,7 +22,7 @@
 
 [Open the example project](docs/assets/beacon.pixprite) · [Recreate this screenshot](docs/development.md#documentation-images)
 
-> **Early development.** The working version is 0.0.3; see the [release notes](docs/releases/v0.0.3.md) and [version history](docs/releases/README.md).
+> **Early development.** The latest release is [0.0.4](https://github.com/vicimpa/pixprite/releases/tag/v0.0.4). See the [release notes](docs/releases/v0.0.4.md) and [version history](docs/releases/README.md).
 
 ## Make something pixel by pixel
 

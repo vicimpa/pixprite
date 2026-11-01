@@ -1,4 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+
+const { version: editorVersion } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const api = (page: Page, method: string, ...args: unknown[]) => page.evaluate(([method, args]) => (window as any).security[method](...args), [method, args] as const);
 const extension = (body: string) => `import { defineExtension } from '@pixprite/api'; export default defineExtension(async ctx => { ${body} });`;
@@ -265,4 +268,108 @@ test('@smoke security: extension pixel writes respect layer locks and resume aft
   }};`), ['sprite:read', 'sprite:write']);
   await api(page, 'ready');
   expect(await api(page, 'invoke', 'probe')).toEqual({ locked: 'locked', unchanged: [11,22,33,255], updated: [44,55,66,255] });
+});
+
+test('@smoke compatibility: rejected extension update leaves the installed version running', async ({ page }) => {
+  await api(page, 'install', extension(`return { probe: () => ctx.editorVersion };`), [], { version: '1.0.0', minEditorVersion: '0.0.4' });
+  expect((await api(page, 'ready')).status).toBe('running');
+  expect(await api(page, 'invoke', 'probe')).toBe(editorVersion);
+  await api(page, 'install', extension(`throw new Error('incompatible code ran');`), [], { version: '2.0.0', minEditorVersion: '99.0.0' });
+  expect(await api(page, 'result')).toMatchObject({ error: expect.stringContaining('Requires Pixprite 99.0.0'), version: '1.0.0' });
+  expect((await api(page, 'status')).status).toBe('running');
+  expect(await api(page, 'invoke', 'probe')).toBe(editorVersion);
+});
+
+for (const enable of [false, true]) test(`@smoke compatibility: incompatible stored extension cannot ${enable ? 'enable' : 'start or register contributions'}`, async ({ page }) => {
+  await api(page, 'install', extension('return {};'), ['ui:panel'], {
+    contributes: { commands: [{ id: 'probe', label: 'Must not survive' }], panels: [{ id: 'probe', label: 'Blocked', dock: 'right', page: 'panel.tsx' }] },
+  }, { 'src/panel.tsx': 'export default () => null;' });
+  await api(page, 'ready');
+  const result = await api(page, 'storedMinimum', '99.0.0', enable);
+  expect(result.error).toContain('Requires Pixprite 99.0.0');
+  expect(result.commands).toEqual([]);
+  expect(result.relay).toBe(0);
+  expect(result.callbacks ?? 0).toBe(0);
+  if (enable) expect(result.enabled).toBe(false);
+  else expect(result.status).toBe('failed');
+});
+
+test('@smoke compatibility: real Game rig refuses activation when an older editor omits its version', async ({ page }) => {
+  const source = async (name: string) => (await page.request.get(`/__e2e__/game-rig/game-rig/src/${name}`)).text();
+  const result = await api(page, 'legacyEntry', await source('main.ts'), {
+    'rig.ts': await source('rig.ts'), 'zip.ts': await source('zip.ts'),
+  });
+  expect(result.status).toBe('failed');
+  expect(result.error).toContain('Game rig requires Pixprite 0.0.4 or newer');
+  expect(result.callbacks).toBe(0);
+});
+
+test('extension updates keep a portable offline backup and failed activation restores the running package', async ({ page }) => {
+  const version = (v: string) => extension(`return { probe: () => '${v}', write: value => ctx.storage.set('preference',value), read: () => ctx.storage.get('preference') };`);
+  await api(page, 'install', version('v1'), ['storage'], { version: '1.0.0' }); await api(page, 'ready');
+  await api(page, 'invoke', 'write', 42);
+  await api(page, 'install', version('v2'), ['storage'], { version: '2.0.0' });
+  expect(await api(page, 'ready')).toMatchObject({ version: '2.0.0', previousVersion: '1.0.0', status: 'running' });
+  await api(page, 'restartInstalled');
+  expect(await api(page, 'invoke', 'probe')).toBe('v2');
+  await api(page, 'install', extension("throw new Error('broken activation');"), ['storage'], { version: '3.0.0' });
+  expect(await api(page, 'result')).toMatchObject({ error: expect.stringContaining('Previous version 2.0.0 restored'), version: '2.0.0' });
+  expect(await api(page, 'invoke', 'probe')).toBe('v2');
+  await page.route('https://**', route => route.abort());
+  expect(await api(page, 'rollback')).toMatchObject({ version: '1.0.0', previousVersion: '2.0.0', status: 'running' });
+  expect(await api(page, 'invoke', 'probe')).toBe('v1');
+  expect(await api(page, 'invoke', 'read')).toBe(42);
+});
+
+test('named workspaces restore extension docking, tabs, visibility and editor sizes together', async ({ page }) => {
+  const panels = { panels: { 'game-rig/settings': { hidden: false, dock: 'float', x: 80, y: 100, w: 440, h: 300 }, 'missing/info': { hidden: true, dock: 'left' } }, sides: { right: 360 }, tabs: { right: 'game-rig/settings' }, focus: 'game-rig/settings' };
+  await api(page, 'workspace', 'edit', { panels, layout: { colorsSize: 300, timelineSize: 260 } });
+  await api(page, 'workspace', 'save', { name: 'Rig' });
+  await api(page, 'workspace', 'apply', { name: 'Default' });
+  expect((await api(page, 'workspace', 'read')).panels.panels).toEqual({});
+  await api(page, 'workspace', 'apply', { name: 'Rig' });
+  const result = await api(page, 'workspace', 'read');
+  expect(result.panels).toEqual(panels);
+  expect(result.layout).toMatchObject({ colorsSize: 300, timelineSize: 260 });
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => !!(window as any).security)).toBe(true);
+  const restored = await api(page, 'workspace', 'read');
+  expect(restored.panels).toEqual(panels);
+  expect(restored.saved.Rig.extensionPanels).toEqual(panels);
+});
+
+test('closing during activation keeps the last committed package installed', async ({ page }) => {
+  await api(page, 'install', extension("return { probe: () => 'committed' };"), [], { version: '1.0.0' });
+  await api(page, 'ready');
+  await api(page, 'install', extension('await new Promise(() => {});'), [], { version: '2.0.0' });
+  await expect.poll(() => api(page, 'status')).toMatchObject({ version: '2.0.0', status: 'starting' });
+  await page.reload(); await expect.poll(() => page.evaluate(() => !!(window as any).security)).toBe(true);
+  expect(await api(page, 'restartInstalled')).toMatchObject({ version: '1.0.0', status: 'running' });
+  expect(await api(page, 'invoke', 'probe')).toBe('committed');
+});
+
+test('updating or restoring a disabled extension does not enable or execute it', async ({ page }) => {
+  await api(page, 'install', extension("return {probe: () => 'v1'};"), [], { version: '1.0.0' }); await api(page, 'ready');
+  await api(page, 'enabled', false);
+  await api(page, 'install', extension("throw new Error('must stay disabled');"), [], { version: '2.0.0' });
+  expect(await api(page, 'ready')).toMatchObject({ enabled: false, installedVersion: '2.0.0', relay: 0 });
+  expect(await api(page, 'rollback')).toMatchObject({ enabled: false, installedVersion: '1.0.0', relay: 0 });
+  expect(await api(page, 'enabled', true)).toMatchObject({ status: 'running', version: '1.0.0' });
+});
+
+test('a broken TSX panel import is rejected before replacing the installed package', async ({ page }) => {
+  await api(page, 'install', extension("return {probe: () => 'working'};"), ['ui:panel'], { version: '1.0.0' }); await api(page, 'ready');
+  await api(page, 'install', extension("return {};"), ['ui:panel'], { version: '2.0.0', contributes: { panels: [{ id: 'chat', label: 'Chat', dock: 'right', page: 'chat.tsx' }] } },
+    { 'src/chat.tsx': "import './missing';export default () => null;" });
+  expect(await api(page, 'result')).toMatchObject({ error: expect.stringContaining('missing'), version: '1.0.0' });
+  expect(await api(page, 'invoke', 'probe')).toBe('working');
+});
+
+test('applying a legacy named layout migrates the current extension panel arrangement', async ({ page }) => {
+  await api(page, 'workspace', 'legacy');
+  const panels = { panels: { 'legacy/panel': { hidden: false, dock: 'right', w: 350 } }, sides: { right: 350 }, tabs: { right: 'legacy/panel' } };
+  await api(page, 'workspace', 'edit', { panels });
+  const restored = await api(page, 'workspace', 'apply', { name: 'Legacy' });
+  expect(restored.panels).toEqual(panels);
+  expect(restored.saved.Legacy.extensionPanels).toEqual(panels);
 });

@@ -24,14 +24,16 @@ import { dispose } from "~/utils/common";
 const PickerSplitter: FC = () => {
   useSignals();
   return (
-    <Splitter vertical={false} value={state.layout.pickerSize} dir={-1} min={120} max={600}
+    <Splitter vertical={false} value={state.layout.pickerSize} dir={-1} min={0} max={600}
       onChange={v => state.setLayout({ pickerSize: v })} />
   );
 };
 
 const PickerBox: FC<PropsWithChildren> = ({ children }) => {
   useSignals();
-  return <Flex $column $basis={state.layout.pickerSize} $shrink={0}>{children}</Flex>;
+  return <Flex $column $shrink={0} data-color-picker
+    style={{ height: state.layout.pickerSize, minHeight: 0, overflow: 'hidden' }}
+    aria-hidden={state.layout.pickerSize === 0 ? 'true' : undefined} inert={state.layout.pickerSize === 0}>{children}</Flex>;
 };
 
 /** Function component so it re-renders from the `pickerType` signal */
@@ -135,7 +137,7 @@ export class Colors extends Component {
             </PickerBox>
           </Flex>
         </Flex>
-        <styled.FlexWrap $gap={4} $items="stretch">
+        <styled.FlexWrap data-color-samples>
           <rsp.$ $target={ColorView} color={real(state, 'colorA')}
             onClick={() => { this.pickerAlt = false; }} />
           <rsp.$ $target={ColorView} color={real(state, 'colorB')}

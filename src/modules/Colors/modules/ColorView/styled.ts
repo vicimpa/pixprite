@@ -2,7 +2,7 @@ import { Flex } from "~/ui/Flex";
 import styled from "styled-components";
 
 export const ColorBox = styled(Flex)`
-  flex-basis: 148px;
+  flex: 1 1 148px;
   height: 32px;
   cursor: pointer;
 `;

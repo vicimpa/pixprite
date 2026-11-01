@@ -31,6 +31,9 @@ const Row = styled.div`
 const Slot = styled.div<{ $w?: number; $h?: number; }>`
   position: relative;
   flex-shrink: 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   ${p => p.$w !== undefined ? `width: ${p.$w}px;` : ''}
   ${p => p.$h !== undefined ? `height: ${p.$h}px;` : ''}
 `;
@@ -46,6 +49,9 @@ const Grow = styled.div`
 const Side = styled.div`
   position: relative;
   flex-shrink: 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background-color: var(--bg);
 `;
 
@@ -55,19 +61,21 @@ export const EditorWorkspace: FC = () => {
   const set = state.setLayout.bind(state);
 
   const colors = layout.showColors && (
-    <Side style={{ width: layout.colorsSize }}><Colors /></Side>
+    <Side data-panel="colors" style={{ width: layout.colorsSize }}
+      aria-hidden={layout.colorsSize === 0} inert={layout.colorsSize === 0}><Colors /></Side>
   );
   const colorsSplit = (dir: 1 | -1) => layout.showColors && (
-    <Splitter vertical value={layout.colorsSize} dir={dir} min={150} max={480} onChange={v => set({ colorsSize: v })} />
+    <Splitter vertical value={layout.colorsSize} dir={dir} min={0} max={480} onChange={v => set({ colorsSize: v })} />
   );
   const toolbar = layout.showToolbar && (
     <Side style={{ width: ui.tool * 11 + 16 }}><Toolbar /></Side>
   );
   const timeline = layout.showTimeline && (
-    <Slot $h={layout.timelineSize}><Timeline /></Slot>
+    <Slot data-panel="timeline" style={{ height: layout.timelineSize }}
+      aria-hidden={layout.timelineSize === 0} inert={layout.timelineSize === 0}><Timeline /></Slot>
   );
   const timelineSplit = (dir: 1 | -1) => layout.showTimeline && (
-    <Splitter vertical={false} value={layout.timelineSize} dir={dir} min={60} max={600} onChange={v => set({ timelineSize: v })} />
+    <Splitter vertical={false} value={layout.timelineSize} dir={dir} min={0} max={600} onChange={v => set({ timelineSize: v })} />
   );
 
   let workspace: ReactNode = (

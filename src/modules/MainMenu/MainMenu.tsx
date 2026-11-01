@@ -6,7 +6,7 @@ import { iconPackChoices } from '~/core/IconPacks';
 import { LAYOUT_PRESETS, state } from "~/core/State";
 import { LogoMark } from "~/ui/Logo";
 import { askText } from "~/ui/Dialog";
-import { extensionMenuItems, extensionPanelItems, updates } from "~/modules/Extensions";
+import { extensionMenuItems, extensionPanelItems, updates, openExtensions } from "~/modules/Extensions";
 import { openProblems } from "~/modules/Problems";
 import { MenuBar, type MenuEntry, type MenuItems } from "~/ui/Menu";
 import { useSignals } from "@preact/signals-react/runtime";
@@ -28,6 +28,7 @@ export function item(id: string, label?: string): MenuEntry {
 const sub = (label: string, items: MenuItems): MenuEntry => ({ label, items });
 const iconPackMenu = () => sub(t('dialog.preferences.iconPack'), [
   ...iconPackChoices(t).map(([id]) => item(`window.icons.${id}`)),
+  '-', { label: t('extensions.browseCategory', { category: t('extensions.category.icons') }), run: () => openExtensions('store', 'icons') },
 ]);
 
 /** Built-in layouts keep their English name as the id (it is stored); the menu shows it translated */

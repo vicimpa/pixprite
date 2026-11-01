@@ -6,6 +6,26 @@ References: [WebKit preference definition](https://github.com/WebKit/WebKit/blob
 
 The UI follows pointer samples directly while dragging. Dialogs and floating panels move using compositor transforms; splitters and panel edges update dimensions directly. React/document-layout state commits on release, cancellation or lost pointer capture. Settings writes settle after interaction; page exit and native close flush the latest editor preferences. Native size changes persist after 250 ms of quiet on a background worker, and moving the native window no longer writes settings or broadcasts redundant WebView state.
 
+## Collapsing editor panels
+
+Drag the color sidebar or timeline down to zero size to collapse its content. The
+separator remains available to drag it open again. The Window menu restores a
+collapsed panel to a usable size; Tab still hides/restores the workspace panels.
+The color picker inside the sidebar can also collapse completely. Collapsed content
+is clipped and inert, and the layout is saved after the drag finishes.
+
+Resizable hosts use the same width/height property for the pointer preview and the
+committed React value. In particular, the picker's height must not compete with a
+fixed flex basis, and a timeline preview must not leave an inline height overriding
+a later stylesheet update. Nested `px-flex` elements reset their private layout
+variables so they do not inherit a parent's growth or basis.
+
+Named layouts save extension panel docking, geometry, visibility and active tabs
+alongside editor geometry. Applying a layout batches both changes; panel settings
+use the same deferred settings writer and page-close flush. Restoring an older layout
+keeps its extension arrangement, and reset switches to defaults without rewriting a
+custom workspace.
+
 ## Observed results
 
 Measured on the built-in 120 Hz display, 1512×982 logical pixels, device scale 2, Apple Silicon, macOS 27.0.1. Native measurements used the actual focused Tauri WebView, a 64×64 document and isolated profiles. Cadence comes from all recorded rAF intervals, avoiding median rounding at WebKit's 1 ms timestamp precision.
@@ -46,7 +66,7 @@ The local MCP tool `pixprite_performance` samples rAF cadence, pointer/resize ac
 Regression checks cover live splitter geometry, deferred persistence, cancellation, dialog field rerenders, preview position, floating iframe retention and native size persistence:
 
 ```sh
-bun run test:e2e e2e/interaction.e2e.ts e2e/responsive.e2e.ts
-PIXPRITE_E2E_BROWSER=webkit bun run test:e2e e2e/interaction.e2e.ts
+bun run test:e2e e2e/interaction.e2e.ts e2e/responsive.e2e.ts e2e/panel-layout.e2e.ts
+PIXPRITE_E2E_BROWSER=webkit bun run test:e2e e2e/interaction.e2e.ts e2e/panel-layout.e2e.ts
 bun run test:desktop
 ```

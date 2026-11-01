@@ -5,6 +5,8 @@
  * listed in `updates` and announced once. Updating asks again only for new permissions.
  */
 
+import { compareVersions } from '~/core/extensions/versions';
+import { compatibilityError } from '~/core/extensions/compatibility';
 import { t } from "~/core/i18n";
 import { DEFAULT_PREFS, LOCAL_CATALOG, PUBLIC_CATALOG, state } from "~/core/State";
 import { signal } from "@preact/signals-react";
@@ -39,7 +41,12 @@ export async function loadCatalogs(): Promise<Catalog> {
       const res = await fetch(url, { cache: 'no-cache' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json() as Registry;
-      return (Array.isArray(json) ? json : json.extensions ?? []).map(e => ({ ...e, registry: url }));
+      const rows = Array.isArray(json) ? json : json.extensions ?? [];
+      if (!Array.isArray(rows)) throw new Error('Invalid extension catalog');
+      return rows.filter(e => e && typeof e.id === 'string' && typeof e.name === 'string' && typeof e.version === 'string' && typeof e.path === 'string').map(e => ({ ...e, registry: url,
+        tags: Array.isArray(e.tags) ? e.tags.filter(tag => typeof tag === 'string') : undefined,
+        versions: Array.isArray(e.versions) ? e.versions.filter(v => v && v.id === e.id && typeof v.version === 'string' && typeof v.path === 'string') : undefined,
+      }));
     } catch (e) {
       errors.push({ url, error: String((e as Error)?.message ?? e) });
       return [];
@@ -48,7 +55,12 @@ export async function loadCatalogs(): Promise<Catalog> {
   const byId = new Map<string, CatalogEntry>();
   for (const e of lists.flat()) {
     const have = byId.get(e.id);
-    if (!have || newer(e.version, have.version)) byId.set(e.id, e);
+    const versions = new Map<string, CatalogEntry>();
+    for (const row of [e, ...e.versions ?? [], ...(have ? [have, ...have.versions ?? []] : [])]) {
+      if (!versions.has(row.version)) versions.set(row.version, { ...row, registry: 'registry' in row ? String(row.registry) : e.registry });
+    }
+    const latest = have && newer(have.version, e.version) ? have : e;
+    byId.set(e.id, { ...latest, versions: [...versions.values()].sort((a, b) => newer(a.version, b.version) ? -1 : newer(b.version, a.version) ? 1 : 0) });
   }
   return { entries: [...byId.values()].sort((a, b) => localized(a).name.localeCompare(localized(b).name)), errors };
 }
@@ -62,7 +74,7 @@ export function localized(e: RegistryEntryLike) {
 /** Case-insensitive match on name, id and description, in the interface language and English; every word must be found */
 export function matches(e: RegistryEntryLike, query: string) {
   const l = localized(e);
-  const text = `${l.name} ${l.description ?? ''} ${e.name} ${e.id} ${e.description ?? ''}`.toLowerCase();
+  const text = `${l.name} ${l.description ?? ''} ${e.name} ${e.id} ${e.description ?? ''} ${e.category ?? ''} ${(e.tags ?? []).join(' ')}`.toLowerCase();
   return query.toLowerCase().split(/\s+/).filter(Boolean).every(w => text.includes(w));
 }
 
@@ -71,14 +83,9 @@ export type Update = { entry: CatalogEntry; from: string; };
 /** Installed extensions with a newer version in a catalog, by id */
 export const updates = signal<ReadonlyMap<string, Update>>(new Map());
 
-/** 1.10.0 > 1.9.2; pre-release and build tails are ignored */
+/** SemVer order shared with manifest compatibility checks. */
 export function newer(a: string, b: string) {
-  const pa = a.split(/[-+]/)[0].split('.').map(Number), pb = b.split(/[-+]/)[0].split('.').map(Number);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = pa[i] || 0, y = pb[i] || 0;
-    if (x !== y) return x > y;
-  }
-  return false;
+  try { return compareVersions(a, b) > 0; } catch { return false; }
 }
 
 /** Refreshes `updates` from the catalogs (already loaded ones may be passed in) */
@@ -90,8 +97,9 @@ export async function checkUpdates(announce = false, catalog?: Catalog) {
   for (const e of host.installed.peek()) {
     // Dev extensions follow their server instead
     if (e.devUrl) continue;
-    const entry = entries.find(x => x.id === e.manifest.id);
-    if (entry && newer(entry.version, e.manifest.version)) next.set(entry.id, { entry, from: e.manifest.version });
+    const latest = entries.find(x => x.id === e.manifest.id);
+    const entry = latest && [latest, ...latest.versions ?? []].map(v => ({ ...v, registry: 'registry' in v ? String(v.registry) : latest.registry })).find(v => !compatibilityError(v));
+    if (entry && !compatibilityError(entry) && newer(entry.version, e.manifest.version)) next.set(entry.id, { entry, from: e.manifest.version });
   }
   const fresh = [...next.keys()].filter(id => !updates.peek().has(id));
   updates.value = next;

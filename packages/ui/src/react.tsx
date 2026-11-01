@@ -2,6 +2,7 @@
 import { createElement, forwardRef, useLayoutEffect, useRef, type ComponentProps, type CSSProperties, type ReactNode, type Ref } from 'react';
 import { registerPrimitives, type PxInput } from './primitives';
 import { registerSelect, type PxSelect } from './select';
+import { installStyles } from './base';
 
 if (typeof customElements !== 'undefined') {
   registerPrimitives();
@@ -22,6 +23,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 });
 
 export type InputProps = ComponentProps<'input'>;
+/** Multiline text keeps native form, selection and keyboard behavior with the shared field style. */
+export const TextArea = forwardRef<HTMLTextAreaElement, ComponentProps<'textarea'>>(function TextArea({ className, ...props }, ref) {
+  const control = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    if (control.current) installStyles(control.current.ownerDocument);
+    assignRef(ref, control.current);
+    return () => assignRef(ref, null);
+  }, [ref]);
+  return <textarea {...props} className={['px-ui-input', className].filter(Boolean).join(' ')} ref={control} />;
+});
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input({ value, defaultValue, className, ...props }, ref) {
   const host = useRef<PxInput>(null);
   useLayoutEffect(() => {

@@ -4,9 +4,11 @@
  * Installing shows the permissions the extension asks for and needs an explicit yes.
  */
 
+import { compatibilityError } from '~/core/extensions/compatibility';
+import { EXTENSION_CATEGORIES, type ExtensionCategory } from '@pixprite/api';
 import { formatNumber, t } from "~/core/i18n";
 import { state } from "~/core/State";
-import { Button, Check, Input, Label, Muted } from "~/ui/Button";
+import { Button, Check, Input, Label, Muted, Select } from "~/ui/Button";
 import { askConfirm, Dialog, openDialog, Row, Section } from "~/ui/Dialog";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useState, type FC } from "react";
@@ -105,6 +107,9 @@ const Installed: FC = () => {
               <Check checked={e.enabled} onChange={ev => act(() => host.setEnabled(m.id, ev.target.checked))} />
               {t('extensions.enabled')}
             </Label>
+            {e.previousVersion && <Button type="button" disabled={busy !== null} onClick={() => {
+              setBusy(m.id); act(() => host.rollback(m.id)).finally(() => { setBusy(null); void checkUpdates(); });
+            }}>{t('extensions.restoreVersion', { version: e.previousVersion })}</Button>}
             {e.devUrl && <Button type="button" onClick={() => act(() => host.reload(m.id))}>{t('extensions.reload')}</Button>}
             {pending.has(m.id) && <Button type="button" disabled={busy !== null} onClick={() => update(m.id)}>
               {busy === m.id || busy === '*' ? t('extensions.loading') : t('extensions.updateTo', { version: pending.get(m.id)!.entry.version })}
@@ -120,11 +125,13 @@ const Installed: FC = () => {
   </>;
 };
 
-const Store: FC = () => {
+const Store: FC<{ initialCategory: ExtensionCategory | 'all' }> = ({ initialCategory }) => {
   useSignals();
   const host = extensionsHost.value!;
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [query, setQuery] = useState('');
+  const [category, setCategory] = useState<ExtensionCategory | 'all'>(initialCategory);
+  const [selectedVersions, setSelectedVersions] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -138,16 +145,21 @@ const Store: FC = () => {
 
   const installed = new Map(host.installed.value.map(e => [e.manifest.id, e.manifest.version]));
   const install = async (entry: CatalogEntry) => {
+    if (compatibilityError(entry)) return;
     if (!await confirmInstall(localized(entry).name, entry.permissions ?? [])) return;
     setBusy(entry.id);
     try { await host.install(entry, entry.registry); void checkUpdates(false, catalog ?? undefined); }
     catch (e) { setError(String((e as Error)?.message ?? e)); }
     finally { setBusy(null); }
   };
-  const shown = catalog?.entries.filter(e => matches(e, query));
+  const shown = catalog?.entries.filter(e => (category === 'all' || (e.category ?? 'other') === category) && matches(e, query));
 
   return <>
     <Row>
+      <Select aria-label={t('extensions.category')} value={category} onChange={e => setCategory(e.target.value as ExtensionCategory | 'all')}>
+        <option value="all">{t('extensions.allCategories')}</option>
+        {EXTENSION_CATEGORIES.map(c => <option key={c} value={c}>{t(`extensions.category.${c}`)}</option>)}
+      </Select>
       <Input value={query} placeholder={t('extensions.search')} style={{ flex: '1 1 auto', width: 'auto' }} autoFocus
         onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} />
       <Button type="button" onClick={() => load()}>{t('extensions.refresh')}</Button>
@@ -158,8 +170,12 @@ const Store: FC = () => {
       {!catalog && <Muted style={{ padding: 8 }}>{t('extensions.loading')}</Muted>}
       {catalog && !catalog.entries.length && <Muted style={{ padding: 8 }}>{t('extensions.registryEmpty')}</Muted>}
       {catalog && catalog.entries.length > 0 && !shown?.length && <Muted style={{ padding: 8 }}>{t('extensions.nothingFound')}</Muted>}
-      {shown?.map(entry => {
+      {shown?.map(latest => {
+        const versions = latest.versions?.length ? latest.versions : [latest];
+        const selected = versions.find(v => v.version === selectedVersions[latest.id]) ?? versions.find(v => !compatibilityError(v)) ?? latest;
+        const entry: CatalogEntry = { ...selected, registry: 'registry' in selected ? String(selected.registry) : latest.registry };
         const have = installed.get(entry.id);
+        const incompatible = compatibilityError(entry);
         const { name, description } = localized(entry);
         return (
           <Item key={entry.id}>
@@ -167,14 +183,19 @@ const Store: FC = () => {
             <div>
               <span>{name} <Muted>{entry.version}</Muted></span>
               {description && <Muted style={{ whiteSpace: 'normal' }}>{description}</Muted>}
+              {incompatible && <Muted style={{ whiteSpace: 'normal', color: 'var(--danger)' }}>{t('extensions.requiresEditor', { version: entry.minEditorVersion! })}</Muted>}
+              <Muted>{t(`extensions.category.${entry.category ?? 'other'}`)}{entry.tags?.length ? ` · ${entry.tags.join(', ')}` : ''}</Muted>
               {entry.completeness !== undefined &&
                 <Muted>{t('extensions.completeness', { percent: formatNumber(typeof entry.completeness === 'number' ? entry.completeness : Math.max(...Object.values(entry.completeness)), { maximumFractionDigits: 1 }) })}</Muted>}
               {catalogUrls().length > 1 && <Muted title={entry.registry}>{new URL(entry.registry).host || entry.registry}</Muted>}
             </div>
-            {have && !newer(entry.version, have)
+            {versions.length > 1 && <Select aria-label={t('extensions.packageVersion', { name })} value={entry.version} style={{ width: 100 }} onChange={e => setSelectedVersions(v => ({ ...v, [entry.id]: e.target.value }))}>
+              {versions.map(v => <option key={v.version} value={v.version}>{v.version}</option>)}
+            </Select>}
+            {have === entry.version
               ? <Muted>{t('extensions.installed')}</Muted>
-              : <Button type="button" disabled={busy !== null} onClick={() => have ? applyUpdate(entry.id) : install(entry)}>
-                {busy === entry.id ? t('extensions.loading') : have ? t('extensions.update') : t('extensions.install')}
+              : <Button type="button" disabled={busy !== null || !!incompatible} onClick={() => install(entry)}>
+                {busy === entry.id ? t('extensions.loading') : have ? newer(entry.version, have) ? t('extensions.update') : t('extensions.installVersion', { version: entry.version }) : t('extensions.install')}
               </Button>}
           </Item>
         );
@@ -214,7 +235,7 @@ const Dev: FC = () => {
 
 type Tab = 'installed' | 'store' | 'dev';
 
-const ExtensionsWindow: FC<{ close: () => void; tab: Tab; }> = ({ close, tab: initial }) => {
+const ExtensionsWindow: FC<{ close: () => void; tab: Tab; category: ExtensionCategory | 'all' }> = ({ close, tab: initial, category }) => {
   useSignals();
   const [tab, setTab] = useState<Tab>(initial);
   const host = extensionsHost.value;
@@ -228,13 +249,13 @@ const ExtensionsWindow: FC<{ close: () => void; tab: Tab; }> = ({ close, tab: in
         </Tabs>
         <Section>{t(`extensions.tab.${tab}`)}</Section>
         {tab === 'installed' && <Installed />}
-        {tab === 'store' && <Store />}
+        {tab === 'store' && <Store initialCategory={category} />}
         {tab === 'dev' && <Dev />}
       </>}
     </Dialog>
   );
 };
 
-export function openExtensions(tab: Tab = 'installed') {
-  return openDialog(close => <ExtensionsWindow close={close} tab={tab} />);
+export function openExtensions(tab: Tab = 'installed', category: ExtensionCategory | 'all' = 'all') {
+  return openDialog(close => <ExtensionsWindow close={close} tab={tab} category={category} />);
 }

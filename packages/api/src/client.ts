@@ -184,6 +184,7 @@ function makeContext(c: Connection): ExtensionContext {
   return {
     id: init.id,
     apiVersion: init.apiVersion,
+    editorVersion: init.editorVersion ?? '',
     sprite: makeSprite(c),
     documents: {
       ...fns('documents', ['list', 'active', 'open', 'create']),
@@ -296,7 +297,10 @@ export function defineExtension(activate: ActivateFn): ActivateFn {
       c.exports = out ?? {};
       c.post({ type: 'activated', exports: Object.keys(c.exports) });
     } catch (e) {
-      c.post({ type: 'failed', error: e instanceof Error ? e.stack ?? e.message : String(e) });
+      const message = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+      // WebKit stacks can contain only locations, without the error message.
+      const detail = e instanceof Error && e.stack ? e.stack.includes(message) ? e.stack : `${message}\n${e.stack}` : message;
+      c.post({ type: 'failed', error: detail });
     }
   });
   return activate;

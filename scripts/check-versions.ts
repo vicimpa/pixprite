@@ -7,6 +7,7 @@
 import { execFileSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { compareVersions } from '../src/core/extensions/versions';
 import { ROOT, SRC } from "./extensions";
 
 const base = process.argv[2];
@@ -16,12 +17,7 @@ const git = (...args: string[]) => execFileSync('git', args, { cwd: ROOT, encodi
 const changed = new Set(git('diff', '--name-only', `${base}...HEAD`, '--', 'extensions/')
   .split('\n').filter(Boolean).map(p => p.split('/')[1]).filter(Boolean));
 
-/** 1.10.0 > 1.9.2; pre-release and build tails are ignored */
-const newer = (a: string, b: string) => {
-  const pa = a.split(/[-+]/)[0].split('.').map(Number), pb = b.split(/[-+]/)[0].split('.').map(Number);
-  for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
-  return false;
-};
+const newer = (a: string, b: string) => compareVersions(a, b) > 0;
 
 let failed = 0;
 for (const id of [...changed].sort()) {

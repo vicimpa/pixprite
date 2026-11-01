@@ -35,7 +35,7 @@ test('@smoke splitter resizes live without persisting every move, then survives 
   expect(Math.round(await width() - before)).toBe(90);
   expect(await page.evaluate(() => localStorage.getItem('pixprite:layout'))).toBe(stored);
   await page.mouse.up();
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pixprite:layout')!).colorsSize)).toBe(before + 90);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pixprite:layout') ?? 'null')?.colorsSize)).toBe(before + 90);
   await page.reload();
   // Autosave is disabled in this fixture; open a fresh document to check the restored layout.
   await page.getByRole('button', { name: 'Custom size…', exact: true }).click();
@@ -54,7 +54,7 @@ test('@smoke pointer cancellation commits the last splitter size and releases ca
   const pointerId = Number(await splitter.getAttribute('data-pointer-id'));
   await splitter.dispatchEvent('pointercancel', { pointerId }); await page.mouse.up();
   await expect(splitter).toHaveAttribute('data-drag', 'false');
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pixprite:layout')!).colorsSize)).toBe(before + 40);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pixprite:layout') ?? 'null')?.colorsSize)).toBe(before + 40);
 });
 
 test('@smoke preview drag commits its position and retains it when reopened', async ({ page }) => {

@@ -15,6 +15,7 @@ export type InitMessage = {
   id: string;
   version: string;
   apiVersion: number;
+  editorVersion?: string;
   /** `worker` for the entry, `panel` / `widget` for iframes (with the contribution id) */
   role: 'worker' | 'panel' | 'widget';
   contribution?: string;

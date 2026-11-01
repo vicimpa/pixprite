@@ -41,7 +41,9 @@ export class PxTooltip extends HTMLElement {
       const element = (event.target as Element | null)?.closest?.<HTMLElement>('[title],[data-tip]') ?? null;
       if (element === this.target) return;
       const shown = this.style.display === 'block'; this.hide();
-      if (!element || (!element.title && element.dataset.tip === undefined)) return;
+      // An iframe's title names its browsing context for assistive technology.
+      // Pointer transitions into a frame do not reliably send pointerout here.
+      if (!element || element.localName === 'iframe' || (!element.title && element.dataset.tip === undefined)) return;
       this.target = element;
       if (element.title) { element.dataset.tip = element.title; element.removeAttribute('title'); }
       if (this.warm || shown) show(); else this.timer = view.setTimeout(show, 300);

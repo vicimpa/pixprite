@@ -1,3 +1,4 @@
+import { playbackRange } from '~/core/PlaybackCursor';
 import { t } from "~/core/i18n";
 import { state } from "~/core/State";
 import { Button } from "~/ui/Button";
@@ -23,7 +24,7 @@ function usePreviewFrame(playing: boolean, tagIndex: number) {
     let key = '';
     const tick = () => {
       const { sprite } = state;
-      const range = sprite.tags[tagIndex] ?? sprite.playRange();
+      const range = sprite.tags[tagIndex] ?? playbackRange(sprite, state.prefs.playScope, sprite.frame);
       const seq = sprite.tagSequence(range);
       const k = `${range.from}:${range.to}:${range.direction}:${range.repeat ?? 0}`;
       // Restart when the range changes or the frame left it

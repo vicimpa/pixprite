@@ -27,7 +27,7 @@ px-button,px-input,px-checkbox,px-range,px-select,px-label,px-muted {display:con
 .px-ui-label {display:inline-flex;align-items:center;gap:4px;white-space:nowrap;cursor:pointer;flex-shrink:0}
 .px-ui-muted {color:var(--fg-dim);white-space:nowrap}
 px-separator {display:block;width:1px;align-self:stretch;margin:3px 2px;background:var(--b2);flex-shrink:0}
-px-flex {display:var(--px-display,flex);position:var(--px-position,relative);min-width:0;flex-direction:var(--px-direction,row);justify-content:var(--px-content,normal);align-items:var(--px-items,normal);gap:var(--px-gap,var(--gap,0px));flex-grow:var(--px-grow,0);flex-shrink:var(--px-shrink,1);padding:var(--px-padding,0);flex-basis:var(--px-basis,auto);inset:var(--px-inset,auto);overflow:var(--px-overflow,visible)}
+px-flex {--px-display:flex;--px-position:relative;--px-direction:row;--px-content:normal;--px-items:normal;--px-gap:var(--gap,0px);--px-grow:0;--px-shrink:1;--px-padding:0;--px-basis:auto;--px-inset:auto;--px-overflow:visible;display:var(--px-display,flex);position:var(--px-position,relative);min-width:0;flex-direction:var(--px-direction,row);justify-content:var(--px-content,normal);align-items:var(--px-items,normal);gap:var(--px-gap,var(--gap,0px));flex-grow:var(--px-grow,0);flex-shrink:var(--px-shrink,1);padding:var(--px-padding,0);flex-basis:var(--px-basis,auto);inset:var(--px-inset,auto);overflow:var(--px-overflow,visible)}
 px-flex[wrap] {flex-wrap:wrap}
 px-grid {display:grid;min-width:0;gap:var(--px-gap,0px);grid-template-columns:var(--px-columns,none)}
 px-panel {display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--bg);color:var(--fg)}

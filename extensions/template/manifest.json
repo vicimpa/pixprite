@@ -1,9 +1,10 @@
 {
   "id": "template",
   "name": "%name%",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "public": false,
   "apiVersion": 1,
+  "minEditorVersion": "0.0.4",
   "author": "Your name",
   "description": "%description%",
   "entry": "main.js",
@@ -24,10 +25,22 @@
         "id": "info",
         "label": "%panel.info%",
         "dock": "right",
-        "page": "panel.html"
+        "page": "panel.tsx"
       }
     ],
-    "widgets": [{ "id": "counter", "slot": "toolbar", "page": "widget.tsx" }],
+    "widgets": [
+      {
+        "id": "counter",
+        "slot": "toolbar",
+        "page": "widget.tsx"
+      }
+    ],
     "locales": "locales/"
-  }
+  },
+  "category": "other",
+  "tags": [
+    "example",
+    "tsx",
+    "widget"
+  ]
 }

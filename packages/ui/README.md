@@ -24,6 +24,10 @@ During development, changing this package reloads the editor page so each docume
 | Measured content | `px-adaptive-bar`, `px-floating-panel`, `px-virtual-list` |
 | Presentation | `px-icon`, `px-canvas`, `px-grid-pattern`, `px-shader`, `px-gradient`, `px-variables`, `px-tooltip` |
 
+Each `px-flex` starts with its own layout defaults. A parent's growth, shrink factor,
+basis, gap and padding do not become the child's layout settings. Theme variables
+such as `--gap` still inherit normally.
+
 Native controls use light DOM and retain their native children, names, form association and events. Existing inputs can be supplied directly:
 
 ```html
@@ -33,6 +37,10 @@ Native controls use light DOM and retain their native children, names, form asso
 </px-input>
 ```
 
+Number fields retain native text selection, including double-click and keyboard selection.
+Hold **Alt** while dragging to scrub a value; **Shift** slows the scrub down. Scrubbing
+and the wheel respect the native `step`, including fractional steps.
+
 Use host properties for controlled updates. Values changed directly on an adopted native select require its `input`/`change` event or `host.refresh()` to update the visible trigger. Theme colors and metrics come from CSS custom properties; control styles are installed once in each document under the existing inline-style CSP.
 
 `px-form` receives resolved `schema`, `values`, `palette` and `inline` properties. Its `valuechange` event carries the complete typed values in `event.detail`. Layers, tags, localized labels and other application data are supplied by the consumer.
@@ -40,3 +48,6 @@ Use host properties for controlled updates. Values changed directly on an adopte
 `px-canvas` accepts `draw`/`loop` callbacks and owns resize/animation cleanup. `px-icon` accepts pixel or inert SVG-path artwork. `px-shader` accepts a GLSL `mainFrag` implementation and uniform values; `px-gradient` supplies HSV/HSL corner interpolation with a Canvas fallback.
 
 See [extension usage](../../docs/extensions/README.md#shared-ui-components) and the [migration requirements and acceptance evidence](../../docs/ui-web-components.md).
+
+The React entry also exports `TextArea`, a native multiline field with the shared
+input style and forwarded ref. It retains browser selection, form and keyboard behavior.

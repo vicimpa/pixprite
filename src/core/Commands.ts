@@ -376,13 +376,23 @@ const list: Command[] = [
   {
     id: 'window.focus', group: 'menu.window', keys: ['Tab'], run: () => {
       const { layout } = state;
-      const anyShown = layout.showToolbar || layout.showColors || layout.showTimeline || layout.showOptions;
-      state.setLayout({ showToolbar: !anyShown, showColors: !anyShown, showTimeline: !anyShown, showOptions: !anyShown });
+      const anyShown = layout.showToolbar || (layout.showColors && layout.colorsSize > 0)
+        || (layout.showTimeline && layout.timelineSize > 0) || layout.showOptions;
+      state.setLayout({ showToolbar: !anyShown, showColors: !anyShown, showTimeline: !anyShown, showOptions: !anyShown,
+        ...(!anyShown && layout.colorsSize === 0 ? { colorsSize: DEFAULT_LAYOUT.colorsSize } : {}),
+        ...(!anyShown && layout.timelineSize === 0 ? { timelineSize: DEFAULT_LAYOUT.timelineSize } : {}),
+      });
     }
   },
   { id: 'window.toolbar', group: 'menu.window', run: () => state.setLayout({ showToolbar: !state.layout.showToolbar }), checked: () => state.layout.showToolbar },
-  { id: 'window.colors', group: 'menu.window', run: () => state.setLayout({ showColors: !state.layout.showColors }), checked: () => state.layout.showColors },
-  { id: 'window.timeline', group: 'menu.window', keys: ['Ctrl+Alt+T'], run: () => state.setLayout({ showTimeline: !state.layout.showTimeline }), checked: () => state.layout.showTimeline },
+  { id: 'window.colors', group: 'menu.window', run: () => {
+    const { layout } = state, show = !layout.showColors || layout.colorsSize === 0;
+    state.setLayout({ showColors: show, ...(show && layout.colorsSize === 0 ? { colorsSize: DEFAULT_LAYOUT.colorsSize } : {}) });
+  }, checked: () => state.layout.showColors && state.layout.colorsSize > 0 },
+  { id: 'window.timeline', group: 'menu.window', keys: ['Ctrl+Alt+T'], run: () => {
+    const { layout } = state, show = !layout.showTimeline || layout.timelineSize === 0;
+    state.setLayout({ showTimeline: show, ...(show && layout.timelineSize === 0 ? { timelineSize: DEFAULT_LAYOUT.timelineSize } : {}) });
+  }, checked: () => state.layout.showTimeline && state.layout.timelineSize > 0 },
   { id: 'window.options', group: 'menu.window', run: () => state.setLayout({ showOptions: !state.layout.showOptions }), checked: () => state.layout.showOptions },
   { id: 'window.status', group: 'menu.window', run: () => state.setLayout({ showStatus: !state.layout.showStatus }), checked: () => state.layout.showStatus },
   { id: 'window.toolbarLeft', group: 'menu.window', run: () => state.setLayout({ toolbar: 'left' }), checked: () => state.layout.toolbar === 'left' },
@@ -391,7 +401,7 @@ const list: Command[] = [
   { id: 'window.colorsRight', group: 'menu.window', run: () => state.setLayout({ colors: 'right' }), checked: () => state.layout.colors === 'right' },
   { id: 'window.timelineBottom', group: 'menu.window', run: () => state.setLayout({ timeline: 'bottom' }), checked: () => state.layout.timeline === 'bottom' },
   { id: 'window.timelineTop', group: 'menu.window', run: () => state.setLayout({ timeline: 'top' }), checked: () => state.layout.timeline === 'top' },
-  { id: 'window.reset', group: 'menu.window', run: () => { state.layout = { ...DEFAULT_LAYOUT }; } },
+  { id: 'window.reset', group: 'menu.window', run: () => { state.resetLayout(); } },
 
   { id: 'color.swap', group: 'menu.colors', keys: ['X'], run: () => state.swapColors() },
   { id: 'color.reset', group: 'menu.colors', keys: ['D'], run: () => { state.colorA = Color.fromHex('#000000'); state.colorB = Color.fromHex('#ffffff'); } },
