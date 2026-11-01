@@ -4,7 +4,7 @@
     {
       "id": "ai-assistant",
       "name": "AI assistant",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "description": "Chat with an AI model that can inspect and edit your sprite",
       "author": "Pixprite contributors",
       "minEditorVersion": "0.0.4",
@@ -25,15 +25,16 @@
         "network:localhost:11434",
         "network:localhost:1234"
       ],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@43c71a61eda7641761254a15cab46318d1a1e6f6/ai-assistant/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@6a3164fd62b93a41152fa83b14183a8a1d62aa5d/ai-assistant/",
       "files": {
-        "locales/en.json": "sha256-7oFaUo169jh5uUCEE8Jd1CciQUZi3JcrcOgCjzKfaHw=",
-        "locales/ru.json": "sha256-iROA3CgqAY3d6m++mFM8xsZHzbV/u5ntLQpbpxgh9Kk=",
-        "manifest.json": "sha256-Gn9XH+6sDR643sTQ3NxgX2bAMZ50p+n1+Msx0v24PWE=",
-        "src/chat.tsx": "sha256-63bTnbwLT97nU1a/brY6KyaSPX91srN49v7U4RQQwmw=",
+        "locales/en.json": "sha256-qxuf4sJZ6SahzQSTN617mxElnAl2ahbgOYF4DtWubr0=",
+        "locales/ru.json": "sha256-eXk/HrUigEHLbAjmt0D9YKlZV/2oBYzHVprBXF7IxSU=",
+        "manifest.json": "sha256-No9z09jes2aKbZi6cwDP8NcuVwte0XBPIF+O9N9SCoA=",
+        "src/chat.tsx": "sha256-H/1w20lWN3IfFoP9gjanZVnWeY1hYzu+l0YgJ+bn/Vc=",
         "src/markdown.ts": "sha256-0pYiMvqWVfutVrjU4iN/1Bbj5nAuxqpX7/ws3W21+KA=",
+        "src/skills.ts": "sha256-Un1XQntnJkT8nBNAf7Sn3APjj7uAgm5kLcpTnz7U+9E=",
         "src/styles.ts": "sha256-lRKYt8A2MG/5/dQ2AKfH9HrjQU0Rt/SQoHh/gcR/ZbE=",
-        "src/tools.ts": "sha256-wEmDy7aznDnNMUnXyXs5uYKdQB7RUBmRTXqZDS59qrk="
+        "src/tools.ts": "sha256-fubBJWaH/WYSDADEYyw/tko4XKLk/5Kny/JQQvrAO0I="
       },
       "i18n": {
         "ru": {
@@ -42,6 +43,48 @@
         }
       },
       "versions": [
+        {
+          "id": "ai-assistant",
+          "name": "AI assistant",
+          "version": "0.3.0",
+          "description": "Chat with an AI model that can inspect and edit your sprite",
+          "author": "Pixprite contributors",
+          "minEditorVersion": "0.0.4",
+          "category": "automation",
+          "tags": [
+            "ai",
+            "chat",
+            "assistant"
+          ],
+          "permissions": [
+            "sprite:read",
+            "sprite:write",
+            "ui:panel",
+            "storage",
+            "network:api.deepseek.com",
+            "network:api.openai.com",
+            "network:openrouter.ai",
+            "network:localhost:11434",
+            "network:localhost:1234"
+          ],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@6a3164fd62b93a41152fa83b14183a8a1d62aa5d/ai-assistant/",
+          "files": {
+            "locales/en.json": "sha256-qxuf4sJZ6SahzQSTN617mxElnAl2ahbgOYF4DtWubr0=",
+            "locales/ru.json": "sha256-eXk/HrUigEHLbAjmt0D9YKlZV/2oBYzHVprBXF7IxSU=",
+            "manifest.json": "sha256-No9z09jes2aKbZi6cwDP8NcuVwte0XBPIF+O9N9SCoA=",
+            "src/chat.tsx": "sha256-H/1w20lWN3IfFoP9gjanZVnWeY1hYzu+l0YgJ+bn/Vc=",
+            "src/markdown.ts": "sha256-0pYiMvqWVfutVrjU4iN/1Bbj5nAuxqpX7/ws3W21+KA=",
+            "src/skills.ts": "sha256-Un1XQntnJkT8nBNAf7Sn3APjj7uAgm5kLcpTnz7U+9E=",
+            "src/styles.ts": "sha256-lRKYt8A2MG/5/dQ2AKfH9HrjQU0Rt/SQoHh/gcR/ZbE=",
+            "src/tools.ts": "sha256-fubBJWaH/WYSDADEYyw/tko4XKLk/5Kny/JQQvrAO0I="
+          },
+          "i18n": {
+            "ru": {
+              "name": "ИИ-ассистент",
+              "description": "Чат с ИИ-моделью, которая может смотреть и править ваш спрайт"
+            }
+          }
+        },
         {
           "id": "ai-assistant",
           "name": "AI assistant",
@@ -381,7 +424,7 @@
     {
       "id": "lang-uk",
       "name": "Українська",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "description": "Ukrainian interface translation",
       "author": "Pixprite contributors",
       "category": "languages",
@@ -390,17 +433,40 @@
         "translation"
       ],
       "permissions": [],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@43c71a61eda7641761254a15cab46318d1a1e6f6/lang-uk/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@6a3164fd62b93a41152fa83b14183a8a1d62aa5d/lang-uk/",
       "files": {
-        "ai-assistant.uk.json": "sha256-2ArPSUm8SNrQ+445pOqa9jn285LnT5NJhMPZmfqqhjw=",
+        "ai-assistant.uk.json": "sha256-TGzHbGOQs6oQzHcxoFh3LnJp31zHZG3DzEvz5cOmvY0=",
         "game-rig.uk.json": "sha256-2xpYJEe3Jimm+0Ic42ofMrEv7WvP33l45qlqSw+RxiE=",
-        "manifest.json": "sha256-iqRzjEUfJWgvFv6aLIKTTv17Kx4OpomX0RCL4NMabas=",
+        "manifest.json": "sha256-4OqGyKuEewYu922kY6z3j3mzjngpCRK3LarqF9LN1WA=",
         "uk.json": "sha256-lEb4gLOXazpdsRZjRGsdhxwHq2ZfmcBtu/cECNpGK6E="
       },
       "completeness": {
-        "uk": 95.1
+        "uk": 92.9
       },
       "versions": [
+        {
+          "id": "lang-uk",
+          "name": "Українська",
+          "version": "1.1.1",
+          "description": "Ukrainian interface translation",
+          "author": "Pixprite contributors",
+          "category": "languages",
+          "tags": [
+            "ukrainian",
+            "translation"
+          ],
+          "permissions": [],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@6a3164fd62b93a41152fa83b14183a8a1d62aa5d/lang-uk/",
+          "files": {
+            "ai-assistant.uk.json": "sha256-TGzHbGOQs6oQzHcxoFh3LnJp31zHZG3DzEvz5cOmvY0=",
+            "game-rig.uk.json": "sha256-2xpYJEe3Jimm+0Ic42ofMrEv7WvP33l45qlqSw+RxiE=",
+            "manifest.json": "sha256-4OqGyKuEewYu922kY6z3j3mzjngpCRK3LarqF9LN1WA=",
+            "uk.json": "sha256-lEb4gLOXazpdsRZjRGsdhxwHq2ZfmcBtu/cECNpGK6E="
+          },
+          "completeness": {
+            "uk": 92.9
+          }
+        },
         {
           "id": "lang-uk",
           "name": "Українська",
