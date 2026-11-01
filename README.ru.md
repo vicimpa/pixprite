@@ -22,7 +22,7 @@
 
 [Скачать пример проекта](docs/assets/beacon.pixprite) · [Обновить скриншот](docs/development.md#documentation-images)
 
-> **Ранняя разработка.** Последний выпуск — [0.0.6](https://github.com/vicimpa/pixprite/releases/tag/v0.0.6). Изменения описаны в [заметках к выпуску](docs/releases/v0.0.6.md), предыдущие версии — в [истории выпусков](docs/releases/README.md).
+> **Ранняя разработка.** Последний выпуск — [0.0.5](https://github.com/vicimpa/pixprite/releases/tag/v0.0.5). Изменения описаны в [заметках к выпуску](docs/releases/v0.0.5.md), предыдущие версии — в [истории выпусков](docs/releases/README.md).
 
 ## Возможности
 
