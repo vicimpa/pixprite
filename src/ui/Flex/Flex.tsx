@@ -1,34 +1,18 @@
-import type { CSSProperties } from "react";
-import styled from "styled-components";
+import { createElement, forwardRef, type ComponentProps, type CSSProperties } from 'react';
+import '@pixprite/ui/elements';
 export type FlexDir = CSSProperties['justifyContent'];
-
 export type FlexProps = {
-  $column?: boolean;
-  $reverse?: boolean;
-  $content?: FlexDir;
-  $items?: FlexDir;
-  $gap?: number;
-  $grow?: true | number;
-  $padding?: string | number;
-  $basis?: number;
-  $inline?: boolean;
-  $inset?: true | number;
-  $shrink?: number;
+  $column?: boolean; $reverse?: boolean; $content?: FlexDir; $items?: FlexDir;
+  $gap?: number; $grow?: true | number; $padding?: string | number; $basis?: number;
+  $inline?: boolean; $inset?: true | number; $shrink?: number;
 };
-
-export const Flex = styled.div<FlexProps>`
-  display: ${p => p.$inline ? 'inline-' : ''}flex;
-  ${p => p.$shrink !== undefined ? `flex-shrink: ${p.$shrink};` : ''}
-  flex-direction: ${p => p.$column ? 'column' : 'row'}${p => p.$reverse ? '-reverse' : ''};
-  ${p => p.$content ? `justify-content: ${p.$content};` : ''}
-  ${p => p.$items ? `align-items: ${p.$items};` : ''}
-  gap: ${p => typeof p.$gap === 'number' ? `${p.$gap}px` : 'var(--gap)'};
-  ${p => p.$grow ? `flex-grow: ${+p.$grow};` : ''};
-  ${p => p.$padding !== undefined ? `padding: ${p.$padding};` : ''};
-  ${p => p.$inset !== undefined ? `
-    position: absolute;
-    inset: ${typeof p.$inset === 'number' ? `${p.$inset}px` : `0`};
-    overflow: hidden;
-  ` : 'position: relative;'}
-  ${p => typeof p.$basis === 'number' ? `flex-basis: ${p.$basis}px;` : ''}
-`;
+export const Flex = forwardRef<HTMLDivElement, ComponentProps<'div'> & FlexProps>(function Flex({
+  $column, $reverse, $content, $items, $gap, $grow, $padding, $basis, $inline, $inset, $shrink, ...props
+}, ref) {
+  return createElement('px-flex', {
+    ...props, ref, direction: $column ? 'column' : 'row', reverse: $reverse ? '' : undefined,
+    content: $content, items: $items, gap: $gap, grow: $grow ? +$grow : undefined,
+    padding: $padding, basis: $basis, inline: $inline ? '' : undefined,
+    inset: $inset === true ? '0' : $inset, shrink: $shrink,
+  });
+});

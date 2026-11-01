@@ -87,7 +87,7 @@ const OnionOptions: FC<{ close: () => void; x: number; y: number; }> = ({ close,
   const { prefs } = state;
   const set = state.setPrefs.bind(state);
   return createPortal(
-    <styled.Popup style={{ left: x, top: y }} onPointerDown={e => e.stopPropagation()}>
+    <styled.Popup data-timeline-popup="onion" style={{ left: x, top: y }} onPointerDown={e => e.stopPropagation()}>
       <Label><Check checked={state.onion} onChange={e => { state.onion = e.target.checked; }} /> {t('common.onionSkin')}</Label>
       <Label>{t('timeline.before')} <styled.Num type="number" min={0} max={8} value={prefs.onionBefore} onChange={e => set({ onionBefore: Math.max(0, Math.min(8, +e.target.value)) })} /></Label>
       <Label>{t('timeline.after')} <styled.Num type="number" min={0} max={8} value={prefs.onionAfter} onChange={e => set({ onionAfter: Math.max(0, Math.min(8, +e.target.value)) })} /></Label>
@@ -113,7 +113,7 @@ const PlayOptions: FC<{ close: () => void; x: number; y: number; }> = ({ close, 
   const { prefs } = state;
   const set = state.setPrefs.bind(state);
   return createPortal(
-    <styled.Popup style={{ left: x, top: y }} onPointerDown={e => e.stopPropagation()}>
+    <styled.Popup data-timeline-popup="playback" style={{ left: x, top: y }} onPointerDown={e => e.stopPropagation()}>
       <Label>
         {t('timeline.speed')}
         <Select value={prefs.playSpeed} onChange={e => set({ playSpeed: +e.target.value })}>

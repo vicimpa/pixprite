@@ -10,6 +10,8 @@ const securityRoot = resolve(import.meta.dir, '../dist/security');
 
 const root = resolve(import.meta.dir, '../dist/web');
 const iconCatalog = buildIndex(SRC, ['icons-duotone'], { base: '/__e2e__/icon-packs/' }).registry;
+const rigCatalog = buildIndex(SRC, ['game-rig'], { base: '/__e2e__/game-rig/' }).registry;
+const reactCatalog = buildIndex(SRC, ['template'], { base: '/__e2e__/react-widget/' }).registry;
 const pwa = await pwaFixtures(root);
 const manifest = {
   id: 'e2e-permissions', name: 'E2E permissions', version: '1.0.0', apiVersion: 1,
@@ -49,6 +51,22 @@ Bun.serve({
     const fixtureResponse = await pwa(request);
     if (fixtureResponse) return fixtureResponse;
     if (url.pathname === '/__e2e__/icon-packs/registry.json') return Response.json(iconCatalog);
+    if (url.pathname === '/__e2e__/game-rig/registry.json') return Response.json(rigCatalog);
+    if (url.pathname === '/__e2e__/react-widget/registry.json') return Response.json(reactCatalog);
+    if (url.pathname.startsWith('/__e2e__/react-widget/')) {
+      const [id, ...parts] = decodeURIComponent(url.pathname.slice('/__e2e__/react-widget/'.length)).split('/');
+      const path = parts.join('/');
+      const entry = reactCatalog.extensions.find(e => e.id === id);
+      if (!entry?.files[path]) return new Response('Not found', { status: 404 });
+      return new Response(Bun.file(resolve(SRC, id, path)));
+    }
+    if (url.pathname.startsWith('/__e2e__/game-rig/')) {
+      const [id, ...parts] = decodeURIComponent(url.pathname.slice('/__e2e__/game-rig/'.length)).split('/');
+      const path = parts.join('/');
+      const entry = rigCatalog.extensions.find(e => e.id === id);
+      if (!entry?.files[path]) return new Response('Not found', { status: 404 });
+      return new Response(Bun.file(resolve(SRC, id, path)));
+    }
     if (url.pathname.startsWith('/__e2e__/icon-packs/')) {
       const [id, ...parts] = decodeURIComponent(url.pathname.slice('/__e2e__/icon-packs/'.length)).split('/');
       const path = parts.join('/');

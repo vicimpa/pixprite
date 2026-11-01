@@ -99,7 +99,7 @@ for (const fallback of [false, true]) {
     await command(page, 'file.export');
     const dialog = page.getByRole('dialog', { name: 'Export', exact: true });
     await dialog.getByRole('button', { name: 'PNG, current frame', exact: true }).click();
-    await page.getByText('GIF animation', { exact: true }).click();
+    await page.locator('[data-select-popup]').getByRole('option', { name: 'GIF animation', exact: true }).click();
     const download = page.waitForEvent('download');
     await dialog.getByRole('button', { name: 'Export', exact: true }).click();
     const gif = await readFile((await (await download).path())!);

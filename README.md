@@ -22,7 +22,7 @@
 
 [Open the example project](docs/assets/beacon.pixprite) · [Recreate this screenshot](docs/development.md#documentation-images)
 
-> **Early development.** The working version is 0.0.2; see the [release notes](docs/releases/v0.0.2.md) for the changes being prepared.
+> **Early development.** The working version is 0.0.3; see the [release notes](docs/releases/v0.0.3.md) and [version history](docs/releases/README.md).
 
 ## Make something pixel by pixel
 
@@ -71,7 +71,7 @@ See the [development guide](docs/development.md), [testing guide](docs/testing.m
 | --- | --- |
 | [`src/`](src/) | Editor model, browser app, UI, styles and translations |
 | [`src-tauri/`](src-tauri/) · [`desktop/`](desktop/) | Rust/Tauri shell, native bridge and MCP |
-| [`packages/api/`](packages/api/) | Extension API and shared types |
+| [`packages/api/`](packages/api/) · [`packages/ui/`](packages/ui/) · [`packages/ui-react/`](packages/ui-react/) | Extension API, shared Web Components and React UI for TSX extension pages |
 | [`extensions/`](extensions/) | Extension sources, themes, languages and icon packs |
 | [`public/`](public/) | Static assets and PWA manifest |
 | [`e2e/`](e2e/) · [`benchmarks/`](benchmarks/) | Browser/native scenarios and performance fixtures |

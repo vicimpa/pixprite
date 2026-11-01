@@ -17,7 +17,8 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join, resolve } from "path";
-import ts from "typescript";
+// The native TypeScript 7 CLI does not expose the classic compiler AST API.
+import ts from "@typescript/typescript6";
 import { referencedKeys } from "../src/core/extensions/manifest";
 
 type Dict = Record<string, string>;

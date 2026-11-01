@@ -1,7 +1,7 @@
 {
   "id": "template",
   "name": "%name%",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "public": false,
   "apiVersion": 1,
   "author": "Your name",
@@ -27,6 +27,7 @@
         "page": "panel.html"
       }
     ],
+    "widgets": [{ "id": "counter", "slot": "toolbar", "page": "widget.tsx" }],
     "locales": "locales/"
   }
 }

@@ -492,6 +492,18 @@ test('damaged saved project recovers its previous version as a separate unsaved 
     finally { db.close(); }
   }, projectId)).toEqual({ damaged: true });
   await assertPainted(page, 'Recoverable (recovered)');
+  // Pixels commit before snapshots and the active-tab index; wait for the whole autosave.
+  await expect.poll(() => page.evaluate(async () => {
+    const session = JSON.parse(localStorage.getItem('pixprite:session') ?? 'null');
+    if (!session?.tabs.includes(session.active)) return null;
+    const db = await new Promise<IDBDatabase>(resolve => { const r = indexedDB.open('pixprite'); r.onsuccess = () => resolve(r.result); });
+    try {
+      return await new Promise<string | null>(resolve => {
+        const r = db.transaction('sessions').objectStore('sessions').get(`head:${session.active}`);
+        r.onsuccess = () => resolve(r.result?.name ?? null);
+      });
+    } finally { db.close(); }
+  })).toBe('Recoverable (recovered)');
   await page.reload();
   await expect(page.locator('[draggable=true][data-active=true]')).toHaveAttribute('title', 'Recoverable (recovered) · 32×32');
   expect(await pngPixels(page, await download(page, 'file.exportPng'))).toEqual(previous);
@@ -902,10 +914,26 @@ test('onion skin popup controls immediately change native canvas ghosts without 
     return Array.from(canvas.getContext('2d')!.getImageData(Math.floor((ox + (x + .5) * 8) * scale), Math.floor((oy + 3.5 * 8) * scale), 1, 1).data);
   }, x);
   await expect.poll(() => pixel(5)).toEqual([0, 0, 255, 255]);
+  // The blue pixel can already be under this sample while the smooth camera
+  // is still zooming. Capture the checker baseline only after its rendered
+  // pixels have stopped moving, otherwise later alpha comparisons use a
+  // transient grid/checker edge instead of the settled background.
+  await page.getByTestId('sprite-canvas').locator('canvas').evaluate((canvas: HTMLCanvasElement) => new Promise<void>(resolve => {
+    const context = canvas.getContext('2d')!;
+    let previous: Uint8ClampedArray | undefined, stable = 0;
+    const frame = () => {
+      const width = Math.min(128, canvas.width), height = Math.min(128, canvas.height);
+      const pixels = context.getImageData(Math.floor((canvas.width - width) / 2), Math.floor((canvas.height - height) / 2), width, height).data;
+      stable = previous?.length === pixels.length && pixels.every((value, index) => value === previous![index]) ? stable + 1 : 0;
+      previous = pixels;
+      if (stable >= 6) resolve(); else requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }));
   const [background1, background3, background6] = await Promise.all([1, 3, 6].map(pixel));
   await page.getByTitle('Onion skin and playback options', { exact: true }).click();
   const enabled = page.getByRole('checkbox', { name: 'Onion skin', exact: true });
-  const popup = enabled.locator('xpath=../..');
+  const popup = page.locator('[data-timeline-popup="onion"]');
   const before = popup.getByRole('spinbutton').nth(0), after = popup.getByRole('spinbutton').nth(1);
   const opacity = popup.getByRole('slider').nth(0), fade = popup.getByRole('slider').nth(1);
   await popup.getByRole('checkbox', { name: 'Wrap inside the tag', exact: true }).uncheck();
@@ -928,10 +956,10 @@ test('onion skin popup controls immediately change native canvas ghosts without 
   await popup.getByRole('checkbox', { name: 'Draw on top', exact: true }).check();
   await expect.poll(() => pixel(5)).toEqual([255, 0, 0, 255]);
   await popup.getByRole('button', { name: 'Look', exact: true }).click();
-  await page.getByText('Red past / blue future', { exact: true }).click();
+  await page.locator('[data-select-popup]').getByRole('option', { name: 'Red past / blue future', exact: true }).click();
   await expect(popup.getByRole('button', { name: 'Look', exact: true })).toHaveText('Red past / blue future');
   await expect.poll(async () => { const p = await pixel(3); return p[0] > p[1] && p[1] === p[2]; }).toBe(true);
-  await popup.getByRole('button', { name: 'Look', exact: true }).click(); await page.getByText('Plain', { exact: true }).click();
+  await popup.getByRole('button', { name: 'Look', exact: true }).click(); await page.locator('[data-select-popup]').getByRole('option', { name: 'Plain', exact: true }).click();
   await before.fill('0'); await before.press('Tab'); await after.fill('1'); await after.press('Tab');
   await expect.poll(() => pixel(3)).toEqual(background3);
   await expect.poll(() => pixel(6)).toEqual([255, 255, 0, 255]);

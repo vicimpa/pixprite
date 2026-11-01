@@ -11,7 +11,9 @@ export function bundleGraph(kind = 'main') {
     generateBundle(_options, bundle) {
       const chunks = Object.values(bundle).filter(output => output.type === 'chunk').map(chunk => ({
         file: chunk.fileName, entry: chunk.isEntry,
-        imports: chunk.imports, dynamicImports: chunk.dynamicImports,
+        imports: chunk.imports,
+        // Rolldown includes inlined imports as self edges; only other chunks are dependencies.
+        dynamicImports: chunk.dynamicImports.filter(file => file !== chunk.fileName),
         modules: Object.keys(chunk.modules).map(name).sort(),
       })).sort((a, b) => a.file.localeCompare(b.file));
       const edges = [...this.getModuleIds()].map(id => {

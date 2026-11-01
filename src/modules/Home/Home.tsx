@@ -54,7 +54,7 @@ const Card = styled.section`
   flex-direction: column;
   gap: 8px;
   overflow-wrap: anywhere;
-  & > span { white-space: normal; }
+  & > span, & > px-muted > span { min-width: 0; white-space: normal; }
 `;
 
 const Note = styled.p`

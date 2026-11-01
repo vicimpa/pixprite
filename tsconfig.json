@@ -5,6 +5,8 @@
     { "path": "./src" },
     { "path": "./src/tsconfig.test.json" },
     { "path": "./packages/api" },
+    { "path": "./packages/ui" },
+    { "path": "./packages/ui-react" },
     { "path": "./scripts" },
     { "path": "./e2e" },
     { "path": "./desktop" },

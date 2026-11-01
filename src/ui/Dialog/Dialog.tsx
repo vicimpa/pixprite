@@ -3,9 +3,10 @@ import { Button } from "~/ui/Button";
 import { Icon } from "~/ui/Icon";
 import { signal } from "@preact/signals-react";
 import { useSignals } from "@preact/signals-react/runtime";
-import { useEffect, useRef, type FC, type ReactNode } from "react";
+import { createElement, useLayoutEffect, useRef, type FC, type ReactNode } from "react";
+import "@pixprite/ui/elements";
+import type { PxDialogElement } from "@pixprite/ui/elements";
 import { createPortal } from "react-dom";
-import { trackPointer } from "~/ui/trackPointer";
 import * as styled from "./styled";
 
 type Entry = { id: number; render: (close: () => void) => ReactNode; };
@@ -58,50 +59,27 @@ export type DialogProps = {
 export const Dialog: FC<DialogProps> = ({
   title, onClose, onSubmit, submitLabel = t('common.ok'), cancelLabel = t('common.cancel'), width, children, extraButtons,
 }) => {
-  const ref = useRef<HTMLFormElement>(null);
+  const ref = useRef<PxDialogElement>(null);
+  useLayoutEffect(() => {
+    const element = ref.current!;
+    const submit = (event: Event) => { if (event.target === element && onSubmit?.() === false) event.preventDefault(); };
+    const close = (event: Event) => { if (event.target === element) onClose(); };
+    element.addEventListener('px-submit', submit); element.addEventListener('px-close', close);
+    return () => { element.removeEventListener('px-submit', submit); element.removeEventListener('px-close', close); };
+  }, [onSubmit, onClose]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
-    };
-    addEventListener('keydown', onKey, true);
-    // Focus the first field so typing works right away
-    ref.current?.querySelector<HTMLInputElement>('input, select')?.focus();
-    return () => removeEventListener('keydown', onKey, true);
-  }, []);
-
-  const dragTitle = (e: React.PointerEvent) => {
-    const el = ref.current;
-    if (!el || e.button !== 0) return;
-    const r = el.getBoundingClientRect();
-    let x = r.left, y = r.top;
-    el.style.willChange = 'transform';
-    trackPointer(e, (dx, dy) => {
-      x = Math.max(0, Math.min(innerWidth - 40, r.left + dx));
-      y = Math.max(0, Math.min(innerHeight - 20, r.top + dy));
-      el.style.transform = `translate3d(${x - r.left}px, ${y - r.top}px, 0)`;
-    }, () => {
-      Object.assign(el.style, { position: 'fixed', left: `${x}px`, top: `${y}px`, margin: '0', transform: '', willChange: '' });
-    });
-  };
-
-  return (
+  return createElement('px-dialog', { ref, open: true, embedded: true, 'aria-label': title }, (
     <styled.Window
-      ref={ref}
       role="dialog"
       aria-modal="true"
       aria-label={title}
       data-wide={!!width && width > 560}
       style={{ width }}
       onKeyDown={e => e.stopPropagation()}
-      onSubmit={e => {
-        e.preventDefault();
-        if (onSubmit?.() !== false) onClose();
-      }}
     >
-      <styled.TitleBar onPointerDown={dragTitle} data-close-left={closeLeft}>
+      <styled.TitleBar data-close-left={closeLeft}>
         <span>{title}</span>
-        <styled.Close type="button" onClick={onClose} onPointerDown={e => e.stopPropagation()}>
+        <styled.Close type="button" data-dialog-close onPointerDown={e => e.stopPropagation()}>
           <Icon name="close" scale="glyph" />
         </styled.Close>
       </styled.TitleBar>
@@ -113,7 +91,7 @@ export const Dialog: FC<DialogProps> = ({
         {cancelLabel && <Button type="button" onClick={onClose}>{cancelLabel}</Button>}
       </styled.Footer>
     </styled.Window>
-  );
+  ));
 };
 
 export const Row = styled.Row;

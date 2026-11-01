@@ -106,13 +106,15 @@ test('drafts survive moving into More and nested dropdowns keep the palette open
   await expect(preset).toHaveText('My brush preset');
   await palette.getByRole('button', { name: en['options.preset'], exact: true }).click();
   await expect(page.locator('[data-select-popup]')).toBeVisible();
-  await page.locator('[data-select-popup]').getByText('—', { exact: true }).click();
+  await page.locator('[data-select-popup]').getByRole('option', { name: '—', exact: true }).click();
   await expect(palette).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(palette).toBeHidden();
 });
 
 test('transform fields keep drafts across overflow and Escape dismisses options without canceling the transform', async ({ page }) => {
+  // Exercise the reparenting fallback even in browsers with atomic DOM moves.
+  await page.addInitScript(() => Object.defineProperty(Element.prototype, 'moveBefore', { configurable: true, value: undefined }));
   await page.setViewportSize({ width: 800, height: 700 });
   await openEditor(page);
   await command(page, 'select.all');

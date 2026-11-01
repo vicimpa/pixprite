@@ -22,7 +22,7 @@
 
 [Скачать пример проекта](docs/assets/beacon.pixprite) · [Обновить скриншот](docs/development.md#documentation-images)
 
-> **Ранняя разработка.** Рабочая версия — 0.0.2. Подготовленные изменения описаны в [заметках к выпуску](docs/releases/v0.0.2.md).
+> **Ранняя разработка.** Рабочая версия — 0.0.3. Изменения описаны в [заметках к выпуску](docs/releases/v0.0.3.md), предыдущие версии — в [истории выпусков](docs/releases/README.md).
 
 ## Возможности
 
@@ -71,7 +71,7 @@ bun run desktop:build  # установщики для текущей ОС → d
 | --- | --- |
 | [`src/`](src/) | Модель редактора, браузерное приложение, интерфейс, стили и переводы |
 | [`src-tauri/`](src-tauri/) · [`desktop/`](desktop/) | Rust/Tauri, нативный мост и MCP |
-| [`packages/api/`](packages/api/) | API расширений и общие типы |
+| [`packages/api/`](packages/api/) · [`packages/ui/`](packages/ui/) · [`packages/ui-react/`](packages/ui-react/) | API расширений, общие Web Components и React UI для TSX-страниц расширений |
 | [`extensions/`](extensions/) | Исходники расширений, темы, языки и наборы иконок |
 | [`public/`](public/) | Статические ресурсы и PWA-манифест |
 | [`e2e/`](e2e/) · [`benchmarks/`](benchmarks/) | Браузерные и нативные сценарии, замеры производительности |

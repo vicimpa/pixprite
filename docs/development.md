@@ -6,6 +6,11 @@
 
 Use Bun **1.4.2**, matching CI, and **Node.js 24+** for the standalone MCP launcher. Desktop builds additionally require Rust from `rust-toolchain.toml` and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
+The web toolchain uses Vite 8 and TypeScript 7. `tsc -b` runs the native TypeScript compiler;
+the translation checker uses `@typescript/typescript6` for its classic compiler AST API.
+Sandbox UI modules are transpiled and minified with Vite's Oxc helpers.
+Vite resolves TypeScript path aliases through `resolve.tsconfigPaths`; no separate paths plugin is needed.
+
 ```sh
 bun install --frozen-lockfile
 bun run dev
@@ -25,6 +30,8 @@ The editor runs at `http://localhost:3355`. `bun run ext:dev` starts a separate 
 | `src-tauri/` | Rust/Tauri shell, native files, window, dialogs and release checks |
 | `desktop/` | Limited JS bridge, storage migration and external stdio MCP |
 | `packages/api/` | Public extension API types and helpers |
+| `packages/ui/` | Shared Web Components for editor controls and extension panels; [contracts and migration](ui-web-components.md) |
+| `packages/ui-react/` | React controls and automatic TSX page mounting for sandboxed extension panels/widgets |
 | `extensions/<id>/` | Extension manifests, source, locales and assets |
 | `public/` | Static assets copied into the web build |
 | `scripts/` | Build/release tools, extension validation and bundle checks |

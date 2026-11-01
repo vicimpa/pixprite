@@ -8,5 +8,6 @@
   "layers.other": "{count} слоя",
   "name": "Шаблон расширения",
   "noSprite": "Спрайт не открыт",
-  "panel.info": "О спрайте"
+  "panel.info": "О спрайте",
+  "widget.clicks": "Нажатий: {count}"
 }

@@ -43,6 +43,7 @@ extensions/<id>/
   src/main.ts          → main.js      ("entry": "main.js" в манифесте)
   src/panel.ts         → panel.js     (страница "panel.html")
   src/panel.html       необязательно; иначе генерируется пустая страница, подключающая panel.js
+  src/widget.tsx       React-компонент по умолчанию (страница "widget.tsx", без HTML)
   locales/en.json      свои строки, обязателен, если манифест использует %key%
   locales/ru.json …
   assets/              копируется как есть
@@ -50,8 +51,10 @@ extensions/<id>/
 
 Сборки нет. Расширение хранится исходниками, и редактор компилирует их сам, когда устанавливает или
 запускает его: у каждого `.ts` убираются типы (sucrase), импорты прослеживаются по пакету, а `@pixprite/api` —
-собственная копия API редактора. Поэтому импортировать можно только файлы самого расширения (относительными
-путями) и `@pixprite/api`: без npm-пакетов и без циклов.
+собственная копия API редактора. Панели также могут импортировать поставляемые редактором `@pixprite/ui`,
+`@pixprite/ui/elements`, `@pixprite/ui/legacy`, `@pixprite/ui-react`, `react`, `react/jsx-runtime`,
+`react-dom` и `react-dom/client`. Остальные импорты — относительные файлы самого расширения;
+произвольные npm-пакеты и циклические импорты не поддерживаются.
 
 | Скрипт | Что делает |
 |---|---|
@@ -65,6 +68,101 @@ extensions/<id>/
 Production-сборка редактора не включает расширения: отдельный workflow публикует каталог и исходники в ветку `extensions`. Каталог (`registry.json`) строится по исходникам:
 тексты на каждом языке, sha256 каждого файла (проверяется при установке), а у языковых пакетов
 `completeness` — процент переведённых ключей ядра.
+
+## Общие UI-компоненты
+
+Редактор и панели расширений используют одни Web Components из `@pixprite/ui`. Реализацию поставляет
+текущая версия редактора при открытии панели. Компоненты работают внутри существующего sandbox iframe;
+доступ к документам редактора остаётся через API расширений.
+
+```js
+import '@pixprite/ui/elements';
+
+const field = document.createElement('px-select');
+field.setAttribute('name', 'movement');
+field.innerHTML = `<option value="topdown">Вид сверху</option>
+  <option value="platformer">Платформер</option>`;
+field.value = 'topdown';
+field.addEventListener('change', () => console.log(field.value));
+document.body.append(field);
+```
+
+`@pixprite/ui` и `@pixprite/ui/elements` регистрируют и экспортируют одинаковые классы компонентов.
+Повторная регистрация безопасна; разные скрипты одной панели используют общие экземпляры встроенных модулей.
+Эти импорты предназначены для панелей и виджетов: у фонового Worker расширения нет DOM.
+Для React-страниц доступен `@pixprite/ui-react`; внутренний путь редактора `@pixprite/ui/react` не является публичным импортом sandbox.
+
+Доступны `px-button`, `px-input`, `px-checkbox`, `px-range`, `px-select`, `px-color-input`, `px-menu`,
+`px-menu-bar`, `px-dialog`, `px-slider`, `px-splitter`, `px-resizer`, `px-form`, а также элементы компоновки
+`px-label`, `px-muted`, `px-separator`, `px-flex`, `px-grid`, `px-panel`, `px-head`, `px-adaptive-bar`,
+`px-floating-panel`, `px-virtual-list`, `px-variables`, `px-tooltip`. Визуальные элементы: `px-canvas`,
+`px-grid-pattern`, `px-icon`, `px-shader`, `px-gradient`.
+Они наследуют переменные темы редактора (`--fg`, `--bg`, `--face`, `--row` и другие), включая обновления темы.
+
+Нативные поля остаются в light DOM, сохраняя labels, имена, отправку форм и обработчики `input`/`change`.
+Можно передать готовое поле: `<px-input><input type="number" min="0" max="100" value="25"></px-input>`.
+Для программных изменений используйте свойства компонента (`field.value`, `field.disabled`).
+Изменив сам нативный select, отправьте обычное событие `change` либо вызовите `refresh()` компонента.
+Прокрутка списка ограничена самим меню; Escape и нажатие снаружи закрывают его без скачка панели.
+`px-form` принимает свойства `schema`, `values`, `palette`, `inline` и отправляет `valuechange` с полным
+объектом значений в `event.detail`. Варианты слоёв и тегов редактора передаются готовыми в схеме.
+
+Существующие HTML-формы расширений подключаются автоматически: кнопки, текстовые и числовые поля,
+чекбоксы, диапазоны, цвета и одиночные селекты принимаются общими компонентами. Динамические поля тоже
+обрабатываются. Множественные селекты, поля файлов и скрытые поля сохраняют нативное поведение.
+Исходный DOM-элемент и его обработчики событий сохраняются внутри обёртки `px-*` в light DOM.
+Адаптер переносит обычные CSS-правила размеров и расположения; новые панели могут сразу использовать элементы `px-*`.
+`@pixprite/ui/legacy` экспортирует `enhanceLegacyControls(document)` для явного подключения другого документа.
+
+## React-страницы (TSX)
+
+Укажите у панели или виджета `page: "widget.tsx"` (либо `"src/widget.tsx"`) и
+экспортируйте компонент через `export default`. Редактор сам компилирует JSX,
+подключает API страницы и монтирует компонент в `#root`. HTML-файл, глобальный
+React, вызов `createRoot` и отдельная сборка расширения не нужны.
+Если `widget.html` отсутствует, но есть `src/widget.tsx`, включается тот же режим.
+
+```json
+{
+  "permissions": ["ui:panel"],
+  "contributes": {
+    "widgets": [{ "id": "counter", "slot": "toolbar", "page": "widget.tsx" }]
+  }
+}
+```
+
+```tsx
+// src/widget.tsx
+import { useState } from 'react';
+import { Button, type ExtensionPageProps } from '@pixprite/ui-react';
+
+export default ({ ctx }: ExtensionPageProps) => {
+  const [count, setCount] = useState(0);
+  return <Button onClick={() => setCount(n => n + 1)}>
+    {ctx.i18n.t('widget.clicks', { count })}
+  </Button>;
+};
+```
+
+Добавьте `"widget.clicks": "Clicks: {count}"` в английскую локаль расширения и
+`"widget.clicks": "Нажатий: {count}"` в русскую. Компонент без props, например
+`export default () => <Button>Привет</Button>`, также работает.
+В `ctx` передаются `role` (`panel`/`widget`), `contribution` и те же API с проверкой
+разрешений, что возвращает `connect()`. Поддерживаются хуки и относительные
+импорты TSX-компонентов. Kit экспортирует `Button`, `Input`, `Check`, `Range`,
+`Label`, `Muted`, `Separator` и `Select`.
+
+React, React DOM и UI kit предоставляет установленный редактор внутри iframe;
+CDN и доступ к родительскому документу не требуются. Встроенные модули общие
+для скриптов страницы. Ошибки импорта и рендера видны в странице; при завершении
+страницы React root размонтируется. HTML-страницы сохраняют прежнее поведение
+скриптов: для ручного монтирования импортируйте `mountPage` из `@pixprite/ui-react`
+и вызовите `await mountPage(Component)` при наличии `#root`.
+
+Для локальной проверки типов нужен `jsx: "react-jsx"`; общий
+`extensions/tsconfig.json` уже задаёт его и alias `@pixprite/ui-react`.
+[Виджет шаблона](../../extensions/template/src/widget.tsx) — готовый пример.
+React UI предназначен для iframe панелей и виджетов; у фоновых Workers нет DOM.
 
 ## Манифест
 

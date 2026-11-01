@@ -6,5 +6,6 @@
   "layers.other": "{count} layers",
   "name": "Extension template",
   "noSprite": "No sprite is open",
-  "panel.info": "Sprite info"
+  "panel.info": "Sprite info",
+  "widget.clicks": "Clicks: {count}"
 }

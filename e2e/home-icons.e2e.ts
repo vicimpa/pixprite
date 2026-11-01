@@ -32,7 +32,9 @@ for (const language of ['en', 'ru']) for (const uiFont of ['system', 'pixelify',
       })).toEqual({ pageOverflows: false, bad: [] });
       // Include the storage section below the fold, where captions used to remain nowrap.
       await home.locator('section[aria-label]').scrollIntoViewIfNeeded();
-      await expect.poll(() => home.locator('section[aria-label] > span').evaluateAll(spans => spans.filter(s => s.scrollWidth > s.clientWidth + 1).map(s => s.textContent))).toEqual([]);
+      const hints = home.locator('section[aria-label] > span, section[aria-label] > px-muted > span');
+      expect(await hints.count()).toBeGreaterThan(0);
+      await expect.poll(() => hints.evaluateAll(spans => spans.filter(s => s.scrollWidth > s.clientWidth + 1).map(s => s.textContent))).toEqual([]);
     }
   });
 }
@@ -46,11 +48,11 @@ test('both built-ins work offline, switch live in Preferences and retain their d
   await expect(page.locator('[data-icon=home][data-icon-pack=outline]').first()).toBeVisible();
   await command(page, 'edit.prefs');
   const prefs = page.getByRole('dialog', { name: 'Preferences', exact: true });
-  const choice = prefs.getByTitle('Icon pack', { exact: true });
+  const choice = prefs.getByRole('button').and(prefs.getByTitle('Icon pack', { exact: true }));
   const preview = prefs.getByLabel('Icon preview');
   await expect(preview.locator('[data-icon-style=vector]')).toHaveCount(8);
   const dimensions = await preview.locator('svg').evaluateAll(icons => icons.map(i => [i.getBoundingClientRect().width, i.getBoundingClientRect().height]));
-  await choice.click(); await page.locator('[data-select-popup]').getByText('Pixel', { exact: true }).click();
+  await choice.click(); await page.locator('[data-select-popup]').getByRole('option', { name: 'Pixel', exact: true }).click();
   await expect(preview.locator('[data-icon-style=pixel]')).toHaveCount(8);
   expect(await preview.locator('svg').evaluateAll(icons => icons.map(i => [i.getBoundingClientRect().width, i.getBoundingClientRect().height]))).toEqual(dimensions);
   await prefs.getByRole('button', { name: 'Done', exact: true }).click();
@@ -72,8 +74,8 @@ test('Duotone extension switches live, survives reload and falls back to built-i
   await store.getByRole('button', { name: 'Close', exact: true }).click();
   await command(page, 'edit.prefs');
   const prefs = page.getByRole('dialog', { name: 'Preferences', exact: true });
-  await prefs.getByTitle('Icon pack', { exact: true }).click();
-  await page.locator('[data-select-popup]').getByText('Duotone', { exact: true }).click();
+  await prefs.getByRole('button').and(prefs.getByTitle('Icon pack', { exact: true })).click();
+  await page.locator('[data-select-popup]').getByRole('option', { name: 'Duotone', exact: true }).click();
   await expect(prefs.getByLabel('Icon preview').locator('[data-icon-pack="icons-duotone:duotone"]')).toHaveCount(8);
   await prefs.getByRole('button', { name: 'Done', exact: true }).click();
   const home = page.locator('[data-icon=home]').first();

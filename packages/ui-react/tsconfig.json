@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "tsBuildInfoFile": "../../node_modules/.tmp/ui-react.tsbuildinfo",
+    "paths": {
+      "@pixprite/ui/*": ["../ui/src/*"],
+      "@pixprite/api": ["../api/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

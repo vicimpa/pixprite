@@ -13,7 +13,7 @@ import { applyTheme, registerTheme, THEMES, themesVersion } from "~/core/Themes"
 import { registerIconPack } from '~/core/IconPacks';
 import { MAX_ICON_PACK_BYTES } from './iconPack';
 import { declarePanel } from "./panels";
-import { compile, LINKER, sourceOf } from "./compile";
+import { compile, compileReactPage, LINKER, sourceOf } from "./compile";
 import { pen, registerTool, type Session, type ToolGroup, type ToolPointer } from "~/core/Tools";
 import { hosts } from "./api/common";
 import { snapshot } from "./api/sprite";
@@ -101,14 +101,24 @@ const dataUrl = (b: Blob) => new Promise<string>((resolve, reject) => {
 export async function framePage(ext: InstalledExtension, page: string): Promise<{ srcdoc: string; }> {
   if (!safePath(page)) throw new Error(`Bad page path "${page}"`);
   const read = async (p: string) => (await readFile(ext, p))?.text() ?? null;
+  const componentPage = /\.(tsx|jsx)$/.test(page);
+  let componentSource = componentPage ? await sourceOf(read, page) : null;
+  if (componentPage && !componentSource) throw new Error(`${ext.id}: ${page} has no source`);
   let path = `src/${page}`;
-  let text = await read(path);
-  if (text === null) { path = page; text = await read(page); }
+  let text = componentPage ? null : await read(path);
+  if (text === null && !componentPage) { path = page; text = await read(page); }
   // No page of its own: a bare one running the script of the same name
   if (text === null) {
     path = `src/${page}`;
+    const script = componentSource ?? await sourceOf(read, path);
+    if (script && /\.(tsx|jsx)$/.test(script)) componentSource = script;
     text = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>`
-      + `<body><div id="root"></div><script type="module" src="./${page.split('/').pop()!.replace(/\.html$/, '.js')}"></script></body></html>`;
+      + `<body><div id="root"></div>${componentSource ? '' : `<script type="module" src="./${page.split('/').pop()!.replace(/\.html$/, '.js')}"></script>`}</body></html>`;
+  }
+  if (componentSource) {
+    const { modules } = await compileReactPage(read, componentSource);
+    const runtime = JSON.stringify(modules).replace(/<\/script/gi, '<\\/script');
+    text = text.replace('</body>', `<script>${LINKER}Promise.resolve(self.__pxUiReady).then(function(){return import(__pxLink(${runtime}))}).catch(function(e){console.error(e);var p=document.createElement('pre');p.setAttribute('role','alert');p.textContent=String(e);document.getElementById('root').replaceChildren(p)});</script></body>`);
   }
   const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/') + 1) : '';
   const resolve = (p: string) => {
@@ -130,7 +140,7 @@ export async function framePage(ext: InstalledExtension, page: string): Promise<
       if (!source) throw new Error(`${ext.id}: ${resolve(src)} has no source`);
       const { modules } = await compile(read, source);
       // Linked in the frame; a failure shows in its console (and reaches a dev server through the client once loaded)
-      return `<script>${LINKER}import(__pxLink(${JSON.stringify(modules).replace(/<\/script/gi, '<\\/script')})).catch(function(e){console.error(e)});</script>`;
+      return `<script>${LINKER}Promise.resolve(self.__pxUiReady).then(function(){return import(__pxLink(${JSON.stringify(modules).replace(/<\/script/gi, '<\\/script')}))}).catch(function(e){console.error(e)});</script>`;
     });
   }
   for (const m of text.matchAll(/<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi)) {

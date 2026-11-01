@@ -1,0 +1,14 @@
+{
+  "name": "@pixprite/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Web Components for the Pixprite editor and sandboxed extensions",
+  "exports": {
+    ".": "./src/index.ts",
+    "./elements": "./src/elements.ts",
+    "./react": "./src/react.tsx",
+    "./legacy": "./src/legacy.ts"
+  },
+  "license": "MIT"
+}

@@ -195,7 +195,7 @@ export class ExtensionHost {
 
   /**
    * Connects a panel / widget iframe the interface created (sandbox="allow-scripts").
-   * Sends `init` once it has loaded; returns the function that disconnects it.
+   * Initializes an already-loaded frame too: WebKit may load srcdoc before React's effect runs.
    */
   connectFrame(iframe: HTMLIFrameElement, role: 'panel' | 'widget', contribution: string) {
     this.assertActive();
@@ -216,6 +216,7 @@ export class ExtensionHost {
     window.addEventListener('message', onMessage);
     iframe.addEventListener('load', onLoad);
     this.frames.add(ep);
+    ep.post(this.init(role, contribution));
     const off = () => {
       window.removeEventListener('message', onMessage);
       iframe.removeEventListener('load', onLoad);

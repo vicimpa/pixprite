@@ -5,7 +5,9 @@
     "types": ["bun"],
     "paths": {
       "@pixprite/api": ["../packages/api/src/index.ts"],
-      "@pixprite/api/*": ["../packages/api/src/*"]
+      "@pixprite/api/*": ["../packages/api/src/*"],
+      "@pixprite/ui": ["../packages/ui/src/index.ts"],
+      "@pixprite/ui/*": ["../packages/ui/src/*"]
     }
   },
   "include": ["*.ts"]

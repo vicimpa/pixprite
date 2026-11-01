@@ -16,8 +16,8 @@ const Root = styled.section`
   flex-direction: column;
   min-width: 0;
   gap: 8px;
-  & > span { white-space: normal; overflow-wrap: anywhere; }
-  & > label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  & > span, & > px-muted > span { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+  & > label, & > px-label > label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; white-space: normal; }
 `;
 
 export const StoragePanel: FC<{ projects: ProjectMeta[] | null }> = ({ projects }) => {

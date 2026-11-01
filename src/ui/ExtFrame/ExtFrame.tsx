@@ -2,11 +2,11 @@
  * Sandboxed iframe for an extension panel or widget. The page runs with `allow-scripts` only
  * (opaque origin: no access to the editor, its storage or cookies); everything goes through
  * postMessage, which this component forwards to the host's RPC bridge.
- * Before the page's own markup it gets the theme as css variables, the shared kit (ext-ui.css)
+ * Before the page's own markup it gets theme variables, the shared Web Components runtime
  * and `lang` / `dir`; theme changes are pushed live by a tiny injected listener.
  */
 
-import controls from "./controls.js?raw";
+import { compileUiRuntime, LINKER } from "~/core/extensions/compile";
 import { currentDir, currentLanguage } from "~/core/i18n";
 import { state } from "~/core/State";
 import { extensionsHost, themeCss } from "~/modules/Extensions/bridge";
@@ -19,16 +19,16 @@ const THEME_EVENT = 'pixprite:theme';
 const escapeAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
 /** The page's html with the editor's head prepended */
-function compose(html: string, base: string | null) {
-  const kit = new URL('ext-ui.css', document.baseURI).href;
-  // Controls the browser draws its own way (select lists) get the editor's look
-  const kitJs = controls.replace(/<\/script/gi, '<\\/script');
+async function compose(html: string, base: string | null) {
+  const { modules } = await compileUiRuntime();
+  const runtime = JSON.stringify(modules).replace(/<\/script/gi, '<\\/script');
   const head = [
     '<meta charset="utf-8">',
     base ? `<base href="${escapeAttr(base)}">` : '',
     `<style id="pixprite-theme">${themeCss()}</style>`,
-    `<link rel="stylesheet" href="${escapeAttr(kit)}">`,
-    `<script>${kitJs}</script>`,
+    // Shared controls install their own scoped inline styles, permitted by CSP.
+    `<style>html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:var(--font-size,10px)/1.35 var(--font,system-ui,sans-serif)}body{padding:4px;overflow:auto}*{box-sizing:border-box}.px-dim{color:var(--fg-dim)}</style>`,
+    `<script>${LINKER}self.__pxUiReady=import(__pxLink(${runtime}));self.__pxUiReady.catch(function(e){console.error(e)});</script>`,
     // Applies live theme updates; ignores anything not from the parent
     `<script>addEventListener('message',function(e){if(e.source!==parent)return;var m=e.data;` +
     `if(m&&m.type==='event'&&m.event==='${THEME_EVENT}')document.getElementById('pixprite-theme').textContent=m.data.css;});</script>`,
@@ -67,12 +67,14 @@ export const ExtFrame: FC<ExtFrameProps> = ({ ext, role, contribution, page, sty
 
   useEffect(() => {
     if (!host) return;
+    setError(null);
     let alive = true;
     (async () => {
       const html = await host.readText(ext, page);
       // Relative urls in the page (scripts, images) resolve inside the extension when it is served over http
       const url = await host.fileUrl(ext, page).catch(() => null);
-      if (alive) setDoc(compose(html, url && /^https?:/.test(url) ? url : null));
+      const doc = await compose(html, url && /^https?:/.test(url) ? url : null);
+      if (alive) setDoc(doc);
     })().catch(e => alive && setError(String(e?.message ?? e)));
     return () => { alive = false; };
   }, [host, instance, ext, page]);

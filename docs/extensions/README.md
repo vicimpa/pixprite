@@ -9,6 +9,8 @@ checks it against the permissions in the manifest.
 
 - [Quick start](#quick-start)
 - [Layout and build](#layout-and-build)
+- [Shared UI components](#shared-ui-components)
+- [Shared UI components](#shared-ui-components)
 - [Manifest reference](#manifest-reference)
 - [Permissions](#permissions)
 - [API overview](#api-overview)
@@ -52,6 +54,7 @@ extensions/<id>/
   src/main.ts          → main.js      (manifest "entry": "main.js")
   src/panel.ts         → panel.js     (page "panel.html")
   src/panel.html       optional; otherwise a bare page loading panel.js is generated
+  src/widget.tsx       default React component (page "widget.tsx", no HTML needed)
   locales/en.json      own strings, required when the manifest uses %key%
   locales/ru.json …
   assets/              copied as is
@@ -59,8 +62,10 @@ extensions/<id>/
 
 There is no build step. An extension is kept as its sources, and the editor compiles them itself when it
 installs or runs one: every `.ts` file loses its types (sucrase), its imports are followed through the
-package, and `@pixprite/api` is the editor's own copy of the API. So imports are only relative files of the
-extension and `@pixprite/api`; no npm packages, no cycles.
+package, and `@pixprite/api` is the editor's own copy of the API. Panel scripts can also import the editor-supplied
+`@pixprite/ui`, `@pixprite/ui/elements`, `@pixprite/ui/legacy`, `@pixprite/ui-react`, `react`,
+`react/jsx-runtime`, `react-dom` and `react-dom/client`. Other imports are relative files of the
+extension; arbitrary npm packages and circular imports are not supported.
 
 | Script | What it does |
 |---|---|
@@ -74,6 +79,98 @@ lists every extension in it, and an installed one is reinstalled when its files 
 copies the sources and the catalog into the output. The catalog (`registry.json`) is made from the sources:
 texts resolved per language, a sha256 of every file (checked on install), and for language packs
 `completeness` (percent of core keys translated).
+
+## Shared UI components
+
+The editor and extension panels use the same Web Components from `@pixprite/ui`. The editor supplies
+its current implementation when a panel opens; extensions do not bundle a separate UI version.
+The components run inside the panel's existing sandbox and use its document, styles and event handlers.
+
+```js
+import '@pixprite/ui/elements';
+
+const field = document.createElement('px-select');
+field.setAttribute('name', 'movement');
+field.innerHTML = `<option value="topdown">Top-down</option>
+  <option value="platformer">Platformer</option>`;
+field.value = 'topdown';
+field.addEventListener('change', () => console.log(field.value));
+document.body.append(field);
+```
+
+`@pixprite/ui` and `@pixprite/ui/elements` register and export the same component classes. Registration
+is idempotent within each iframe. Imports in separate page scripts reuse the same built-in module instances.
+These entry points are for browser panel/widget scripts; the extension's background worker has no DOM.
+React pages use `@pixprite/ui-react`; the editor's internal `@pixprite/ui/react` entry is not a public sandbox import.
+
+Controls include `px-button`, `px-input`, `px-checkbox`, `px-range`, `px-select`, `px-color-input`,
+`px-menu`, `px-menu-bar`, `px-dialog`, `px-slider`, `px-splitter`, `px-resizer` and `px-form`. Layout elements include
+`px-label`, `px-muted`, `px-separator`, `px-flex`, `px-grid`, `px-panel`, `px-head`, `px-adaptive-bar`,
+`px-floating-panel`, `px-virtual-list`, `px-variables` and `px-tooltip`. Visual elements include `px-canvas`,
+`px-grid-pattern`, `px-icon`, `px-shader` and `px-gradient`.
+They inherit the editor's theme variables (`--fg`, `--bg`, `--face`, `--row`, etc.); theme changes reach open panels.
+
+Native controls stay in the light DOM so their names, labels, form submission and native input/change
+handlers continue to work. You can supply an existing native child, for example
+`<px-input><input type="number" min="0" max="100" value="25"></px-input>`.
+Use properties for programmatic updates (`field.value`, `field.disabled`); changing an existing native
+select directly requires its usual `change` event or the host's `refresh()` method.
+The select popup scrolls locally and closes on outside press or Escape without moving the panel.
+`px-form` accepts `schema`, `values`, `palette` and `inline` properties, and emits `valuechange` with
+the complete values object in `event.detail`. Resolve editor-specific layer/tag choices before passing the schema.
+
+Existing extension HTML is enhanced automatically: native buttons, text/number fields, checkboxes,
+ranges, color fields and single selects are adopted by the shared components. Dynamically inserted
+controls are included. Multiple/listbox selects, file fields and hidden inputs retain their native behavior.
+The original native element and its event listeners are retained as light-DOM children of a `px-*` wrapper.
+The adapter carries over ordinary layout declarations; new panels can use explicit `px-*` markup directly.
+The `@pixprite/ui/legacy` entry point
+also exports `enhanceLegacyControls(document)` for explicitly enhancing another document.
+
+## React pages (TSX)
+
+Set a panel or widget's `page` to `widget.tsx` (or `src/widget.tsx`) and default-export a
+component. The editor compiles JSX automatically, connects the page API, and mounts the
+component in `#root`. No HTML, React global, `createRoot` call or extension build step is needed.
+An absent `widget.html` with a matching `src/widget.tsx` also uses this mode.
+
+```json
+{
+  "permissions": ["ui:panel"],
+  "contributes": {
+    "widgets": [{ "id": "counter", "slot": "toolbar", "page": "widget.tsx" }]
+  }
+}
+```
+
+```tsx
+// src/widget.tsx
+import { useState } from 'react';
+import { Button, type ExtensionPageProps } from '@pixprite/ui-react';
+
+export default ({ ctx }: ExtensionPageProps) => {
+  const [count, setCount] = useState(0);
+  return <Button onClick={() => setCount(n => n + 1)}>
+    {ctx.i18n.t('widget.clicks', { count })}
+  </Button>;
+};
+```
+
+Add `"widget.clicks": "Clicks: {count}"` to the extension's English locale (and translations).
+A component with no props, such as `export default () => <Button>Hello</Button>`, works too.
+`ctx` includes `role` (`panel`/`widget`), `contribution`, and the same permission-checked APIs as
+`connect()`. React hooks and relative TSX component imports work normally. The kit exports
+`Button`, `Input`, `Check`, `Range`, `Label`, `Muted`, `Separator` and `Select`.
+
+Pixprite supplies React, React DOM and the kit at its installed versions inside the iframe;
+there is no CDN or access to the parent document. Built-in modules are shared across page scripts.
+Render/import errors appear in the page, and a page ending unmounts its React root.
+Existing HTML pages keep their script behavior; to mount React there explicitly, import
+`mountPage` from `@pixprite/ui-react` and call `await mountPage(Component)` with a `#root` present.
+
+Use `jsx: "react-jsx"` for local type checking; `extensions/tsconfig.json` already configures it
+and the `@pixprite/ui-react` path alias. The [template widget](../../extensions/template/src/widget.tsx)
+is a working example. React UI imports are intended for panel/widget iframes, not background Workers.
 
 ## Manifest reference
 

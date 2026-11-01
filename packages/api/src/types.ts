@@ -76,7 +76,7 @@ export type ToolContribution = {
 };
 export type PanelContribution = {
   id: string; label: LocalizedString; dock: 'left' | 'right' | 'bottom' | 'float';
-  /** Html page inside the extension */
+  /** HTML page or TSX default component inside the extension (e.g. widget.tsx or src/widget.tsx). */
   page: string;
   /** Not shown until the extension opens it (`ctx.ui.panels.show`) or the user does from the menu */
   hidden?: boolean;
@@ -89,7 +89,11 @@ export type PanelContribution = {
   /** The user may move it between its dock and a floating window; off unless the extension allows it */
   detachable?: boolean;
 };
-export type WidgetContribution = { id: string; slot: 'statusbar' | 'toolbar'; page: string; };
+export type WidgetContribution = {
+  id: string; slot: 'statusbar' | 'toolbar';
+  /** HTML page or TSX default component; the editor supplies its React root and connected ctx prop. */
+  page: string;
+};
 export type MenuContribution = {
   /** Context menu (`canvas`, `layer`, `frame`, `tag`, `palette`) or a main menu id */
   location: 'canvas' | 'layer' | 'frame' | 'tag' | 'palette' | (string & {});

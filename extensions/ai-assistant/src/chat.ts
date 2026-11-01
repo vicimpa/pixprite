@@ -222,7 +222,7 @@ function renderList() {
   if (!chats.length) list.append(Object.assign(document.createElement('div'), { className: 'empty', textContent: doc ? t('noChats') : t('noDocument') }));
 }
 
-function showList(show = drawer.hidden) {
+function showList(show = !!drawer.hidden) {
   drawer.hidden = !show;
   toggle.classList.toggle('on', show);
 }

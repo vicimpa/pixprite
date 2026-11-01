@@ -2,9 +2,13 @@
   "//": "Shared by the extensions: each folder's tsconfig.json extends it. The editor compiles them itself (types are only checked here).",
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
+    "jsx": "react-jsx",
     "paths": {
+      "@pixprite/ui": ["../packages/ui/src/index.ts"],
+      "@pixprite/ui/*": ["../packages/ui/src/*"],
       "@pixprite/api": ["../packages/api/src/index.ts"],
-      "@pixprite/api/*": ["../packages/api/src/*"]
+      "@pixprite/api/*": ["../packages/api/src/*"],
+      "@pixprite/ui-react": ["../packages/ui-react/src/index.ts"]
     }
   },
   "files": []

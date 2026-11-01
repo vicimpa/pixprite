@@ -1,6 +1,6 @@
 import { Color } from "~/core/Color";
 import { state } from "~/core/State";
-import { Input } from "~/ui/Button";
+import { Input, Range } from "~/ui/Button";
 import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useState, type FC } from "react";
 import styled from "styled-components";
@@ -28,12 +28,15 @@ const Name = styled.span`
   color: var(--fg-dim);
 `;
 
-const Track = styled.input.attrs({ type: 'range' })`
+const Track = styled(Range)`
   appearance: none;
   flex-grow: 1;
   height: 12px;
   border: 1px solid var(--b1);
   cursor: pointer;
+
+  &::-webkit-slider-runnable-track { height: 100%; background: transparent; border: none; box-shadow: none; }
+  &::-moz-range-track { height: 100%; background: transparent; border: none; }
 
   &::-webkit-slider-thumb {
     appearance: none;

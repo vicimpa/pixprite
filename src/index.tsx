@@ -6,7 +6,6 @@ import { installPlayback } from "~/core/Playback";
 import { state } from "~/core/State";
 import { themeReady } from "~/core/Themes";
 import { initProjectLibrary, startSession } from "~/core/Projects";
-import { installNumberFields } from "~/ui/numberFields";
 import { installTooltips } from "~/ui/tooltips";
 import { askChoice, askConfirm } from "~/ui/Dialog";
 import { installI18n, t } from "~/core/i18n";
@@ -51,7 +50,6 @@ void restored.then(async () => {
     state.showHome();
 });
 installHotkeys();
-installNumberFields();
 installTooltips();
 installPlayback();
 // Files opened with the installed app wait for the restored session, then open as tabs

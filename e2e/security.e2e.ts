@@ -95,12 +95,100 @@ test('@smoke security: path traversal, malformed manifests and hashes cannot ins
     expect(await api(page, 'badFile', path)).toBe(true);
     expect(await api(page, 'readPath', path)).toBe(false);
   }
-  for (const spec of ['../escape.js', './%2e%2e/escape.js', './..\\\\escape.js', 'https://evil.test/escape.js']) {
+  for (const spec of ['../escape.js', './%2e%2e/escape.js', './..\\\\escape.js', 'https://evil.test/escape.js', '@pixprite/ui/../api', '@pixprite/ui/react', '@pixprite/ui/select', '@pixprite/ui/%2e%2e/escape']) {
     const result = await api(page, 'compileFailure', `import '${spec}';`);
     expect(result.status).toBe('failed');
   }
   expect(escaped).toEqual([]);
   expect((await api(page, 'package', { id: 'integrity-probe', path: 'http://127.0.0.1:4173/__security__/package/valid/' })).error).toBeNull();
+});
+
+test('shared UI imports register once across sandbox page scripts and preserve native form events', async ({ page }) => {
+  await api(page, 'install', extension('return {};'), ['ui:panel']);
+  await api(page, 'ready');
+  await api(page, 'panel', 'panel.html', {
+    'panel.html': `<head></head><body><form id="form"><label for="choice">Mode</label><px-select id="choice" name="mode"><option value="a">Alpha</option><option value="b">Beta</option></px-select></form><output id="result"></output><script type="module" src="./first.js"></script><script type="module" src="./second.js"></script></body>`,
+    'first.js': `import { PxSelect } from '@pixprite/ui'; self.firstSelect = PxSelect; document.body.dataset.first = 'ready';`,
+    'second.js': `import { PxSelect } from '@pixprite/ui/elements';
+      const field=document.getElementById('choice');
+      document.body.dataset.shared=String(PxSelect===customElements.get('px-select'));
+      field.addEventListener('change',()=>document.getElementById('result').textContent=new FormData(document.getElementById('form')).get('mode'));
+      document.body.dataset.second='ready';`,
+  });
+  const frame = page.frameLocator('#probe-panel');
+  await expect(frame.locator('body')).toHaveAttribute('data-first', 'ready');
+  await expect(frame.locator('body')).toHaveAttribute('data-second', 'ready');
+  await expect(frame.locator('body')).toHaveAttribute('data-shared', 'true');
+  await expect(frame.locator('#choice > select')).toBeHidden();
+  expect(await frame.locator('body').evaluate(() => (self as any).firstSelect === customElements.get('px-select'))).toBe(true);
+  await frame.getByText('Mode', { exact: true }).click();
+  await expect(frame.getByRole('listbox')).toHaveCSS('position', 'fixed');
+  await frame.locator('[data-select-popup]').getByRole('option', { name: 'Beta', exact: true }).click();
+  await expect(frame.locator('output')).toHaveText('b');
+  expect(await page.locator('#probe-panel').getAttribute('sandbox')).toBe('allow-scripts');
+});
+
+for (const pagePath of ['widget.tsx', 'src/widget.tsx', 'widget.html']) test(`TSX default component mounts with shared React hooks, UI and permission-checked API (${pagePath})`, async ({ page }) => {
+  await api(page, 'install', extension('return {};'), ['ui:panel']);
+  await api(page, 'ready');
+  await api(page, 'panel', pagePath, {
+    'src/widget.tsx': `import { useEffect, useState } from 'react';
+      import { Button, Input, Select, type ExtensionPageProps } from '@pixprite/ui-react';
+      import { Badge } from './parts';
+      export default ({ctx}: ExtensionPageProps) => {
+        const [count,setCount]=useState(0), [mode,setMode]=useState('a'), [text,setText]=useState('draft'), [error,setError]=useState('');
+        useEffect(()=>{document.body.dataset.mounted='yes';return()=>{document.body.dataset.cleaned='yes'}},[]);
+        return <><Badge count={count}/><Button onClick={()=>setCount(n=>n+1)}>Increment</Button>
+          <Input aria-label="Draft" value={text} onChange={e=>setText(e.target.value)}/><output aria-label="Draft result">{text}</output>
+          <Select aria-label="Choice" value={mode} onChange={e=>setMode(e.target.value)}><option value="a">Alpha</option><option value="b">Beta</option></Select>
+          <output aria-label="Choice result">{mode}</output><span>{ctx.role}/{ctx.contribution}</span>
+          <Button onClick={()=>ctx.sprite.get().catch(e=>setError(e.code))}>Read denied</Button><output aria-label="API result">{error}</output></>;
+      };`,
+    'src/parts.tsx': `import {useState} from 'react'; export function Badge({count}:{count:number}) {const [suffix]=useState(' clicks'); return <output aria-label="Count">{count}{suffix}</output>}`,
+  }, 'widget', pagePath === 'src/widget.tsx');
+  const frame = page.frameLocator('#probe-panel');
+  await expect(frame.getByLabel('Count', { exact: true })).toHaveText('0 clicks');
+  await expect(frame.getByText('widget/probe', { exact: true })).toBeVisible();
+  await frame.getByRole('button', { name: 'Increment', exact: true }).click();
+  await expect(frame.getByLabel('Count', { exact: true })).toHaveText('1 clicks');
+  await frame.getByRole('textbox', { name: 'Draft', exact: true }).fill('kept');
+  await expect(frame.getByLabel('Draft result')).toHaveText('kept');
+  await frame.getByRole('button', { name: 'Choice', exact: true }).click();
+  await frame.getByRole('listbox').getByRole('option', { name: 'Beta', exact: true }).click();
+  await expect(frame.getByLabel('Choice result')).toHaveText('b');
+  await frame.getByRole('button', { name: 'Read denied', exact: true }).click();
+  await expect(frame.getByLabel('API result')).toHaveText('permission');
+  expect(await page.locator('#probe-panel').getAttribute('sandbox')).toBe('allow-scripts');
+  expect(await frame.locator('body').evaluate(() => {try {void parent.document;return 'allowed'}catch(e){return (e as Error).name}})).toBe('SecurityError');
+  await expect(frame.locator('body')).toHaveAttribute('data-mounted', 'yes');
+  await frame.locator('body').evaluate(() => dispatchEvent(new Event('pagehide')));
+  await expect(frame.locator('body')).toHaveAttribute('data-cleaned', 'yes');
+  await expect(frame.locator('#root')).toBeEmpty();
+});
+
+for (const mode of ['automatic', 'html']) test(`React page accepts a default component without props (${mode})`, async ({ page }) => {
+  await api(page, 'install', extension('return {};'), ['ui:panel']);
+  await api(page, 'ready');
+  await api(page, 'panel', mode === 'automatic' ? 'widget.tsx' : 'custom.html', {
+    'src/widget.tsx': `import {useState} from 'react';import {Button} from '@pixprite/ui-react';
+      export default () => {const [count,setCount]=useState(0);return <Button onClick={()=>{setCount(n=>n+1);document.body.dataset.shared=String(!self.preloadedHook||self.preloadedHook===useState)}}>Count: {count}</Button>};`,
+    'custom.html': '<div id="root"></div><script type="module" src="./preload.js"></script><script type="module" src="./custom.js"></script>',
+    'src/preload.ts': "import {useState} from 'react';self.preloadedHook=useState;document.body.dataset.preloaded='yes';",
+    'src/custom.ts': "import Page from './widget';import {mountPage} from '@pixprite/ui-react';await mountPage(Page);",
+  });
+  const frame = page.frameLocator('#probe-panel');
+  if (mode === 'html') await expect(frame.locator('body')).toHaveAttribute('data-preloaded', 'yes');
+  await frame.getByRole('button', { name: 'Count: 0', exact: true }).click();
+  await expect(frame.getByRole('button', { name: 'Count: 1', exact: true })).toBeVisible();
+  await expect(frame.locator('body')).toHaveAttribute('data-shared', 'true');
+});
+
+for (const phase of ['import', 'render']) test(`TSX ${phase} errors are visible inside the sandbox page`, async ({ page }) => {
+  await api(page, 'install', extension('return {};'), ['ui:panel']);
+  await api(page, 'ready');
+  const source = phase === 'import' ? 'throw new Error("Broken React page");export default () => null;' : 'export default () => {throw new Error("Broken React page")};';
+  await api(page, 'panel', 'broken.tsx', { 'src/broken.tsx': source });
+  await expect(page.frameLocator('#probe-panel').getByRole('alert')).toContainText('Broken React page');
 });
 
 test('@smoke security: hung activate times out and removes registrations, subscriptions and relay', async ({ page }) => {

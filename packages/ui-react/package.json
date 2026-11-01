@@ -1,0 +1,9 @@
+{
+  "name": "@pixprite/ui-react",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "React components and page types for sandboxed Pixprite extension pages",
+  "exports": { ".": "./src/index.ts" },
+  "license": "MIT"
+}

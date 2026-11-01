@@ -20,6 +20,14 @@ The suite performs real pointer drawing, command palette actions, file selection
 
 `e2e/responsive.e2e.ts` checks the tool options, timeline actions and status strip at 800, 1024 and 1280 px with large Russian and English UI. It detects clipped controls as well as scrollbars, verifies the extra-tools palette, and exercises draft/preset retention when controls move into More, nested dropdowns and Escape during a pending transform.
 
+`e2e/ui-elements.e2e.ts` checks the shared Web Components' labels, native FormData/reset/required behavior, numeric drafts, readonly/fieldset semantics and virtual-list keys. `e2e/composite-ui.e2e.ts` covers React/native dialog adoption, menu keyboard/ARIA behavior, declarative forms and drag/reconnect cleanup. `e2e/game-rig.e2e.ts` installs the actual extension and checks dropdowns and dock resizing; `e2e/visual-ui.e2e.ts` checks canvas cleanup and GPU/Canvas gradient color/alpha parity. These scenarios run in Chromium and WebKit using the same production bundle.
+
+`e2e/react-widget.e2e.ts` installs the template's real TSX widget, exercises React state
+and removes the extension. The TSX cases in `e2e/security.e2e.ts` cover default exports,
+manual HTML mounting, shared React instances across scripts, relative TSX imports,
+controlled inputs/selects, connected props, errors, cleanup, permission denial and
+connecting the bridge after an iframe has already loaded.
+
 Additional scenarios cover a renderer crash via Chromium CDP, session/snapshot restoration, offline reload, replacement of an active Service Worker, GIF export/reimport, extension installation/removal and permission denial, and storage failure/retry. Snapshot timing advances `Date` while leaving browser timers running normally. Quota tests inject an aborted IndexedDB write transaction with a `QuotaExceededError`; they do not fill the host disk. The Service Worker deployment fixture changes the worker revision while preserving application assets; mixed-version HTML/assets are a separate Service Worker test concern in the plan.
 
 The storage controls scenario checks persistence status/request, the quota warning, project/snapshot sizes, ZIP and individual backups, and confirmed cleanup retaining the latest snapshot. Persistence API results and quota estimates are injected because browser policies vary. Unit storage tests use `fake-indexeddb` to verify legacy size reads, retention, archive payloads, and backup reminder state.
@@ -40,8 +48,10 @@ Budgets in `scripts/bundle-budgets.json` are measured in bytes:
 
 | Metric | Baseline | Limit |
 | --- | ---: | ---: |
-| Initial JavaScript gzip | ~372,000 | 389,120 (380 KiB) |
-| Total JavaScript gzip | ~399,000 | 409,600 (400 KiB) |
+| Initial JavaScript gzip | ~499,000 | 512,000 (500 KiB) |
+| Total JavaScript gzip | ~529,000 | 544,768 (532 KiB) |
+
+The shared Web Components migration and React extension pages on 2026-11-01 raise these limits because the editor also ships the kit's minified module sources and an isolated React renderer for sandboxed panels/widgets. See the [UI migration measurements](ui-web-components.md#bundle-measurement) and [React page measurements](ui-web-components.md#react-extension-pages) for the before/after numbers and rationale.
 
 Missing build manifests/chunks and exceeded budgets fail the command. Unit tests exercise passing builds, oversized static imports, oversized workers, and missing files. To review a budget change, rebuild, inspect the measured growth and chunk split, then update the limits in the JSON file with the reason in the PR. The checker never updates limits automatically.
 
@@ -51,7 +61,7 @@ The v5 model scenario imports a shared-image fixture through the file picker, ch
 
 The large-document scenario observes the standard Worker boundary in the production build: raw typed pixel arrays go to the real worker; its result delivery is held while real keyboard, timeline and pointer input changes the document. It checks the captured session revision, the later edit, matching project metadata/data, dirty markers and reload. It does not set a timing budget; see [background work](background-work.md) for fallback and main-thread capture limits.
 
-The initial budget was raised on 2026-10-31 because all built-in UI/codecs now ship in one browser bundle; the total budget is unchanged. See [bundle loading](bundle-loading.md) for startup-animation, offline and file-handler regressions. Browser tests do not require Rust. See [desktop/MCP](desktop-mcp.md) for Tauri prerequisites and native checks.
+The preceding budget change on 2026-10-31 accounted for all built-in UI/codecs shipping in one browser bundle. See [bundle loading](bundle-loading.md) for startup-animation, offline and file-handler regressions. Browser tests do not require Rust. See [desktop/MCP](desktop-mcp.md) for Tauri prerequisites and native checks.
 
 The desktop workflow builds the Tauri executable/installers and runs `bun run test:native` plus `bun run test:desktop`. The native scenarios use the actual system WebView and standalone stdio MCP. They cover documents, files, sessions, menu removal, authentication and background release notifications. `scripts/check-desktop-package.ts` validates prepared content and the native executable/resources before release artifacts are uploaded.
 

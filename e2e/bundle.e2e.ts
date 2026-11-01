@@ -137,7 +137,7 @@ test('bundled WebM recorder downloads a valid container', async ({ page }) => {
   const dialog = page.getByRole('dialog', { name: 'Export', exact: true });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'PNG, current frame', exact: true }).click();
-  await page.getByText('WebM video', { exact: true }).click();
+  await page.locator('[data-select-popup]').getByRole('option', { name: 'WebM video', exact: true }).click();
   const pending = page.waitForEvent('download');
   await dialog.getByRole('button', { name: 'Export', exact: true }).click();
   const result = await pending;

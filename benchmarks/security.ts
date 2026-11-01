@@ -49,14 +49,16 @@ const api = {
     return JSON.stringify(state.sprite.toJSON());
   },
   releaseFile() { releaseFile?.(); },
-  async panel(page: string, files: Record<string, string> = {}) {
+  async panel(page: string, files: Record<string, string> = {}, role: 'panel' | 'widget' = 'panel', connectAfterLoad = false) {
     const host = current!;
     Object.assign(host.ext.files, Object.fromEntries(Object.entries(files).map(([k, v]) => [k, new Blob([v])])));
     const iframe = document.createElement('iframe');
     iframe.sandbox.add('allow-scripts');
-    host.connectFrame(iframe, 'panel', 'probe');
+    if (!connectAfterLoad) host.connectFrame(iframe, role, 'probe');
+    const loaded = new Promise<void>(resolve => iframe.addEventListener('load', () => resolve(), { once: true }));
     iframe.srcdoc = (await framePage(host.ext, page)).srcdoc;
     iframe.id = 'probe-panel'; document.body.appendChild(iframe);
+    if (connectAfterLoad) { await loaded; host.connectFrame(iframe, role, 'probe'); }
     return true;
   },
   async package(entry: RegistryEntry) {

@@ -17,6 +17,12 @@
       ],
       "@pixprite/api/*": [
         "../packages/api/src/*"
+      ],
+      "@pixprite/ui": [
+        "../packages/ui/src/index.ts"
+      ],
+      "@pixprite/ui/*": [
+        "../packages/ui/src/*"
       ]
     }
   },

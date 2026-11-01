@@ -46,7 +46,7 @@ export const extensionIds = (root = SRC) =>
 
 /** The source of a built name the manifest uses: `main.js` → `src/main.ts`, `panel.html` → `src/panel.ts` */
 export const sourceOf = (dir: string, file: string) => {
-  if (/\.(ts|tsx|js|mjs)$/.test(file) && !file.endsWith('.js') && existsSync(join(dir, file))) return join(dir, file);
+  if (/\.(ts|tsx|jsx|mjs)$/.test(file)) return [join(dir, 'src', file), join(dir, file)].find(existsSync);
   const base = file.replace(/\.(js|html)$/, '');
   return [join(dir, 'src', base), join(dir, base)].flatMap(b => ['.ts', '.tsx', '.js'].map(e => b + e)).find(existsSync);
 };

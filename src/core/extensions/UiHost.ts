@@ -78,7 +78,7 @@ const host: ExtensionsHost = {
   async readText(id, path) {
     const ext = byId(id);
     // Pages come with their scripts compiled from source and styles inlined
-    if (path.endsWith('.html')) return (await framePage(ext, path)).srcdoc;
+    if (/\.(html|tsx|jsx)$/.test(path)) return (await framePage(ext, path)).srcdoc;
     const blob = await registry.readFile(ext, path);
     if (!blob) throw new Error(`${path} is missing from ${id}`);
     return blob.text();
