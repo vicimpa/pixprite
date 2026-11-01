@@ -3,6 +3,7 @@
  * Writes go through `sprite.transaction('AI: …')`, so every AI action is one undo step.
  */
 import type { ExtensionContext, PixelData, Rect, SpriteSnapshot, Transaction } from "@pixprite/api";
+import { readSkill, SKILLS } from './skills';
 
 /** Largest area get_pixels / put_pixels accept in one call (keeps prompts small) */
 const MAX_AREA = 64 * 64;
@@ -12,9 +13,12 @@ export type ToolResult = { content: string; image?: Blob; };
 const hex = (r: number, g: number, b: number, a: number) =>
   a === 0 ? '' : '#' + [r, g, b, ...(a < 255 ? [a] : [])].map(v => v.toString(16).padStart(2, '0')).join('');
 
-function parseHex(s: string | null | undefined): [number, number, number, number] {
-  if (!s) return [0, 0, 0, 0];
-  const m = s.replace('#', '');
+function parseHex(s: unknown): [number, number, number, number] {
+  if (s === '') return [0, 0, 0, 0];
+  if (typeof s !== 'string' || !/^#(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(s)) {
+    throw new Error('Color must be #RGB, #RGBA, #RRGGBB, #RRGGBBAA, or "" for transparent');
+  }
+  const m = s.slice(1);
   const full = m.length <= 4 ? [...m].map(c => c + c).join('') : m;
   const n = (i: number, d = 255) => full.length > i ? parseInt(full.slice(i, i + 2), 16) : d;
   return [n(0, 0), n(2, 0), n(4, 0), n(6)];
@@ -22,11 +26,11 @@ function parseHex(s: string | null | undefined): [number, number, number, number
 
 /** The snapshot without per-frame cel lists of every layer, which the model rarely needs */
 const brief = (s: SpriteSnapshot) => ({
-  name: s.name, width: s.width, height: s.height, colorMode: s.colorMode, palette: s.palette,
+  id: s.id, name: s.name, width: s.width, height: s.height, colorMode: s.colorMode, palette: s.palette, transparentIndex: s.transparentIndex,
   layer: s.layer, frame: s.frame,
-  layers: s.layers.map((l, i) => ({ index: i, name: l.name, visible: l.visible, locked: l.locked, group: l.group, opacity: l.opacity, cels: l.cels.map(c => !!c) })),
+  layers: s.layers.map((l, i) => ({ index: i, name: l.name, visible: l.visible, locked: l.locked, group: l.group, reference: l.reference, opacity: l.opacity, cels: l.cels.map(c => !!c) })),
   frames: s.frames.map(f => f.duration),
-  tags: s.tags.map(x => ({ name: x.name, from: x.from, to: x.to, direction: x.direction })),
+  tags: s.tags.map(x => ({ name: x.name, from: x.from, to: x.to, direction: x.direction, repeat: x.repeat })),
   slices: s.slices.map(x => x.name),
 });
 
@@ -36,18 +40,20 @@ const obj = (properties: Record<string, unknown>, required: string[] = []) => ({
 
 /** OpenAI `tools` array */
 export const TOOL_SCHEMAS = [
+  { name: 'read_skill', description: 'Load a built-in task skill before inspecting or editing the sprite. The system message lists when each skill applies.', parameters: obj({ name: { type: 'string', enum: SKILLS.map(skill => skill.name) } }, ['name']) },
   { name: 'get_sprite', description: 'Describe the active sprite: size, layers (index, name), frames (durations ms), tags, slices.', parameters: obj({}) },
-  { name: 'render_png', description: 'Render a flattened frame as PNG; shown to the user. Returns its size.', parameters: obj({ frame: int, scale: int }, ['frame']) },
+  { name: 'get_selection', description: 'Inspect selection bounds and selected pixel count. Includes a 0/1 mask for selections up to 4096 pixels. Direct pixel writes ignore this mask; editor commands use it.', parameters: obj({}) },
+  { name: 'render_png', description: 'Show a flattened PNG to the user. Returns metadata only to the model, not image content. Use get_pixels to inspect colors.', parameters: obj({ frame: int, scale: int }, ['frame']) },
   {
     name: 'get_pixels', description: `Read pixels of a cel as rows of hex colors ("" = transparent). At most ${MAX_AREA} pixels per call.`,
     parameters: obj({ layer: int, frame: int, x: int, y: int, w: int, h: int }, ['layer', 'frame']),
   },
   {
-    name: 'put_pixels', description: 'Write pixels into a cel. `rows` is an array of h rows, each an array of w hex colors ("#rrggbb", "#rrggbbaa" or "" for transparent).',
+    name: 'put_pixels', description: 'Overwrite a cel rectangle, ignoring selection. At most 4096 pixels. rows must have equal width; every cell is a hex color or "" to ERASE, not skip.',
     parameters: obj({ layer: int, frame: int, x: int, y: int, rows: { type: 'array', items: { type: 'array', items: str } } }, ['layer', 'frame', 'x', 'y', 'rows']),
   },
   {
-    name: 'fill_rect', description: 'Fill a rectangle of a cel with one hex color ("" clears it).',
+    name: 'fill_rect', description: 'Overwrite a cel rectangle within canvas bounds with one hex color ("" erases it). Ignores selection; x/y/w/h must be integers.',
     parameters: obj({ layer: int, frame: int, x: int, y: int, w: int, h: int, color: str }, ['layer', 'frame', 'x', 'y', 'w', 'h', 'color']),
   },
   {
@@ -57,7 +63,7 @@ export const TOOL_SCHEMAS = [
   },
   {
     name: 'run_command',
-    description: 'Run an editor command by id; it acts on the active layer, frame and selection. Commands with `params` (effects, canvas and sprite size, color mode, layer and frame properties…) take `args` with those keys; omitted ones use their defaults. Ids with ":" belong to other extensions.',
+    description: 'Run an id discovered by list_commands on the ACTIVE layer/frame/selection. Inspect params first: omitted built-in args apply DEFAULTS immediately, without opening a dialog. Pass args with the exact discovered keys/types. Ids with ":" belong to other extensions.',
     parameters: obj({ id: str, args: { type: 'object', additionalProperties: true } }, ['id']),
   },
   {
@@ -95,9 +101,29 @@ export function makeTools(ctx: ExtensionContext, follow: () => boolean): Record<
   const reveal = (target: { layer?: number; frame?: number; rect?: Rect; }) =>
     follow() ? ctx.view.reveal({ ...target, highlight: !!target.rect }).catch(() => { }) : undefined;
   const tx = <T>(label: string, fn: (t: Transaction) => Promise<T>) => ctx.sprite.transaction(`AI: ${label}`, fn);
+  const checkRect = async (rect: Rect) => {
+    if (![rect.x, rect.y, rect.w, rect.h].every(Number.isSafeInteger) || rect.x < 0 || rect.y < 0 || rect.w < 1 || rect.h < 1) {
+      throw new Error('Rectangle needs integer x/y >= 0 and positive integer w/h');
+    }
+    const sprite = await ctx.sprite.get();
+    if (rect.x + rect.w > sprite.width || rect.y + rect.h > sprite.height) throw new Error(`Rectangle is outside the ${sprite.width}×${sprite.height} canvas`);
+  };
 
   return {
+    async read_skill(a) { return json(readSkill(a.name)); },
     async get_sprite() { return json(brief(await ctx.sprite.get())); },
+
+    async get_selection() {
+      const { bounds, mask } = await ctx.sprite.selection.get();
+      if (!bounds) return json({ bounds: null, selectedPixels: 0, rectangular: false, maskRows: null });
+      const area = bounds.w * bounds.h;
+      let selectedPixels = 0;
+      if (mask) { for (const pixel of mask) if (pixel) selectedPixels++; }
+      else selectedPixels = area;
+      const maskRows = area <= MAX_AREA ? Array.from({ length: bounds.h }, (_, y) =>
+        Array.from({ length: bounds.w }, (_, x) => !mask || mask[y * bounds.w + x] ? 1 : 0)) : null;
+      return json({ bounds, selectedPixels, rectangular: selectedPixels === area, maskRows });
+    },
 
     async render_png(a) {
       const scale = Math.min(8, Math.max(1, a.scale ?? 1));
@@ -123,12 +149,14 @@ export function makeTools(ctx: ExtensionContext, follow: () => boolean): Record<
     },
 
     async put_pixels(a) {
-      const rows = a.rows as string[][];
-      const h = rows.length, w = Math.max(0, ...rows.map(r => r.length));
-      if (!w || !h) return json({ error: 'empty rows' });
+      const rows = a.rows as unknown;
+      if (!Array.isArray(rows) || !rows.length || !Array.isArray(rows[0]) || !rows[0].length) throw new Error('rows must be a non-empty rectangular array of colors');
+      const h = rows.length, w = rows[0].length;
+      if (!rows.every(row => Array.isArray(row) && row.length === w)) throw new Error('All rows must have the same width; empty strings erase pixels rather than skip them');
       if (w * h > MAX_AREA) return json({ error: `area too large, max ${MAX_AREA} pixels` });
+      await checkRect({ x: a.x, y: a.y, w, h });
       const data = new Uint8ClampedArray(w * h * 4);
-      rows.forEach((r, y) => r.forEach((c, x) => data.set(parseHex(c), (y * w + x) * 4)));
+      (rows as unknown[][]).forEach((r, y) => r.forEach((c, x) => data.set(parseHex(c), (y * w + x) * 4)));
       const pixels: PixelData = { rect: { x: a.x, y: a.y, w, h }, format: 'rgba', data };
       await tx(`pixels ${w}×${h}`, t => t.putPixels(a.layer, a.frame, pixels));
       await reveal({ layer: a.layer, frame: a.frame, rect: pixels.rect });
@@ -136,10 +164,10 @@ export function makeTools(ctx: ExtensionContext, follow: () => boolean): Record<
     },
 
     async fill_rect(a) {
-      const rect = { x: a.x, y: a.y, w: Math.max(0, a.w), h: Math.max(0, a.h) };
-      if (!rect.w || !rect.h) return json({ error: 'empty rect' });
-      const data = new Uint8ClampedArray(rect.w * rect.h * 4);
+      const rect = { x: a.x, y: a.y, w: a.w, h: a.h };
+      await checkRect(rect);
       const c = parseHex(a.color);
+      const data = new Uint8ClampedArray(rect.w * rect.h * 4);
       for (let i = 0; i < data.length; i += 4) data.set(c, i);
       await tx(`fill ${rect.w}×${rect.h}`, t => t.putPixels(a.layer, a.frame, { rect, format: 'rgba', data }));
       await reveal({ layer: a.layer, frame: a.frame, rect });

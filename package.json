@@ -1,6 +1,6 @@
 {
   "name": "pixprite",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Pixel art and animation editor for the web and desktop",
   "license": "MIT",
   "author": "vicimpa",
@@ -39,7 +39,7 @@
     "desktop:dev": "bun run build && bun run desktop:compile && bun scripts/run-desktop.ts",
     "desktop:pack": "bun run build && bun scripts/build-desktop.ts --no-bundle",
     "desktop:build": "bun run build && bun scripts/build-desktop.ts",
-    "mcp": "node dist/desktop/mcp.mjs",
+    "mcp": "bun scripts/run-desktop.ts --mcp",
     "docs:screenshot": "bun scripts/docs-screenshot.ts",
     "desktop:prepare": "bun scripts/build-desktop.ts --prepare",
     "desktop:check": "bun scripts/check-tauri-versions.ts",
@@ -68,7 +68,6 @@
     "twgl.js": "^7.0.0"
   },
   "devDependencies": {
-    "@modelcontextprotocol/server": "^2.4.0",
     "@playwright/test": "^1.64.1",
     "@tauri-apps/api": "~2.12.4",
     "@tauri-apps/cli": "^2.12.4",

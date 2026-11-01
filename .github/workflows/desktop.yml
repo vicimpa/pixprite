@@ -105,8 +105,6 @@ jobs:
             dist/installers/Pixprite-*.msi
             dist/installers/Pixprite-*.AppImage
             dist/installers/Pixprite-*.deb
-            dist/desktop/mcp.mjs
-            dist/desktop/mcp-builtin.mjs
           if-no-files-found: error
           retention-days: 14
 
@@ -126,8 +124,6 @@ jobs:
         run: |
           mkdir release-assets
           find artifacts -type f \( -name 'Pixprite-*.dmg' -o -name 'Pixprite-*.exe' -o -name 'Pixprite-*.msi' -o -name 'Pixprite-*.AppImage' -o -name 'Pixprite-*.deb' \) -exec cp -t release-assets -- {} +
-          cp artifacts/pixprite-Linux-x64/desktop/mcp.mjs release-assets/pixprite-mcp.mjs
-          cp artifacts/pixprite-Linux-x64/desktop/mcp-builtin.mjs release-assets/mcp-builtin.mjs
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2

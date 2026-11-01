@@ -22,7 +22,7 @@
 
 [Open the example project](docs/assets/beacon.pixprite) · [Recreate this screenshot](docs/development.md#documentation-images)
 
-> **Early development.** The latest release is [0.0.4](https://github.com/vicimpa/pixprite/releases/tag/v0.0.4). See the [release notes](docs/releases/v0.0.4.md) and [version history](docs/releases/README.md).
+> **Early development.** The latest release is [0.0.5](https://github.com/vicimpa/pixprite/releases/tag/v0.0.5). See the [release notes](docs/releases/v0.0.5.md) and [version history](docs/releases/README.md).
 
 ## Make something pixel by pixel
 
@@ -47,7 +47,7 @@ macOS releases include separate `.dmg` installers for **Apple Silicon (arm64)** 
 
 ## Run locally
 
-Use [Bun](https://bun.sh) **1.4.2**. Desktop builds require **Rust** and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/); the external MCP launcher uses **Node.js 24+**.
+Use [Bun](https://bun.sh) **1.4.2**. Desktop builds require **Rust** and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). MCP runs in a native Rust process and needs no Node.js or Bun at runtime.
 
 ```sh
 bun install --frozen-lockfile

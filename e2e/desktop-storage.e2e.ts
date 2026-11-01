@@ -11,6 +11,37 @@ const document = (name: string, color: number[]) => ({
   layers: [{ name: 'Layer', cels: [{ x: 0, y: 0, image: { kind: 'image', id: 'image' } }] }],
 });
 
+test('MCP browses closed library projects and opens them by stable project ID', async () => {
+  const f = await nativeFixture();
+  const saved = document('Bomber', [255, 128, 0, 255]);
+  const meta = { id: 'bomber', name: saved.name, created: 1, updated: 1, width: 1, height: 1, frames: 1, layers: 1, colorMode: 'rgb', thumb: '', folderId: 'nested' };
+  const store = (name: string, keys: string[], values: unknown[]) => ({ name, keyPath: name === 'data' ? null : 'id', keys, values, indexes: [], autoIncrement: false });
+  const dump: Migration = {
+    format: 'pixprite-browser-storage', version: 1, id: 'mcp-library', localStorage: {},
+    databases: [{ name: 'pixprite', version: 7, stores: [
+      store('meta', [meta.id], [meta]), store('data', [meta.id], [saved]),
+      store('folders', ['root', 'nested'], [
+        { id: 'root', name: 'OpenBomber', parentId: null, created: 1, updated: 1 },
+        { id: 'nested', name: 'Characters', parentId: 'root', created: 1, updated: 1 },
+      ]),
+    ] }],
+  };
+  try {
+    await mkdir(f.profile, { recursive: true });
+    await writeFile(join(f.profile, 'electron-migration.json'), JSON.stringify(dump));
+    await f.launch();
+    expect((await f.call('documents')).documents).toEqual([]);
+    expect(await f.call('library', { filter: 'openbomber' })).toMatchObject({ folders: [{ id: 'root' }], projects: [] });
+    expect(await f.call('library', { folderId: 'root' })).toMatchObject({ folders: [{ id: 'nested' }], projects: [] });
+    expect(await f.call('library', { folderId: 'nested' })).toMatchObject({ folders: [], projects: [{ id: meta.id }] });
+    expect((await f.call('documents')).documents).toEqual([]);
+    expect(await f.call('open_project', { id: meta.id })).toMatchObject({ name: saved.name, width: 1, height: 1 });
+    await f.call('open_project', { id: meta.id });
+    expect((await f.call('documents')).documents).toHaveLength(1);
+    expect([...Buffer.from((await f.call('pixels', { action: 'read' })).data, 'base64')]).toEqual([255, 128, 0, 255]);
+  } finally { await f.dispose(); }
+});
+
 for (const version of [7, 8]) test(`migrates IndexedDB v${version} into portable files and keeps working copies separate`, async () => {
   const f = await nativeFixture();
   const saved = document('Saved sprite', [255, 0, 0, 255]);
@@ -39,6 +70,20 @@ for (const version of [7, 8]) test(`migrates IndexedDB v${version} into portable
     await mkdir(f.profile, { recursive: true });
     await writeFile(join(f.profile, 'electron-migration.json'), JSON.stringify(dump));
     await f.launch();
+    expect((await f.call('inspect')).name).toBe(working.name);
+    const library = await f.call('library');
+    expect(library.folders).toMatchObject([{ id: 'folder', name: 'Sprites' }]);
+    expect(library.projects).toHaveLength(1);
+    expect(library.projects[0]).toMatchObject({ id: meta.id, name: saved.name, folderId: 'folder' });
+    expect(library.projects[0]).not.toHaveProperty('thumb');
+    expect(await f.call('library', { folderId: null })).toMatchObject({ projects: [], folders: [{ id: 'folder' }] });
+    expect(await f.call('library', { folderId: 'folder', filter: 'SAVED' })).toMatchObject({ folders: [], projects: [{ id: meta.id }] });
+    expect(await f.call('library', { filter: 'no match' })).toEqual({ folders: [], projects: [] });
+    await expect(f.call('library', { folderId: 'missing' })).rejects.toThrow('Library folder ID does not exist');
+    // Opening an existing project keeps its unsaved working copy instead of reloading saved pixels.
+    await f.call('open_project', { id: meta.id });
+    await f.call('open_project', { id: meta.id });
+    expect((await f.call('documents')).documents).toHaveLength(1);
     expect((await f.call('inspect')).name).toBe(working.name);
     expect([...Buffer.from((await f.call('pixels', { action: 'read', rect: { x: 0, y: 0, w: 1, h: 1 } })).data, 'base64')]).toEqual([0, 255, 0, 255]);
     const files = await readdir(join(root, 'Projects'));

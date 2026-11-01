@@ -66,7 +66,7 @@ const MENUS: { label: string; items: () => MenuItems; }[] = [
       sub(t('common.colors'), [item('edit.replaceColor'), item('edit.adjust'), item('fx.curves'), item('fx.negative'), item('fx.posterize'), item('fx.brightness'), item('edit.invert', t('menu.negativeInstant')), item('edit.grayscale')]),
       sub(t('menu.effects'), [item('fx.outline'), item('fx.shadow'), '-', item('fx.convolution'), item('fx.median'), item('fx.noise'), item('fx.pixelate'), '-', item('fx.offset')]),
       '-', item('edit.brushFromSelection'), item('edit.discardBrush'),
-      '-', item('edit.prefs'),
+      '-', item('edit.prefs'), item('edit.mcp'),
     ]
   },
   {
@@ -177,7 +177,7 @@ const Logo = styled.span`
 
 /** On the home page only what works without an open document */
 const HOME_MENUS: { label: string; items: () => MenuItems; }[] = [
-  { label: 'menu.file', items: () => [item('file.new'), item('file.open', t('menu.openProjectAsepriteImage')), item('file.importSheet'), '-', item('edit.prefs')] },
+  { label: 'menu.file', items: () => [item('file.new'), item('file.open', t('menu.openProjectAsepriteImage')), item('file.importSheet'), '-', item('edit.prefs'), item('edit.mcp')] },
   {
     label: 'menu.window', items: () => [
       sub(t('common.theme'), Object.keys(THEMES).map(id => item(`window.theme.${id}`))),

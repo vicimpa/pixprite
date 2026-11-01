@@ -41,7 +41,7 @@ state.confirmClose = async doc => {
 
 // Noticed before anything is written: the last visit may have ended in a crash
 state.uncleanExit = startSession();
-const restored = initProjectLibrary().then(() => state.restore());
+const restored = state.restore(initProjectLibrary);
 installDesktop(Promise.all([restored, textsReady]));
 void restored.then(async () => {
   await textsReady;

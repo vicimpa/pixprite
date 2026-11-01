@@ -679,6 +679,7 @@ export class State {
   private saveTimer = 0;
   private persistQueue: Promise<void> | null = null;
   private persistRequested = false;
+  private restoring = false;
   private autosaveReadyAt = 0;
   private preparations = new Map<Sprite, { version: number; controller: AbortController }>();
   private incremental = new WeakMap<Sprite, IncrementalDocument>();
@@ -739,6 +740,8 @@ export class State {
    */
   persist(): Promise<void> {
     this.persistRequested = true;
+    // A second window can become hidden before its native library/session has loaded.
+    if (this.restoring) return Promise.resolve();
     this.cancelObsoletePreparations();
     if (!this.persistQueue) {
       this.persistQueue = (async () => {
@@ -1108,8 +1111,10 @@ export class State {
   }
 
   /** Reopens the tabs of the last session; older localStorage saves move into project storage */
-  async restore() {
+  async restore(prepare?: () => Promise<unknown>) {
+    this.restoring = true;
     try {
+      await prepare?.();
       const palette = localStorage.getItem('pixprite:palette');
       if (palette) { try { this.palette = JSON.parse(palette); } catch { /* ignore damaged preferences */ } }
       // Tools and view as they were last used (a project's own settings apply on top when it opens)
@@ -1193,6 +1198,7 @@ export class State {
       const active = this.docs.find(d => d.sessionId === session.active || d.projectId === session.active);
       if (active) this.switchTo(active);
       else this.home = true;
+      this.restoring = false;
       await this.persist();
       if (recovery.length) {
         const stored = load(windowSessionKey(), { tabs: [] as string[] });
@@ -1203,7 +1209,7 @@ export class State {
       }
     } catch (e) {
       console.warn('Failed to restore projects', e);
-    }
+    } finally { this.restoring = false; }
   }
 }
 

@@ -22,7 +22,7 @@
 
 [Скачать пример проекта](docs/assets/beacon.pixprite) · [Обновить скриншот](docs/development.md#documentation-images)
 
-> **Ранняя разработка.** Последний выпуск — [0.0.4](https://github.com/vicimpa/pixprite/releases/tag/v0.0.4). Изменения описаны в [заметках к выпуску](docs/releases/v0.0.4.md), предыдущие версии — в [истории выпусков](docs/releases/README.md).
+> **Ранняя разработка.** Последний выпуск — [0.0.5](https://github.com/vicimpa/pixprite/releases/tag/v0.0.5). Изменения описаны в [заметках к выпуску](docs/releases/v0.0.5.md), предыдущие версии — в [истории выпусков](docs/releases/README.md).
 
 ## Возможности
 
@@ -47,7 +47,7 @@
 
 ## Локальный запуск
 
-Нужен [Bun](https://bun.sh) **1.4.2**, для настольной версии — также **Node.js 24+**.
+Для сборки нужен [Bun](https://bun.sh) **1.4.2**, для настольной версии — также **Rust** и системные зависимости Tauri. MCP работает в нативном Rust-процессе и не требует Node.js или Bun при использовании приложения.
 
 ```sh
 bun install --frozen-lockfile

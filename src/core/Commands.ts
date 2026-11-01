@@ -226,6 +226,7 @@ const list: Command[] = [
   { id: 'fx.offset', group: 'menu.edit', run: () => dialogs.offset() },
   { id: 'file.savePalette', group: 'menu.file', run: () => savePalette('gpl') },
   { id: 'edit.prefs', group: 'menu.edit', keys: ['Ctrl+,'], run: () => dialogs.preferences() },
+  { id: 'edit.mcp', group: 'menu.edit', home: true, run: () => dialogs.mcp() },
 
   { id: 'image.properties', group: 'menu.image', run: () => dialogs.spriteProperties() },
   { id: 'image.colorMode', group: 'menu.image', run: () => dialogs.colorMode() },

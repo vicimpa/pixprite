@@ -1,6 +1,7 @@
 import { installTextShortcuts } from './text-shortcuts';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { importStorage, type Migration } from './migration';
 import type { DesktopBridge, AutomationRequest, DesktopFile, WindowState } from './protocol';
 import type { UpdateState } from './update-types';
@@ -8,6 +9,7 @@ import type { UpdateState } from './update-types';
 installTextShortcuts('__PIXPRITE_SHORTCUT_TOKEN__', action => invoke('desktop_text_action', { action }));
 const encode = (bytes: Uint8Array) => { let value = ''; for (let i = 0; i < bytes.length; i += 8192) value += String.fromCharCode(...bytes.subarray(i, i + 8192)); return btoa(value); };
 if (window.top === window.self) {
+  const target = { kind: 'WebviewWindow' as const, label: getCurrentWindow().label };
   // WebView console output is not inherited by the native process on every platform.
   const reportError = (error: unknown) => {
     const message = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error);
@@ -22,8 +24,9 @@ if (window.top === window.self) {
     library(request) { return invoke('desktop_library', request); },
     async saveDownload(name, blob) { await invoke('desktop_save_download', { name, data: encode(new Uint8Array(await blob.arrayBuffer())) }); },
     copyImage(bitmap) { return invoke('desktop_copy_image', { bitmap: { ...bitmap, data: encode(new Uint8Array(bitmap.data.buffer, bitmap.data.byteOffset, bitmap.data.byteLength)) } }); },
+    copyText(text) { return invoke('desktop_copy_text', { text }); },
     async pasteImage() { const image = await invoke<{ w: number; h: number; data: string } | null>('desktop_paste_image'); return image && { ...image, data: new Uint32Array(Uint8Array.from(atob(image.data), c => c.charCodeAt(0)).buffer) }; },
-    runtime: 'tauri', windowId: 'main', platform: '', recoveryWindows: [],
+    runtime: 'tauri', windowId: target.label, platform: '', recoveryWindows: [],
     recoveredWindows(ids) { void invoke('desktop_recovered', { ids }); },
     reportSession(session) { return invoke('desktop_session', { session }); },
     readSessions() { return invoke('desktop_sessions'); },
@@ -35,6 +38,7 @@ if (window.top === window.self) {
     onUpdate(handler) { updates.add(handler); return () => { updates.delete(handler); }; },
     update(action) { return invoke('desktop_update', { action }); },
     setLanguage(language) { void invoke('desktop_language', { language }); },
+    mcp(enabled, port) { return invoke('desktop_mcp', { enabled, port }); },
     startup: Promise.resolve(),
   };
   window.pixpriteDesktop = bridge;
@@ -43,9 +47,9 @@ if (window.top === window.self) {
       listen<{ id: string; request: AutomationRequest }>('pixprite-request', async ({ payload: { id, request } }) => {
         try { if (!onRequest) throw new Error('Editor is still starting'); await invoke('desktop_reply', { id, result: await onRequest(request) }); }
         catch (error) { await invoke('desktop_reply', { id, error: error instanceof Error ? error.message : String(error) }); }
-      }),
-      listen<DesktopFile[]>('pixprite-files', ({ payload }) => { void onFiles?.(payload).catch(console.error); }),
-      listen<WindowState>('pixprite-window', ({ payload }) => states.forEach(handler => handler(payload))),
+      }, { target }),
+      listen<DesktopFile[]>('pixprite-files', ({ payload }) => { void onFiles?.(payload).catch(console.error); }, { target }),
+      listen<WindowState>('pixprite-window', ({ payload }) => states.forEach(handler => handler(payload)), { target }),
       listen<UpdateState>('pixprite-update', ({ payload }) => updates.forEach(handler => handler(payload))),
       listen<string>('pixprite-notice', ({ payload }) => window.dispatchEvent(new CustomEvent('pixprite:notice', { detail: payload }))),
     ]);

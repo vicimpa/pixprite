@@ -233,14 +233,6 @@ async function imageBuffer(file: Blob) {
   return { w: img.width, h: img.height, data: new Uint32Array(ctx.getImageData(0, 0, img.width, img.height).data.buffer) };
 }
 
-/** A smaller frame of an image sequence, placed at the top-left of the shared size */
-function resize(img: { w: number; h: number; data: Uint32Array; }, w: number, h: number) {
-  const out = new Uint32Array(w * h);
-  for (let y = 0; y < Math.min(h, img.h); y++)
-    out.set(img.data.subarray(y * img.w, y * img.w + Math.min(w, img.w)), y * w);
-  return out;
-}
-
 export const PALETTE_EXTS = ['gpl', 'pal', 'hex', 'act'];
 
 /** Reads a document file (project, .aseprite, GIF, image) into a new, detached sprite */
@@ -288,7 +280,7 @@ export async function addDocuments(docs: Sprite[], failed: string[] = [], destin
   if (failed.length) state.showTip(`${t('msg.couldNotOpen')}: ${failed.join(', ')}`, 4000);
 }
 
-/** Opens files. Several plain images together become one animation (an image sequence) */
+/** Opens each file as its own document. Use frame import for an image sequence. */
 export async function loadFiles(files: File[], assertActive = () => {}, destination: 'auto' | 'tabs' = 'auto') {
   if (!files.length) return;
   const failed: string[] = [];
@@ -310,20 +302,6 @@ export async function loadFiles(files: File[], assertActive = () => {}, destinat
   for (const f of rest) if (await isSheetData(f)) sheetData.push(f);
   if (sheetData.length) state.showTip(t('msg.spriteSheetDescriptionsOpen'), 4000);
   rest = rest.filter(f => !sheetData.includes(f));
-
-  const stills = rest.filter(isStill);
-  if (stills.length > 1) {
-    // Several still images at once: an image sequence, sorted by their numbers
-    try {
-      const sorted = stills.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-      const images = await Promise.all(sorted.map(imageBuffer));
-      const w = Math.max(...images.map(i => i.w)), h = Math.max(...images.map(i => i.h));
-      const doc = new Sprite(32, 32);
-      doc.loadFrames(w, h, images.map(i => ({ data: i.w === w && i.h === h ? i.data : resize(i, w, h), delay: 100 })), stripExt(sorted[0].name).replace(/\d+$/, '') || 'sequence');
-      docs.push(doc);
-    } catch { failed.push(...stills.map(f => f.name)); }
-    rest = rest.filter(f => !stills.includes(f));
-  }
 
   for (const file of rest) {
     try { docs.push(await readDocument(file)); }

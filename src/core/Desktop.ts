@@ -12,6 +12,7 @@ import type { Call } from './extensions/api/common';
 import type { Method } from './extensions/protocol';
 import { hasDialogs } from '~/ui/Dialog';
 import { windowSessionKey, windowRunningKey } from './WindowSession';
+import { getProjectMeta, listFolders, listProjects } from './Projects';
 
 function bytes(data: unknown) {
   if (typeof data !== 'string' || data.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) throw new Error('Expected base64 data');
@@ -71,6 +72,18 @@ export function installDesktop(ready: Promise<unknown>) {
     }
     if (method === 'performance') return samplePerformance(p.durationMs === undefined ? undefined : integer(p.durationMs, 'durationMs', 100, 5000));
     if (method === 'documents') return { documents: state.docs.map(docInfo), active: state.home ? null : docId(state.sprite) };
+    if (method === 'library') {
+      if (p.folderId !== undefined && p.folderId !== null && typeof p.folderId !== 'string') throw new Error('folderId must be a string or null');
+      if (p.filter !== undefined && typeof p.filter !== 'string') throw new Error('filter must be a string');
+      const [folders, projects] = await Promise.all([listFolders(), listProjects()]);
+      if (typeof p.folderId === 'string' && !folders.some(folder => folder.id === p.folderId)) throw new Error('Library folder ID does not exist');
+      const filter = String(p.filter ?? '').toLowerCase();
+      return {
+        folders: folders.filter(folder => (p.folderId === undefined || folder.parentId === p.folderId) && folder.name.toLowerCase().includes(filter)),
+        projects: projects.filter(project => (p.folderId === undefined || (project.folderId ?? null) === p.folderId) && project.name.toLowerCase().includes(filter))
+          .map(({ thumb: _, ...meta }) => meta),
+      };
+    }
     if (method === 'inspect') return snapshot(active());
     if (method === 'preview') return { image: base64(await (await png(p.frame, p.scale)).arrayBuffer()) };
     if (method === 'commands') {
@@ -80,6 +93,13 @@ export function installDesktop(ready: Promise<unknown>) {
     }
     if (hasDialogs()) throw new Error('Close the open dialog before editing through MCP');
     if (state.playing) throw new Error('Stop playback before editing through MCP');
+    if (method === 'open_project') {
+      if (typeof p.id !== 'string' || !p.id) throw new Error('Project ID is required');
+      if (!await getProjectMeta(p.id)) throw new Error('Library project ID does not exist');
+      await state.openProject(p.id);
+      if (state.home || state.sprite.projectId !== p.id) throw new Error('Could not open library project');
+      return snapshot(active());
+    }
     if (method === 'create') {
       handler('documents.create', [{ ...p, width: integer(p.width, 'width', 1, 4096), height: integer(p.height, 'height', 1, 4096) }]);
       state.save(); return snapshot(active());

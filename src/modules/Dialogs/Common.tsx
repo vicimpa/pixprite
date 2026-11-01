@@ -22,6 +22,7 @@ import type { Rect } from "~/core/Image";
 import { InfoFields } from "~/modules/ProjectInfo";
 
 import { loadDialogPrefs, saveDialogPrefs, num, Field, NumberField } from "./fields";
+import { openMcp } from './Mcp';
 
 const ColorInput: FC<{ value: string; onChange: (v: string) => void; }> = ({ value, onChange }) => (
   <ColorField value={value.slice(0, 7)} onChange={onChange} />
@@ -713,6 +714,7 @@ const Preferences: FC<{ close: () => void; section?: string; }> = ({ close }) =>
   return (
     <Dialog title={t('dialog.preferences.title')} onClose={close} cancelLabel={null} submitLabel={t('dialog.preferences.done')} width={460} onSubmit={() => { }}
       extraButtons={<>
+        <Button type="button" onClick={openMcp}>{t('dialog.mcp.title')}</Button>
         <Button type="button" onClick={() => set({ ...DEFAULT_PREFS })}>{t('dialog.preferences.defaults')}</Button>
         <Button type="button" onClick={() => set(initial)}>{t('dialog.preferences.revert')}</Button>
       </>}>
@@ -817,7 +819,7 @@ const Preferences: FC<{ close: () => void; section?: string; }> = ({ close }) =>
       </Row>
       <Field label={t('dialog.preferences.onionOpacity')}>
         <Range min={5} max={100} value={Math.round(p.onionOpacity * 100)} onChange={e => set({ onionOpacity: +e.target.value / 100 })} />
-        <Muted>{Math.round(p.onionOpacity * 100)}%, −{Math.round(p.onionStep * 100)}% per frame</Muted>
+        <Muted>{t('dialog.preferences.onionOpacityStep', { opacity: Math.round(p.onionOpacity * 100), step: Math.round(p.onionStep * 100) })}</Muted>
       </Field>
       <Field label={t('playback.scope')}><Select aria-label={t('playback.scope')} value={p.playScope} onChange={e => set({ playScope: e.target.value as typeof p.playScope })}>
         {(['tag', 'loop', 'all'] as const).map(v => <option key={v} value={v}>{t(`playback.scope.${v}`)}</option>)}

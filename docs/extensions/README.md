@@ -399,3 +399,34 @@ restores editor and extension defaults without overwriting a named workspace.
 | `extensions/lang-uk` | data-only language pack (partial Ukrainian) |
 | `extensions/game-rig` | tag presets in meta, locks, validator, exporter (zip with sheet.png + rig.json), live game preview panel |
 | `extensions/ai-assistant` | chat panel with an OpenAI-compatible API (DeepSeek by default), function calls mapped to ctx, each AI edit one undo step |
+
+
+### AI assistant task skills
+
+The assistant ships with six built-in skills in `extensions/ai-assistant/src/skills.ts`:
+
+| Skill | Task |
+| --- | --- |
+| `inspect-sprite` | Inspect pixels, layer/frame structure and animation tags |
+| `draw-pixel-art` | Draw silhouettes, color clusters and new sprite details |
+| `edit-sprite` | Make local edits while preserving neighboring pixels and transparency |
+| `animate-sprite` | Create poses, adjust timing and maintain inclusive tag ranges |
+| `palette-colors` | Choose between palette changes and pixel recoloring in RGB/indexed mode |
+| `editor-commands` | Discover actual commands and apply their parameter schemas |
+
+Every model request contains the short skill catalogue. The model loads a matching
+instruction with `read_skill({ name })`; the full set of guides is not repeated in
+its system prompt. A skill has a name, description, tool list and Markdown instructions.
+Adding an entry updates the catalogue and the tool's allowed names automatically.
+The editor compiles these ordinary extension modules; this needs no new sandbox API.
+
+The guides describe the tools actually exposed by this assistant. `render_png` displays
+a PNG to the user but sends only metadata to the model; the model inspects cel colors
+with `get_pixels`. `get_selection` returns bounds, a selected-pixel count and small
+masks. Pixel writes overwrite their full rectangles and ignore the selection mask.
+Malformed colors and uneven pixel rows are rejected before writing. If the active
+document changes while a model reply is pending, further tools for that request stop.
+
+The guides improve the context supplied to a model; they do not guarantee its choices.
+Provider-independent tests cover skill loading, tool arguments, actual pixel edits and
+document switching without making paid requests to a live model.

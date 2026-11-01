@@ -28,10 +28,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": {
-      "../dist/desktop/mcp.mjs": "mcp.mjs",
-      "../dist/desktop/mcp-builtin.mjs": "mcp-builtin.mjs"
-    },
     "fileAssociations": [
       {
         "ext": [

@@ -101,6 +101,7 @@ const Project = styled.div`
   background: var(--face);
   border: 1px solid var(--b1);
   cursor: pointer;
+  touch-action: none;
 
   &:hover { border-color: var(--accent); }
   &:hover > button { opacity: 1; }
@@ -261,10 +262,6 @@ type Item = { kind: 'folder' | 'project'; id: string; name: string; /** Containi
 
 const keyOf = (i: { kind: Item['kind']; id: string; }) => `${i.kind[0]}:${i.id}`;
 
-const DRAG_TYPE = 'application/x-pixprite-item';
-/** The items being dragged; dataTransfer can't be read while hovering */
-let dragging: Item[] | null = null;
-
 type Sort = 'updated' | 'name';
 const SORT_KEY = 'pixprite:homeSort';
 const loadSort = (): Sort => { try { return localStorage.getItem(SORT_KEY) === 'name' ? 'name' : 'updated'; } catch { return 'updated'; } };
@@ -332,14 +329,14 @@ function pickFolder(items: Item[], folders: FolderMeta[], current: string | null
 
 /**
  * What the pointer carries while dragging: the card itself, or for several items
- * a small stack of the first cards with the count. Built off screen, removed right after the browser copies it.
+ * a small stack of the first cards with the count. The caller positions and removes it.
  */
-function dragImage(e: React.DragEvent, cards: HTMLElement[], count: number) {
+function dragImage(cards: HTMLElement[], count: number) {
   const first = cards[0];
   if (!first) return;
   const w = first.offsetWidth;
   const ghost = document.createElement('div');
-  Object.assign(ghost.style, { position: 'fixed', left: '-10000px', top: '0', width: `${w + 16}px`, height: `${first.offsetHeight + 16}px` });
+  Object.assign(ghost.style, { position: 'fixed', left: '-10000px', top: '0', width: `${w + 16}px`, height: `${first.offsetHeight + 16}px`, pointerEvents: 'none', zIndex: '1000', opacity: '0.8' });
   cards.slice(0, 3).reverse().forEach((card, i, all) => {
     const c = card.cloneNode(true) as HTMLElement;
     const shift = (all.length - 1 - i) * 6;
@@ -357,9 +354,7 @@ function dragImage(e: React.DragEvent, cards: HTMLElement[], count: number) {
   }
   // Inside the page root, so the theme's variables and fonts apply
   first.parentElement!.append(ghost);
-  const r = first.getBoundingClientRect();
-  e.dataTransfer.setDragImage(ghost, Math.min(w, e.clientX - r.left), Math.min(first.offsetHeight, e.clientY - r.top));
-  setTimeout(() => ghost.remove());
+  return ghost;
 }
 
 export const Home: FC = () => {
@@ -385,6 +380,9 @@ export const Home: FC = () => {
   const gridSize = useViewport(grid);
   /** A single click on a project waits a moment: a double click opens it instead of the preview */
   const clickTimer = useRef(0);
+  const cancelDrag = useRef<(() => void) | null>(null);
+  const suppressClick = useRef(false);
+  useEffect(() => () => cancelDrag.current?.(), []);
   void state.prefs.language;
 
   useEffect(() => {
@@ -554,6 +552,7 @@ export const Home: FC = () => {
 
   /** Plain click: select and act; Ctrl / Cmd toggles; Shift extends from the last clicked item */
   const click = (e: React.MouseEvent, item: Item, act: () => void) => {
+    if (suppressClick.current) { suppressClick.current = false; return; }
     const key = keyOf(item);
     if (e.shiftKey && anchor.current) {
       const keys = items.map(keyOf);
@@ -623,52 +622,87 @@ export const Home: FC = () => {
     addEventListener('pointerup', end);
   };
 
-  /** Takes dragged items: folder cards and path segments */
-  const dropTarget = (target: string | null) => {
-    const key = target ?? '';
-    const takes = () => !!dragging && !(target && bannedFor(dragging, folders).has(target)) && !dragging.every(i => i.parent === target);
-    return {
-      'data-drop': hot === key,
-      onDragOver: (e: React.DragEvent) => {
-        if (!e.dataTransfer.types.includes(DRAG_TYPE) || !takes()) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        if (hot !== key) setHot(key);
-      },
-      onDragLeave: (e: React.DragEvent) => {
-        if (hot === key && !e.currentTarget.contains(e.relatedTarget as Node | null)) setHot(undefined);
-      },
-      onDrop: (e: React.DragEvent) => {
-        const list = dragging;
-        setHot(undefined);
-        if (!list || !e.dataTransfer.types.includes(DRAG_TYPE) || !takes()) return;
-        e.preventDefault();
-        dragging = null;
-        void moveItems(list, target);
-      },
+  /** DOM pointer dragging also works when the native shell owns OS file drops. */
+  const dropTarget = (target: string | null) => ({
+    'data-folder-drop': target ?? '',
+    'data-drop': hot === (target ?? ''),
+  });
+
+  const startCardDrag = (e: React.PointerEvent, item: Item) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest('button, a, input')) return;
+    cancelDrag.current?.();
+    suppressClick.current = false;
+    const source = e.currentTarget as HTMLElement;
+    const list = targetsOf(item), banned = bannedFor(list, folders);
+    const pointerId = e.pointerId, x0 = e.clientX, y0 = e.clientY;
+    const bounds = source.getBoundingClientRect();
+    const offsetX = x0 - bounds.left, offsetY = y0 - bounds.top;
+    let ghost: HTMLElement | undefined;
+    let started = false;
+    const targetAt = (ev: PointerEvent) => {
+      const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest<HTMLElement>('[data-folder-drop]');
+      const key = el?.dataset.folderDrop;
+      if (key === undefined || banned.has(key) || list.every(i => i.parent === (key || null))) return undefined;
+      return key;
     };
+    const cleanup = () => {
+      removeEventListener('pointermove', move);
+      removeEventListener('pointerup', end);
+      removeEventListener('pointercancel', cancel);
+      removeEventListener('blur', cancel);
+      removeEventListener('keydown', keydown, true);
+      if (source.hasPointerCapture(pointerId)) source.releasePointerCapture(pointerId);
+      ghost?.remove();
+      setHot(undefined);
+      cancelDrag.current = null;
+    };
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      if (!started) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
+        started = true;
+        suppressClick.current = true;
+        clearTimeout(clickTimer.current);
+        if (!selected.has(keyOf(item))) select([keyOf(item)]);
+        const cards = list.map(i => grid.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(keyOf(i))}"]`)).filter(Boolean) as HTMLElement[];
+        ghost = dragImage([source, ...cards.filter(c => c !== source)], list.length);
+        source.setPointerCapture(pointerId);
+      }
+      ev.preventDefault();
+      if (ghost) { ghost.style.left = `${ev.clientX - offsetX}px`; ghost.style.top = `${ev.clientY - offsetY}px`; }
+      setHot(targetAt(ev));
+    };
+    const end = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      const target = started ? targetAt(ev) : undefined;
+      cleanup();
+      if (target !== undefined) void moveItems(list, target || null);
+    };
+    const cancel = () => cleanup();
+    const keydown = (ev: KeyboardEvent) => {
+      if (ev.key !== 'Escape' || !started) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      cancel();
+    };
+    cancelDrag.current = cleanup;
+    addEventListener('pointermove', move, { passive: false });
+    addEventListener('pointerup', end);
+    addEventListener('pointercancel', cancel);
+    addEventListener('blur', cancel);
+    addEventListener('keydown', keydown, true);
   };
 
-  /** Shared by folder and project cards: selection look, dragging, the key for the rubber band */
+  /** Shared by folder and project cards: selection, dragging and rubber band keys. */
   const cardProps = (item: Item) => ({
     tabIndex: 0,
     style: { gridColumn: items.findIndex(i => keyOf(i) === keyOf(item)) % columns + 1,
       gridRow: Math.floor(items.findIndex(i => keyOf(i) === keyOf(item)) / columns) + 1 },
-    draggable: true,
+    draggable: false,
     'data-key': keyOf(item),
     'data-selected': selected.has(keyOf(item)),
-    onDragStart: (e: React.DragEvent) => {
-      // Dragging an unselected card moves just that card (and selects it)
-      const list = targetsOf(item);
-      if (!selected.has(keyOf(item))) select([keyOf(item)]);
-      dragging = list;
-      e.dataTransfer.setData(DRAG_TYPE, list.map(keyOf).join(' '));
-      e.dataTransfer.effectAllowed = 'move';
-      const cards = list.map(i => grid.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(keyOf(i))}"]`)).filter(Boolean) as HTMLElement[];
-      // The grabbed card goes on top of the stack
-      dragImage(e, [e.currentTarget as HTMLElement, ...cards.filter(c => c !== e.currentTarget)], list.length);
-    },
-    onDragEnd: () => { dragging = null; setHot(undefined); },
+    onPointerDown: (e: React.PointerEvent) => startCardDrag(e, item),
+    onDragStart: (e: React.DragEvent) => e.preventDefault(),
   });
 
   const contextMenu = (e: React.MouseEvent, item: Item, own: MenuItems) => {

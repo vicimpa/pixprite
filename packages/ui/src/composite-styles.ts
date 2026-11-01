@@ -20,9 +20,10 @@ px-dialog:not([open]){display:none!important}
 .px-dialog-title[data-close-left=true]{flex-direction:row-reverse;justify-content:flex-end;gap:6px;padding:0 8px 0 4px}
 .px-dialog-close{width:calc(var(--row,24px) - 6px);height:calc(var(--row,24px) - 6px);display:flex;align-items:center;justify-content:center;background:transparent;border:none;color:inherit;cursor:pointer}
 .px-dialog-close:hover{background:var(--danger)}
-.px-dialog-body{padding:10px;display:flex;flex-direction:column;gap:8px;overflow:auto}
-.px-dialog-body label{white-space:normal;flex-shrink:1;min-width:0;line-height:1.3}.px-dialog-body label input[type=checkbox]{flex-shrink:0;align-self:flex-start;margin-top:2px}.px-dialog-body>span,.px-dialog-body>px-muted>span{white-space:normal;line-height:1.35}
-.px-dialog-footer{display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px 8px;border-top:1px solid var(--b2)}
+.px-dialog-body{padding:10px;display:flex;flex-direction:column;gap:8px;overflow:auto;min-height:0}
+.px-dialog-body>*{flex-shrink:0}
+.px-dialog-body label{white-space:normal;flex-shrink:0;min-width:0;line-height:1.3}.px-dialog-body label input[type=checkbox]{flex-shrink:0;align-self:flex-start;margin-top:2px}.px-dialog-body>span,.px-dialog-body>px-muted>span{white-space:normal;line-height:1.35}
+.px-dialog-footer{display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px 8px;border-top:1px solid var(--b2);flex-shrink:0}
 .px-dialog-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.px-field-label{min-width:6em;color:var(--fg-dim)}.px-dialog-section{color:var(--accent);border-bottom:1px solid var(--b2);padding-bottom:2px;margin-top:4px}
 .px-splitter{display:block;flex-shrink:0;touch-action:none;user-select:none;background:var(--bg)}.px-splitter[data-splitter=columns]{width:4px;cursor:col-resize}.px-splitter[data-splitter=rows]{height:4px;cursor:row-resize}.px-splitter:hover,.px-splitter[data-drag=true]{background:var(--sel)}
 .px-xy-slider{display:block;position:absolute;inset:0;cursor:pointer;touch-action:none}.px-slider-point{position:absolute;inset:0;margin:auto;width:8px;height:8px;border:2px solid var(--point-color,#fff);pointer-events:none;box-shadow:-1px 0 0 #000,1px 0 0 #000,0 -1px 0 #000,0 1px 0 #000,inset -1px 0 0 #000,inset 1px 0 0 #000,inset 0 -1px 0 #000,inset 0 1px 0 #000;transform:translate(var(--px-x,0px),var(--px-y,0px))}

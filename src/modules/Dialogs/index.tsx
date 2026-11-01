@@ -5,11 +5,13 @@ import { sliceProperties } from "./Slice";
 import { openShortcuts } from "./Shortcuts";
 import { tilemapDialogs } from "./Tilemap";
 import { filterDialogs } from "./Filters";
+import { openMcp } from './Mcp';
 
 export const dialogs = {
   ...common,
   ...tilemapDialogs,
   ...filterDialogs,
+  mcp: openMcp,
   newSprite,
   colorMode: colorModeDialog,
   sliceProperties,

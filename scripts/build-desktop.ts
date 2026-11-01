@@ -1,8 +1,10 @@
-/** Build the system-WebView shell and the external stdio adapter. */
+/** Build the system-WebView shell and embed the native HTTP MCP tool catalog. */
 import { cp, mkdir, readFile, readdir, rm, writeFile, mkdtemp, symlink } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { checkTauriVersions } from './check-tauri-versions';
+import { toolDefinitions } from '../desktop/tools';
+import { toJSONSchema } from 'zod/v4';
 
 const root = resolve(import.meta.dir, '..'), output = join(root, 'dist/desktop');
 const args = process.argv.slice(2);
@@ -16,12 +18,13 @@ if (cargoVersion !== pkg.version) throw new Error('Cargo.toml and package.json v
 await mkdir(join(root, 'dist/installers'), { recursive: true });
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
-for (const [source, name, target] of [['mcp', 'mcp-builtin.mjs', 'node'], ['mcp-launcher', 'mcp.mjs', 'node'], ['tauri-bridge', 'bridge.js', 'browser']] as const) {
-  const result = await Bun.build({ entrypoints: [join(root, `desktop/${source}.ts`)], outdir: output, naming: name,
-    target, format: target === 'browser' ? 'iife' : 'esm', minify: true });
-  if (!result.success) throw new AggregateError(result.logs, `Could not build ${source}`);
-}
-const metadata = { version: pkg.version };
+await writeFile(join(output, 'mcp-tools.json'), JSON.stringify(toolDefinitions.map(({ name, description, schema, method, readOnly }) => ({
+  name, description, inputSchema: toJSONSchema(schema, { io: 'input' }), annotations: { readOnlyHint: readOnly }, method,
+}))));
+const bridge = await Bun.build({ entrypoints: [join(root, 'desktop/tauri-bridge.ts')], outdir: output, naming: 'bridge.js',
+  target: 'browser', format: 'iife', minify: true });
+if (!bridge.success) throw new AggregateError(bridge.logs, 'Could not build the desktop bridge');
+const metadata = { version: pkg.version, mcp: 'streamable-http' };
 await writeFile(join(output, 'metadata.json'), JSON.stringify(metadata, null, 2) + '\n');
 await rm(join(output, 'web'), { recursive: true, force: true });
 await cp(join(root, 'dist/web'), join(output, 'web'), { recursive: true });
@@ -32,7 +35,7 @@ await writeFile(join(output, 'web/index.html'), html.replace(/<script type="modu
   return `<script type="module">await window.pixpriteDesktop.startup; await import(${JSON.stringify(source)});</script>`;
 }));
 if (!patched) throw new Error('Could not find the production browser entry');
-console.log('Prepared Tauri bridge and stdio MCP');
+console.log('Prepared Tauri bridge and native HTTP MCP catalog');
 if (args.includes('--prepare')) process.exit(0);
 const buildArgs = [...args];
 const bundleIndex = buildArgs.indexOf('--bundles');

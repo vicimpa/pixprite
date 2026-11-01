@@ -1,16 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod frame_pacing;
+mod launch;
 mod library;
+mod mcp;
 mod storage;
 mod system;
-use system::{desktop_copy_image, desktop_paste_image, desktop_save_download, desktop_text_action};
-mod updates;
-use axum::{
-    extract::{DefaultBodyLimit, State as HttpState},
-    http::{HeaderMap, StatusCode},
-    routing::post,
-    Json, Router,
+use system::{
+    desktop_copy_image, desktop_copy_text, desktop_paste_image, desktop_save_download,
+    desktop_text_action,
 };
+mod updates;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -25,7 +24,8 @@ use std::{
     time::Duration,
 };
 use tauri::{
-    Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    DragDropEvent, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    WindowEvent,
 };
 use tokio::sync::oneshot;
 use updates::{UpdateState, CURRENT_VERSION};
@@ -50,11 +50,14 @@ struct Native {
     pending: Mutex<HashMap<String, oneshot::Sender<Result<Value, String>>>>,
     files: Mutex<Vec<PathBuf>>,
     ready: AtomicBool,
+    open: AtomicBool,
     closing: AtomicBool,
     allow_close: AtomicBool,
     allow_exit: AtomicBool,
     checking: AtomicBool,
     connection: Mutex<Option<(PathBuf, String)>>,
+    connection_file: PathBuf,
+    mcp: tokio::sync::Mutex<mcp::Runtime>,
 }
 impl Native {
     fn app(&self) -> &tauri::AppHandle {
@@ -112,6 +115,9 @@ impl Native {
         }
     }
     fn show(&self) {
+        if hidden_test_windows() {
+            return;
+        }
         if let Some(window) = self.app().get_webview_window("main") {
             let _ = window.unminimize();
             let _ = window.show();
@@ -141,7 +147,7 @@ impl Native {
         }
         if request.method == "desktop_info" {
             return Ok(
-                json!({"runtime":"tauri","framePacing":frame_pacing::policy(),"version":CURRENT_VERSION,"windows":self.app().webview_windows().len(),"menu":self.app().menu().is_some(),"window":self.app().get_webview_window("main").map(|w|window_state(&w))}),
+                json!({"runtime":"tauri","framePacing":frame_pacing::policy(),"version":CURRENT_VERSION,"windows":self.app().webview_windows().len(),"menu":self.app().menu().is_some(),"hiddenTestMode":hidden_test_windows(),"window":self.app().get_webview_window("main").map(|w|window_state(&w))}),
             );
         }
         if request.method == "window_action" {
@@ -244,7 +250,7 @@ impl Native {
     }
     fn cleanup(&self) {
         if let Some((path, token)) = &*self.connection.lock().unwrap() {
-            if storage::json::<Value>(path).is_some_and(|v| v["token"] == *token) {
+            if storage::json::<Value>(path).is_some_and(|v| v["instance"] == *token) {
                 let _ = fs::remove_file(path);
             }
         }
@@ -258,7 +264,11 @@ fn trusted(window: &WebviewWindow) -> Result<(), String> {
     }
 }
 fn window_state(window: &WebviewWindow) -> Value {
-    json!({"maximized":window.is_maximized().unwrap_or(false),"fullscreen":window.is_fullscreen().unwrap_or(false),"focused":window.is_focused().unwrap_or(false)})
+    json!({"maximized":window.is_maximized().unwrap_or(false),"fullscreen":window.is_fullscreen().unwrap_or(false),"focused":window.is_focused().unwrap_or(false),"visible":window.is_visible().unwrap_or(false)})
+}
+fn hidden_test_windows() -> bool {
+    std::env::var_os("PIXPRITE_USER_DATA").is_some()
+        && std::env::var("PIXPRITE_E2E_HIDDEN").as_deref() == Ok("1")
 }
 fn window_action(window: &WebviewWindow, action: &str) -> Result<(), String> {
     let result = match action {
@@ -330,6 +340,18 @@ fn desktop_bootstrap(
         .as_array()
         .cloned()
         .unwrap_or_default();
+    // Merge sessions saved by older multi-window builds into the one editor.
+    if let Some(sessions) = state.config.lock().unwrap()["sessions"].as_object() {
+        for id in sessions.keys().filter(|id| id.as_str() != "main") {
+            if uuid::Uuid::parse_str(id).is_ok()
+                || id
+                    .strip_prefix("editor-")
+                    .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok())
+            {
+                recovery.push(json!(id));
+            }
+        }
+    }
     if let Some(values) = dump.as_ref().and_then(|d| d["localStorage"].as_object()) {
         for key in values.keys() {
             if let Some(id) = key.strip_prefix("pixprite:session:window:") {
@@ -340,6 +362,7 @@ fn desktop_bootstrap(
         }
         state.config.lock().unwrap()["recovery"] = json!(recovery);
     }
+    state.config.lock().unwrap()["recovery"] = json!(recovery);
     Ok(
         json!({"platform":if cfg!(target_os="macos"){"darwin"}else if cfg!(target_os="windows"){"win32"}else{"linux"},"recovery":recovery,"migration":dump}),
     )
@@ -523,81 +546,42 @@ async fn check_updates(state: Arc<Native>) -> Result<(), String> {
     state.checking.store(false, Ordering::SeqCst);
     result.map(|_| ())
 }
-async fn start_rpc(state: Arc<Native>) -> Result<(), String> {
-    use rand::RngCore;
-    let mut token = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut token);
-    let token = hex::encode(token);
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .map_err(|e| e.to_string())?;
-    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
-    #[derive(Clone)]
-    struct Auth {
-        native: Arc<Native>,
-        token: String,
-        host: String,
-    }
-    async fn rpc(
-        HttpState(auth): HttpState<Auth>,
-        headers: HeaderMap,
-        body: Result<Json<Request>, axum::extract::rejection::JsonRejection>,
-    ) -> (StatusCode, Json<Value>) {
-        if headers.contains_key("origin")
-            || headers.get("host").and_then(|v| v.to_str().ok()) != Some(&auth.host)
-            || headers.get("authorization").and_then(|v| v.to_str().ok())
-                != Some(&format!("Bearer {}", auth.token))
-        {
-            return (StatusCode::FORBIDDEN, Json(json!({"error":"Forbidden"})));
-        }
-        let request = match body {
-            Ok(Json(v)) => v,
-            Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error":e.to_string()})),
-                )
+#[tauri::command]
+async fn desktop_mcp(
+    window: WebviewWindow,
+    state: State<'_, Arc<Native>>,
+    enabled: Option<bool>,
+    port: Option<u16>,
+) -> Result<Value, String> {
+    trusted(&window)?;
+    if enabled.is_some() || port.is_some() {
+        let previous = {
+            let mut config = state.config.lock().unwrap();
+            let previous = (config["mcpEnabled"].clone(), config["mcpPort"].clone());
+            if let Some(enabled) = enabled {
+                config["mcpEnabled"] = json!(enabled);
             }
+            if let Some(port) = port {
+                config["mcpPort"] = json!(port);
+            }
+            previous
         };
-        match auth.native.dispatch(request).await {
-            Ok(result) => (StatusCode::OK, Json(json!({"result":result}))),
-            Err(error) => (StatusCode::BAD_REQUEST, Json(json!({"error":error}))),
+        if let Err(error) = state.save() {
+            let mut config = state.config.lock().unwrap();
+            config["mcpEnabled"] = previous.0;
+            config["mcpPort"] = previous.1;
+            return Err(error);
         }
     }
-    let path = std::env::var_os("PIXPRITE_CONNECTION_FILE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| dirs::home_dir().unwrap().join(".pixprite/connection.json"));
-    if std::env::var_os("PIXPRITE_CONNECTION_FILE").is_none() {
-        storage::private_dir(path.parent().ok_or("Missing discovery parent")?)
-            .map_err(|e| e.to_string())?;
-    }
-    let mcp = state.profile.join("automation/mcp.mjs");
-    let payload = include_bytes!("../../dist/desktop/mcp-builtin.mjs").to_vec();
-    storage::atomic_bytes(&mcp, &payload).map_err(|e| e.to_string())?;
-    storage::atomic_json(
-        &path,
-        &json!({"url":format!("http://127.0.0.1:{port}/rpc"),"token":token,"pid":std::process::id(),"mcpPath":mcp,"mcpSha256":updates::hash(&payload),"version":CURRENT_VERSION}),
-    )?;
-    *state.connection.lock().unwrap() = Some((path, token.clone()));
-    let router = Router::new()
-        .route("/rpc", post(rpc))
-        .layer(DefaultBodyLimit::max(8 * 1024 * 1024))
-        .with_state(Auth {
-            native: state,
-            token,
-            host: format!("127.0.0.1:{port}"),
-        });
-    axum::serve(listener, router)
-        .await
-        .map_err(|e| e.to_string())
+    Ok(mcp::synchronize(state.inner().clone()).await)
 }
 fn create_window(app: &tauri::AppHandle, state: Arc<Native>) -> Result<WebviewWindow, String> {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.set_focus();
+        state.show();
         return Ok(window);
     }
     state.ready.store(false, Ordering::SeqCst);
+    state.open.store(true, Ordering::SeqCst);
     state.allow_close.store(false, Ordering::SeqCst);
     state.closing.store(false, Ordering::SeqCst);
     let nav_state = state.clone();
@@ -640,6 +624,14 @@ fn create_window(app: &tauri::AppHandle, state: Arc<Native>) -> Result<WebviewWi
             }
             tauri::webview::NewWindowResponse::Deny
         });
+    if hidden_test_windows() {
+        builder = builder
+            .visible(false)
+            .focused(false)
+            .focusable(false)
+            .skip_taskbar(true)
+            .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled);
+    }
     #[cfg(target_os = "macos")]
     if std::env::var_os("PIXPRITE_USER_DATA").is_some() {
         use sha2::Digest;
@@ -656,7 +648,14 @@ fn create_window(app: &tauri::AppHandle, state: Arc<Native>) -> Result<WebviewWi
             builder = builder.inner_size(w.clamp(800., 3840.), h.clamp(600., 2160.));
         }
     }
-    let window = builder.build().map_err(|e| e.to_string())?;
+    let window = builder.build().map_err(|e| {
+        state.open.store(false, Ordering::SeqCst);
+        e.to_string()
+    })?;
+    let native = state.clone();
+    tauri::async_runtime::spawn(async move {
+        mcp::synchronize(native).await;
+    });
     if let Err(error) = frame_pacing::configure(&window) {
         eprintln!("Frame pacing configuration: {error}");
     }
@@ -664,6 +663,24 @@ fn create_window(app: &tauri::AppHandle, state: Arc<Native>) -> Result<WebviewWi
     let event_window = window.clone();
     let previous_window_state = Mutex::new(window_state(&window));
     window.on_window_event(move |event| {
+        if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {
+            event_state
+                .files
+                .lock()
+                .unwrap()
+                .extend(paths.iter().cloned());
+            event_state.flush_files();
+        }
+        if matches!(event, WindowEvent::Destroyed) {
+            event_state.ready.store(false, Ordering::SeqCst);
+            event_state.open.store(false, Ordering::SeqCst);
+            event_state.pending.lock().unwrap().clear();
+            let native = event_state.clone();
+            tauri::async_runtime::spawn(async move {
+                mcp::synchronize(native).await;
+            });
+        }
+
         if let WindowEvent::CloseRequested { api, .. } = event {
             if event_state.allow_close.load(Ordering::SeqCst) {
                 return;
@@ -726,11 +743,18 @@ fn create_window(app: &tauri::AppHandle, state: Arc<Native>) -> Result<WebviewWi
     Ok(window)
 }
 fn main() {
-    let profile = storage::profile().join(if std::env::var_os("PIXPRITE_USER_DATA").is_some() {
-        ""
-    } else {
-        "Tauri"
-    });
+    let options = match launch::Options::parse(std::env::args_os().skip(1)) {
+        Ok(options) => options,
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(2);
+        }
+    };
+    if options.help {
+        println!("Pixprite [--mcp [--mcp-port PORT] | --no-mcp] [FILES...]\n  --mcp          Enable native HTTP MCP for this run without changing preferences\n  --no-mcp       Disable MCP for this run regardless of saved preferences\n  --mcp-port N   MCP port (default 3356; 0 selects a free port)");
+        return;
+    }
+    let profile = mcp::profile();
     storage::private_dir(&profile).expect("Create private app directory");
     let state = Arc::new(Native {
         app: OnceLock::new(),
@@ -744,19 +768,16 @@ fn main() {
         save_changes: tokio::sync::watch::channel(()).0,
         update: Mutex::new(UpdateState::default()),
         pending: Mutex::new(HashMap::new()),
-        files: Mutex::new(
-            std::env::args_os()
-                .skip(1)
-                .map(PathBuf::from)
-                .filter(|p| p.is_absolute() && storage::supported(p))
-                .collect(),
-        ),
+        files: Mutex::new(options.files.clone()),
         ready: AtomicBool::new(false),
+        open: AtomicBool::new(false),
         closing: AtomicBool::new(false),
         allow_close: AtomicBool::new(false),
         allow_exit: AtomicBool::new(false),
         checking: AtomicBool::new(false),
         connection: Mutex::new(None),
+        connection_file: mcp::connection_path(),
+        mcp: tokio::sync::Mutex::new(mcp::Runtime::new(&options)),
     });
     let setup = state.clone();
     let single = state.clone();
@@ -773,21 +794,32 @@ fn main() {
         .enable_macos_default_menu(false)
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_single_instance::init(move |app, args, _| {
-            let _ = create_window(app, single.clone());
-            single.files.lock().unwrap().extend(
-                args.iter()
-                    .skip(1)
-                    .map(PathBuf::from)
-                    .filter(|p| p.is_absolute() && storage::supported(p)),
-            );
-            single.flush_files();
-            single.show();
+        .plugin(tauri_plugin_single_instance::init(move |app, args, cwd| {
+            match launch::Options::parse_in(
+                args.into_iter().skip(1).map(Into::into),
+                Path::new(&cwd),
+            ) {
+                Ok(options) => {
+                    single.files.lock().unwrap().extend(options.files.clone());
+                    if let Err(error) = create_window(app, single.clone()) {
+                        single.notice(error);
+                    }
+                    single.flush_files();
+                    single.show();
+                    let native = single.clone();
+                    tauri::async_runtime::spawn(async move {
+                        native.mcp.lock().await.apply_cli(&options);
+                        mcp::synchronize(native).await;
+                    });
+                }
+                Err(error) => single.notice(error),
+            }
         }))
         .manage(state.clone())
         .invoke_handler(tauri::generate_handler![
             desktop_save_download,
             desktop_copy_image,
+            desktop_copy_text,
             desktop_paste_image,
             desktop_text_action,
             desktop_frontend_error,
@@ -804,9 +836,14 @@ fn main() {
             desktop_language,
             desktop_update_state,
             desktop_update,
+            desktop_mcp,
             desktop_quit
         ])
         .setup(move |app| {
+            #[cfg(target_os = "macos")]
+            if hidden_test_windows() {
+                app.set_activation_policy(tauri::ActivationPolicy::Prohibited);
+            }
             setup.app.set(app.handle().clone()).ok();
             create_window(app.handle(), setup.clone()).map_err(std::io::Error::other)?;
             let saver = setup.clone();
@@ -832,9 +869,7 @@ fn main() {
             });
             let rpc = setup.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(error) = start_rpc(rpc).await {
-                    eprintln!("MCP transport failed: {error}");
-                }
+                mcp::synchronize(rpc).await;
             });
             let background = setup.clone();
             tauri::async_runtime::spawn(async move {

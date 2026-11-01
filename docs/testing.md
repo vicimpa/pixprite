@@ -63,7 +63,7 @@ The large-document scenario observes the standard Worker boundary in the product
 
 The preceding budget change on 2026-10-31 accounted for all built-in UI/codecs shipping in one browser bundle. See [bundle loading](bundle-loading.md) for startup-animation, offline and file-handler regressions. Browser tests do not require Rust. See [desktop/MCP](desktop-mcp.md) for Tauri prerequisites and native checks.
 
-The desktop workflow builds the Tauri executable/installers and runs `bun run test:native` plus `bun run test:desktop`. The native scenarios use the actual system WebView and standalone stdio MCP. They cover documents, files, sessions, menu removal, authentication and background release notifications. `scripts/check-desktop-package.ts` validates prepared content and the native executable/resources before release artifacts are uploaded.
+The desktop workflow builds the Tauri executable/installers and runs `bun run test:native` plus `bun run test:desktop`. The native scenarios use the actual system WebView and embedded HTTP MCP. Test windows stay hidden and do not take focus; set `PIXPRITE_E2E_SHOW_WINDOWS=1` to show them for debugging. Scenarios that do not need MCP use `--no-mcp`, which overrides saved automatic startup without changing preferences. They cover documents, files, sessions, single-instance file forwarding, MCP flags and lifecycle, menu removal, authentication and background release notifications. `scripts/check-desktop-package.ts` validates prepared content and the native executable/resources before release artifacts are uploaded.
 
 Optional WebKit regression checks: `bunx playwright install webkit`, then `bun run test:webview`. This covers editor round trips and the extension sandbox with WebKit alongside the native scenarios.
 

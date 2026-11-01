@@ -4,7 +4,7 @@
 
 ## Start here
 
-Use Bun **1.4.2**, matching CI, and **Node.js 24+** for the standalone MCP launcher. Desktop builds additionally require Rust from `rust-toolchain.toml` and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+Use Bun **1.4.2**, matching CI. Desktop builds additionally require Rust from `rust-toolchain.toml` and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). The installed application and its native HTTP MCP server require no Node.js or Bun runtime.
 
 The web toolchain uses Vite 8 and TypeScript 7. `tsc -b` runs the native TypeScript compiler;
 the translation checker uses `@typescript/typescript6` for its classic compiler AST API.
@@ -28,7 +28,7 @@ The editor runs at `http://localhost:3355`. `bun run ext:dev` starts a separate 
 | `src/ui/` | Shared controls and layout components |
 | `src/styles/`, `src/locales/` | Themes, global styles and interface translations |
 | `src-tauri/` | Rust/Tauri shell, native files, window, dialogs and release checks |
-| `desktop/` | Limited JS bridge, storage migration and external stdio MCP |
+| `desktop/` | Limited JS bridge, storage migration and MCP tool definitions |
 | `packages/api/` | Public extension API types and helpers |
 | `packages/ui/` | Shared Web Components for editor controls and extension panels; [contracts and migration](ui-web-components.md) |
 | `packages/ui-react/` | React controls and automatic TSX page mounting for sandboxed extension panels/widgets |
@@ -42,7 +42,7 @@ The editor runs at `http://localhost:3355`. `bun run ext:dev` starts a separate 
 
 Browser imports use `~/` for `src/`. Extensions import `@pixprite/api`. Each TypeScript project has its own `tsconfig.json`; the root solution checks all of them with `tsc -b`.
 
-The renderer talks to Rust/Tauri through a limited initialization bridge. Native operations belong in `src-tauri/`; Node.js runs only the external stdio MCP adapter. The [sprite architecture](sprite-architecture.md) describes the document/resource boundary.
+The renderer talks to Rust/Tauri through a limited initialization bridge. Native operations and the embedded HTTP MCP server belong in `src-tauri/`. The [sprite architecture](sprite-architecture.md) describes the document/resource boundary.
 
 ## Generated files
 
@@ -51,7 +51,7 @@ All build output and reports belong under the ignored `dist/` directory:
 ```text
 dist/
 ├── web/                Browser app, static assets and Service Worker
-├── desktop/            Native executable, prepared content and MCP launcher
+├── desktop/            Native executable, prepared content and MCP tool catalog
 ├── tauri/              Cargo output and platform application bundles
 ├── installers/         Native packages
 ├── benchmarks/         Optimized performance fixtures
@@ -79,7 +79,7 @@ Older checkouts used `desktop-dist/`, `release/`, `.benchmark-dist`, `.extension
 | `bun run desktop:pack` | Build a release executable without an installer |
 | `bun run desktop:build` | Build native installers for the current OS |
 | `bun run desktop:check` | Check that the resolved Rust Tauri and JS API versions share a major/minor release |
-| `bun run mcp` | Start the stdio launcher in `dist/desktop/`; connect a client via [MCP setup](desktop-mcp.md) |
+| `bun run mcp` | Launch the editor with its native HTTP MCP enabled; connect a client via [MCP setup](desktop-mcp.md) |
 | `bun run typecheck` | Check all TypeScript projects |
 | `bun test` | Unit tests |
 | `bun run i18n:check` | Validate interface translations |

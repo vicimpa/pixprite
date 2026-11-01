@@ -9,6 +9,7 @@ import { useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react';
 import { chatCss } from './styles';
 import { markdown } from "./markdown";
 import { makeTools, TOOL_SCHEMAS } from "./tools";
+import { assistantInstructions } from './skills';
 
 
 
@@ -81,7 +82,8 @@ function chatController(ctx: ExtensionPageProps['ctx'], refresh: () => void) {
    */
   let queue: string[] = [];
 
-  const system = (): Message => ({ role: 'system', content: t('system', { lang: ctx.i18n.lang }) });
+  const instructions = assistantInstructions();
+  const system = (): Message => ({ role: 'system', content: `${t('system', { lang: ctx.i18n.lang })}\n\n${instructions}` });
 
   const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
   /** Local servers (Ollama, LM Studio) work without a key */
@@ -249,6 +251,7 @@ function chatController(ctx: ExtensionPageProps['ctx'], refresh: () => void) {
   async function ask(prompt?: string) {
     if (!active) return;
     if (!doc) { add('error', t('noDocument')); return; }
+    const documentId = doc.id;
     if (!ready()) { await editSettings(); if (!ready()) return; }
     busy = true;
     stopped = false;
@@ -272,11 +275,17 @@ function chatController(ctx: ExtensionPageProps['ctx'], refresh: () => void) {
         if (!reply.tool_calls) return;
         for (const call of reply.tool_calls) {
           // Every tool call needs an answer, or the next request is rejected
-          if (stopped) { history.push({ role: 'tool', tool_call_id: call.id, content: '{"error":"stopped by the user"}' }); continue; }
+          if (stopped) { history.push({ role: 'tool', tool_call_id: call.id, content: '{"error":"request stopped before tool execution"}' }); continue; }
           const fn = tools[call.function.name];
           add('tool', `→ ${call.function.name}(${call.function.arguments.slice(0, 120)})`);
           let content: string;
           try {
+            // The model's answer may arrive after the user switched documents.
+            // A guide cannot protect the target on its own: stop before any tool runs.
+            if ((await ctx.documents.active())?.id !== documentId) {
+              stopped = true;
+              throw new Error(t('error.documentChanged'));
+            }
             if (!fn) throw new Error(`unknown tool ${call.function.name}`);
             const out = await fn(JSON.parse(call.function.arguments || '{}'));
             if (out.image) add('tool', t('rendered'), out.image);

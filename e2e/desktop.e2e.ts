@@ -2,30 +2,24 @@ import { expect, test } from '@playwright/test';
 import { nativeFixture } from './desktop-helper';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { spawn } from 'node:child_process';
-import { createInterface } from 'node:readline';
 import { callDesktop } from '../desktop/connection';
 
-test('native editor is controlled end to end through the standalone stdio MCP server', async () => {
+test('native editor is controlled end to end through its embedded HTTP MCP server', async () => {
   test.setTimeout(90_000);
   const f = await nativeFixture();
   const { directory, connection } = f;
-  await f.launch();
-  const client = spawn(process.execPath, [resolve('dist/desktop/mcp.mjs'), '--connection', connection], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const gui = await f.launch();
+  const config = JSON.parse(await readFile(connection, 'utf8'));
+  expect(config.pid).toBe(gui.pid);
   let serial = 0;
-  const pending = new Map<number, { resolve(value: any): void; reject(error: Error): void }>();
-  const logs: string[] = [];
-  client.stderr.on('data', chunk => logs.push(String(chunk)));
-  const lines = createInterface({ input: client.stdout });
-  lines.on('line', line => {
-    const reply = JSON.parse(line);
-    const task = pending.get(reply.id);
-    if (task) { pending.delete(reply.id); if (reply.error) task.reject(new Error(JSON.stringify(reply.error))); else task.resolve(reply.result); }
-  });
-  client.on('exit', code => { for (const task of pending.values()) task.reject(new Error(`MCP exited ${code}: ${logs.join('')}`)); pending.clear(); });
-  function rpc(method: string, params: unknown) {
-    const id = ++serial;
-    return new Promise<any>((resolve, reject) => { pending.set(id, { resolve, reject }); client.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n'); });
+  async function rpc(method: string, params: unknown) {
+    const response = await fetch(config.mcpUrl, {
+      method: 'POST', headers: { Authorization: `Bearer ${config.token}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-11-25' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: ++serial, method, params }),
+    });
+    const reply = await response.json() as any;
+    if (reply.error) throw new Error(JSON.stringify(reply.error));
+    return reply.result;
   }
   async function tool(name: string, args = {}) {
     const reply = await rpc('tools/call', { name, arguments: args });
@@ -38,8 +32,11 @@ test('native editor is controlled end to end through the standalone stdio MCP se
     const initialized = await rpc('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'pixprite-e2e', version: '1' } });
     expect(initialized.serverInfo.name).toBe('pixprite');
     expect(initialized.serverInfo.version).toBe(JSON.parse(await readFile(resolve('package.json'), 'utf8')).version);
-    client.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
+    await fetch(config.mcpUrl, { method: 'POST', headers: { Authorization: `Bearer ${config.token}`, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-11-25' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) });
     expect((await rpc('tools/list', {})).tools.map((tool: { name: string }) => tool.name)).toContain('pixprite_pixels');
+    expect((await rpc('tools/list', {})).tools.map((tool: { name: string }) => tool.name)).toEqual(expect.arrayContaining(['pixprite_library', 'pixprite_open_project']));
+    expect(await tool('pixprite_library')).toEqual({ folders: [], projects: [] });
+    expect((await rpc('tools/call', { name: 'pixprite_open_project', arguments: { id: 'missing-project' } })).isError).toBe(true);
     const created = await tool('pixprite_create', { width: 8, height: 8, name: 'MCP round trip' });
     expect(created.width).toBe(8);
     await tool('pixprite_pixels', { action: 'write', rect: { x: 1, y: 2, w: 2, h: 1 }, fill: '#ff008080' });
@@ -75,7 +72,6 @@ test('native editor is controlled end to end through the standalone stdio MCP se
     await tool('pixprite_open', { path: png });
     expect((await tool('pixprite_inspect')).width).toBe(10);
   } finally {
-    client.stdin.end(); client.kill(); lines.close();
     await f.dispose();
   }
 });

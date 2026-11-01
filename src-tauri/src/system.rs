@@ -13,6 +13,17 @@ pub struct Bitmap {
     data: String,
 }
 #[tauri::command]
+pub async fn desktop_copy_text(window: WebviewWindow, text: String) -> Result<(), String> {
+    trusted(&window)?;
+    if text.len() > 1024 * 1024 {
+        return Err("Clipboard text exceeds 1 MiB".into());
+    }
+    window
+        .clipboard()
+        .write_text(text)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
 pub async fn desktop_copy_image(window: WebviewWindow, bitmap: Bitmap) -> Result<(), String> {
     trusted(&window)?;
     if bitmap.w == 0 || bitmap.h == 0 || bitmap.w > 4096 || bitmap.h > 4096 {
