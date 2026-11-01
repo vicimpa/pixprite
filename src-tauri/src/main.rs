@@ -75,6 +75,18 @@ impl Native {
         storage::atomic_json(&self.profile.join("window.json"), &snapshot)
     }
 
+    fn remember_bounds(&self, window: &WebviewWindow, width: f64, height: f64) {
+        if window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false) {
+            return;
+        }
+        let bounds = json!({"width":width,"height":height});
+        let mut config = self.config.lock().unwrap();
+        if config["bounds"] != bounds {
+            config["bounds"] = bounds;
+            self.save_changes.send_replace(());
+        }
+    }
+
     async fn request(&self, request: Request) -> Result<Value, String> {
         if !self.ready.load(Ordering::SeqCst) {
             return Err("Pixprite editor is still starting; retry shortly".into());
@@ -167,6 +179,9 @@ impl Native {
                 window
                     .set_size(tauri::LogicalSize::new(width as f64, height as f64))
                     .map_err(|e| e.to_string())?;
+                // GTK does not emit Resized until a hidden window is mapped.
+                // Persist successful explicit requests through the same debounce.
+                self.remember_bounds(&window, width as f64, height as f64);
             } else {
                 window_action(
                     &window,
@@ -717,18 +732,12 @@ fn create_window(app: &tauri::AppHandle, state: Arc<Native>) -> Result<WebviewWi
             });
         }
         if let WindowEvent::Resized(size) = event {
-            if !event_window.is_maximized().unwrap_or(false)
-                && !event_window.is_fullscreen().unwrap_or(false)
-            {
-                let scale = event_window.scale_factor().unwrap_or(1.);
-                let bounds =
-                    json!({"width":size.width as f64/scale,"height":size.height as f64/scale});
-                let mut config = event_state.config.lock().unwrap();
-                if config["bounds"] != bounds {
-                    config["bounds"] = bounds;
-                    event_state.save_changes.send_replace(());
-                }
-            }
+            let scale = event_window.scale_factor().unwrap_or(1.);
+            event_state.remember_bounds(
+                &event_window,
+                size.width as f64 / scale,
+                size.height as f64 / scale,
+            );
         }
         // Position changes need neither a WebView message nor a synchronous disk write.
         if matches!(event, WindowEvent::Resized(_) | WindowEvent::Focused(_)) {
