@@ -2,12 +2,14 @@
 import { cp, mkdir, readFile, readdir, rm, writeFile, mkdtemp, symlink } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { checkTauriVersions } from './check-tauri-versions';
 
 const root = resolve(import.meta.dir, '..'), output = join(root, 'dist/desktop');
 const args = process.argv.slice(2);
 // Resolve the native lockfile before invoking the Tauri CLI.
 const metadataCheck = Bun.spawn(['cargo', 'metadata', '--manifest-path', 'src-tauri/Cargo.toml', '--format-version', '1'], { cwd: root, stdout: 'ignore', stderr: 'inherit' });
 if (await metadataCheck.exited) throw new Error('Could not resolve native dependencies');
+checkTauriVersions(root);
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 const cargoVersion = /^version = "([^"]+)"/m.exec(await readFile(join(root, 'src-tauri/Cargo.toml'), 'utf8'))?.[1];
 if (cargoVersion !== pkg.version) throw new Error('Cargo.toml and package.json versions must match');

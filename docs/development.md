@@ -78,6 +78,7 @@ Older checkouts used `desktop-dist/`, `release/`, `.benchmark-dist`, `.extension
 | `bun run desktop:compile` | Compile debug executable and bridge; requires an existing web build |
 | `bun run desktop:pack` | Build a release executable without an installer |
 | `bun run desktop:build` | Build native installers for the current OS |
+| `bun run desktop:check` | Check that the resolved Rust Tauri and JS API versions share a major/minor release |
 | `bun run mcp` | Start the stdio launcher in `dist/desktop/`; connect a client via [MCP setup](desktop-mcp.md) |
 | `bun run typecheck` | Check all TypeScript projects |
 | `bun test` | Unit tests |

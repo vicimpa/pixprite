@@ -42,6 +42,7 @@
     "mcp": "node dist/desktop/mcp.mjs",
     "docs:screenshot": "bun scripts/docs-screenshot.ts",
     "desktop:prepare": "bun scripts/build-desktop.ts --prepare",
+    "desktop:check": "bun scripts/check-tauri-versions.ts",
     "test:desktop": "playwright test --config playwright.desktop.config.ts",
     "test:native": "cargo test --manifest-path src-tauri/Cargo.toml",
     "desktop:migrate": "bun scripts/migrate-electron.ts",
