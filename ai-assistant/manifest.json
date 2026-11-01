@@ -1,13 +1,37 @@
 {
   "id": "ai-assistant",
   "name": "%name%",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "apiVersion": 1,
   "author": "Pixprite contributors",
   "description": "%description%",
-  "permissions": ["sprite:read", "sprite:write", "ui:panel", "storage", "network:api.deepseek.com", "network:api.openai.com", "network:openrouter.ai", "network:localhost:11434", "network:localhost:1234"],
+  "permissions": [
+    "sprite:read",
+    "sprite:write",
+    "ui:panel",
+    "storage",
+    "network:api.deepseek.com",
+    "network:api.openai.com",
+    "network:openrouter.ai",
+    "network:localhost:11434",
+    "network:localhost:1234"
+  ],
   "contributes": {
-    "panels": [{ "id": "chat", "label": "%panel.chat%", "dock": "right", "page": "chat.html" }],
+    "panels": [
+      {
+        "id": "chat",
+        "label": "%panel.chat%",
+        "dock": "right",
+        "page": "chat.tsx"
+      }
+    ],
     "locales": "locales/"
-  }
+  },
+  "category": "automation",
+  "tags": [
+    "ai",
+    "chat",
+    "assistant"
+  ],
+  "minEditorVersion": "0.0.4"
 }

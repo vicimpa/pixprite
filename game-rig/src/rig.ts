@@ -272,6 +272,18 @@ export function defaultRig(s: SpriteSnapshot, movement: Movement = 'topdown'): R
   }, s.tags);
 }
 
+/** Adapt the defaults to a new movement without discarding the user's states or tuning. */
+export function changeMovement(rig: Rig, sprite: SpriteSnapshot, movement: Movement): Rig {
+  if (movement === rig.movement) return rig;
+  const old = rig.movement, next = { ...rig, movement };
+  if (rig.directions === DEFAULT_SETUP[old].directions) next.directions = DEFAULT_SETUP[movement].directions;
+  const previous = defaultCollider(sprite, old);
+  if (!rig.collider.slice && (['x', 'y', 'w', 'h'] as const).every(key => rig.collider[key] === previous[key])) next.collider = defaultCollider(sprite, movement);
+  if (rig.shadow.on === (old !== 'platformer')) next.shadow = { ...rig.shadow, on: movement !== 'platformer' };
+  next.states = [...rig.states, ...DEFAULT_SETUP[movement].states.filter(id => !rig.states.some(st => st.id === id)).map(id => newState(id))];
+  return autofill(next, sprite.tags);
+}
+
 /** A stored rig made whole; older versions start over with defaults for their movement */
 export function loadRig(raw: unknown, s: SpriteSnapshot): Rig {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<Rig> & { scenario?: string; preset?: string; };
@@ -365,15 +377,22 @@ export function tagFrames(tag: TagInfo) {
   return seq;
 }
 
+/** Duration of the initial pass, including ping-pong and the state's starting offset. */
+export function animationDuration(s: SpriteSnapshot, tag: TagInfo, st: State) {
+  const seq = tagFrames(tag);
+  const start = Math.max(0, Math.min(st.start, seq.length - 1));
+  return seq.slice(start).reduce((ms, f) => ms + Math.max(1, s.frames[f]?.duration ?? 100), 0) / Math.max(0.05, st.speed);
+}
+
 /**
  * The frame shown `ms` into a state's animation: it plays once from `start` to the end, then
  * (when looping) repeats from `loopFrom`; without a loop it stays on the last frame.
  */
 export function frameAt(s: SpriteSnapshot, tag: TagInfo, st: State, ms: number) {
   const seq = tagFrames(tag);
-  const dur = (f: number) => s.frames[f]?.duration ?? 100;
-  const intro = seq.slice(Math.min(st.start, seq.length - 1));
-  const loop = seq.slice(Math.min(st.loopFrom, seq.length - 1));
+  const dur = (f: number) => Math.max(1, s.frames[f]?.duration ?? 100);
+  const intro = seq.slice(Math.max(0, Math.min(st.start, seq.length - 1)));
+  const loop = seq.slice(Math.max(0, Math.min(st.loopFrom, seq.length - 1)));
   const pick = (list: number[], t: number) => { for (const f of list) { t -= dur(f); if (t < 0) return f; } return list[list.length - 1]; };
   const introTotal = intro.reduce((a, f) => a + dur(f), 0);
   if (ms < introTotal) return pick(intro, ms);

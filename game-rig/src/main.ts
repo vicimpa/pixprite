@@ -10,6 +10,8 @@ import { zip } from "./zip";
 const SPRITE = { kind: 'sprite' } as const;
 
 export default defineExtension(ctx => {
+  // Editors predating minEditorVersion ignore the manifest field: stop before registering anything.
+  if (!ctx.editorVersion) throw new Error('Game rig requires Pixprite 0.0.4 or newer. Update the editor.');
   const { t } = ctx.i18n;
   const getRig = async (s: SpriteSnapshot) => loadRig(await ctx.meta.get<Rig>(SPRITE, 'rig'), s);
 
