@@ -880,8 +880,8 @@ export const Home: FC = () => {
                   <Thumb>{p.thumb && <img src={p.thumb} alt="" draggable={false} style={{
                     ...checker(p.width, p.height),
                     // Fills the card along the longer side, keeping the sprite's proportions
-                    aspectRatio: `${p.width} / ${p.height}`,
-                    ...(p.width >= p.height ? { width: '100%' } : { height: '100%' }),
+                    aspectRatio: `${p.width * (p.pixelRatioX ?? 1)} / ${p.height * (p.pixelRatioY ?? 1)}`,
+                    ...(p.width * (p.pixelRatioX ?? 1) >= p.height * (p.pixelRatioY ?? 1) ? { width: '100%' } : { height: '100%' }),
                   }} />}</Thumb>
                   <Download title={t('home.downloadPixprite')} onClick={e => { e.stopPropagation(); void downloadProject(p.id); }}><Icon name="download" scale="glyph" /></Download>
                   <Name>{p.name}</Name>

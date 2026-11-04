@@ -182,6 +182,11 @@ function makeContext(c: Connection): ExtensionContext {
     Object.fromEntries(names.map(n => [n, (...a: unknown[]) => c.call(`${ns}.${n}`, a)])) as any;
 
   return {
+    automation: {
+      list: () => c.call('automation.list'),
+      call: (name, args = {}) => c.call('automation.call', [name, args]),
+      activity: () => c.call('automation.activity'),
+    },
     id: init.id,
     apiVersion: init.apiVersion,
     editorVersion: init.editorVersion ?? '',
@@ -311,5 +316,12 @@ export async function connect(): Promise<ExtensionContext & { role: InitMessage[
   const c = connection(parentPort);
   const init = await c.ready;
   c.post({ type: 'activated', exports: [] });
+  let lastActivity = -Infinity;
+  const activity = (event: Event) => {
+    const now = performance.now();
+    if (!event.isTrusted || now - lastActivity < 250) return;
+    lastActivity = now; void c.call('automation.activity').catch(() => {});
+  };
+  for (const event of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'input']) window.addEventListener(event, activity, { capture: true, passive: true });
   return Object.assign(makeContext(c), { role: init.role, contribution: init.contribution });
 }

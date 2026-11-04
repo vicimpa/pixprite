@@ -65,6 +65,12 @@ async function paint(page: Page) {
   await command(page, 'file.exportPng');
   const pixels = await readFile((await (await pending).path())!);
   await page.evaluate(() => dispatchEvent(new Event('beforeunload')));
+  // Another tab must restore the completed session, not an earlier autosave still in flight.
+  const tabs = await page.getByTestId('document-tabs').locator('[draggable=true]').count();
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem('pixprite:session') ?? '{}');
+    return { tabs: saved.tabs?.length ?? 0, active: saved.active !== 'home' && saved.tabs?.includes(saved.active) };
+  })).toEqual({ tabs, active: true });
   return pixels.toString('base64');
 }
 

@@ -48,12 +48,19 @@ function usePreviewFrame(playing: boolean, tagIndex: number) {
 
 type View = { zoom: number; cx: number; cy: number; };
 
+function fitPreview(width: number, height: number) {
+  const { sprite } = state;
+  const z = Math.min(width / (sprite.width * sprite.pixelRatioX), height / (sprite.height * sprite.pixelRatioY));
+  return z >= 1 ? Math.floor(z) : Math.max(0.01, z);
+}
+
 /** Draws a frame with a camera; zoom 0 means "fit" */
 function drawView(can: HTMLCanvasElement, ctx: CanvasRenderingContext2D, frame: number, view: View, background: string | null) {
   const { sprite } = state;
-  const k = view.zoom || Math.max(1, Math.floor(Math.min(can.width / sprite.width, can.height / sprite.height)));
-  const w = sprite.width * k, h = sprite.height * k;
-  const x = Math.round(can.width / 2 - view.cx * k), y = Math.round(can.height / 2 - view.cy * k);
+  const k = view.zoom || fitPreview(can.width, can.height);
+  const zx = k * sprite.pixelRatioX, zy = k * sprite.pixelRatioY;
+  const w = sprite.width * zx, h = sprite.height * zy;
+  const x = Math.round(can.width / 2 - view.cx * zx), y = Math.round(can.height / 2 - view.cy * zy);
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0, 0, can.width, can.height);
   const image = sprite.render(frame);
@@ -179,7 +186,7 @@ export const PreviewWindow: FC = () => {
       <Body
         onWheel={e => {
           const v = view.current;
-          const base = v.zoom || Math.max(1, Math.floor(Math.min(e.currentTarget.clientWidth / state.sprite.width, e.currentTarget.clientHeight / state.sprite.height)));
+          const base = v.zoom || fitPreview(e.currentTarget.clientWidth, e.currentTarget.clientHeight);
           v.zoom = Math.max(1, Math.min(64, base + (e.deltaY < 0 ? 1 : -1)));
           setFollow(false);
         }}
@@ -187,16 +194,16 @@ export const PreviewWindow: FC = () => {
           // Dragging pans the preview on its own and stops following
           e.currentTarget.setPointerCapture(e.pointerId);
           const v = view.current, sx = e.clientX, sy = e.clientY, cx = v.cx, cy = v.cy;
-          const k = v.zoom || Math.max(1, Math.floor(Math.min(e.currentTarget.clientWidth / state.sprite.width, e.currentTarget.clientHeight / state.sprite.height)));
+          const k = v.zoom || fitPreview(e.currentTarget.clientWidth, e.currentTarget.clientHeight);
           setFollow(false);
           const el = e.currentTarget;
-          const move = (ev: PointerEvent) => { v.cx = cx - (ev.clientX - sx) / k; v.cy = cy - (ev.clientY - sy) / k; };
+          const move = (ev: PointerEvent) => { v.cx = cx - (ev.clientX - sx) / (k * state.sprite.pixelRatioX); v.cy = cy - (ev.clientY - sy) / (k * state.sprite.pixelRatioY); };
           const up = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); };
           el.addEventListener('pointermove', move);
           el.addEventListener('pointerup', up);
         }}
       >
-        <Canvas inset loop={(can, ctx) => {
+        <Canvas data-testid="sprite-preview" inset loop={(can, ctx) => {
           const v = view.current;
           if (follow) {
             // Center of what the main editor shows
@@ -253,8 +260,8 @@ export const FullscreenPreview: FC = () => {
       onPointerMove={e => {
         // Moving the mouse pans the image
         const v = view.current;
-        v.cx -= e.movementX / (v.zoom || 1);
-        v.cy -= e.movementY / (v.zoom || 1);
+        v.cx -= e.movementX / ((v.zoom || 1) * state.sprite.pixelRatioX);
+        v.cy -= e.movementY / ((v.zoom || 1) * state.sprite.pixelRatioY);
       }}
       onPointerUp={() => { state.fullscreenPreview = false; }}
       onWheel={e => { view.current.zoom = Math.max(1, Math.min(64, view.current.zoom + (e.deltaY < 0 ? 1 : -1))); }}

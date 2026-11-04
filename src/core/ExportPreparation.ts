@@ -13,9 +13,11 @@ export type ExportRequest = {
   areas: Record<number, Rect | null>; grid: SheetContext['prefs'];
 };
 
-function scaled(source: OffscreenCanvas, scale: number) {
-  if (scale === 1) return source;
-  const out = new OffscreenCanvas(source.width * scale, source.height * scale);
+function scaled(source: OffscreenCanvas, scaleX: number, scaleY = scaleX) {
+  const w = Math.round(source.width * scaleX), h = Math.round(source.height * scaleY);
+  if (w > 32768 || h > 32768 || w * h > 64 * 1024 * 1024) throw new Error('Export dimensions exceed the image size limit');
+  if (scaleX === 1 && scaleY === 1) return source;
+  const out = new OffscreenCanvas(w, h);
   const ctx = out.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(source, 0, 0, out.width, out.height);
@@ -25,6 +27,8 @@ function scaled(source: OffscreenCanvas, scale: number) {
 export async function prepareExport(args: ExportRequest): Promise<PreparedExport> {
   const { opts, base, frames, areas } = args;
   const sprite = documentContext(args.raw);
+  const ratioX = opts.applyPixelRatio ? sprite.pixelRatioX : 1, ratioY = opts.applyPixelRatio ? sprite.pixelRatioY : 1;
+  const scaleX = opts.scale * ratioX, scaleY = opts.scale * ratioY;
   /** Bounds of the used pixels of the frames inside their areas (canvas coordinates) */
   function contentBounds(opts: ExportOptions, frames: number[]): Rect | null {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -69,7 +73,7 @@ export async function prepareExport(args: ExportRequest): Promise<PreparedExport
   function cropCanvas(opts: ExportOptions, f: number, r: Rect, size: { w: number; h: number; }) {
     const out = new OffscreenCanvas(size.w, size.h);
     out.getContext('2d')!.drawImage(sprite.render(f, opts.layer), r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
-    return scaled(out, opts.scale);
+    return scaled(out, opts.scale * ratioX, opts.scale * ratioY);
   }
 
   const png = (can: OffscreenCanvas) => can.convertToBlob({ type: 'image/png' });
@@ -79,9 +83,9 @@ export async function prepareExport(args: ExportRequest): Promise<PreparedExport
     if (opts.trim && so.trim === 'none') so.trim = 'sprite';
     const sheet = buildSheet(so, { sprite, prefs: args.grid });
     const image = `${base}-sheet.png`;
-    const out = [{ name: image, blob: await png(scaled(sheet.canvas, opts.scale)) }];
+    const out = [{ name: image, blob: await png(scaled(sheet.canvas, scaleX, scaleY)) }];
     if (opts.json && opts.json !== 'none')
-      out.push({ name: `${base}-sheet.json`, blob: new Blob([sheetData(sheet, base, image, opts.json, sprite)], { type: 'application/json' }) });
+      out.push({ name: `${base}-sheet.json`, blob: new Blob([sheetData(sheet, base, image, opts.json, sprite, ratioX, ratioY)], { type: 'application/json' }) });
     return out;
   }
 
@@ -103,8 +107,8 @@ export async function prepareExport(args: ExportRequest): Promise<PreparedExport
       const can = new OffscreenCanvas(s, s);
       const ctx = can.getContext('2d')!;
       // Whole-number zoom when it fits, otherwise shrink; centered
-      const k = Math.min(s / r.w, s / r.h), z = k >= 1 ? Math.floor(k) : k;
-      const w = Math.max(1, Math.round(r.w * z)), h = Math.max(1, Math.round(r.h * z));
+      const k = Math.min(s / src.width, s / src.height), z = k >= 1 ? Math.floor(k) : k;
+      const w = Math.max(1, Math.round(src.width * z)), h = Math.max(1, Math.round(src.height * z));
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(src, (s - w) >> 1, (s - h) >> 1, w, h);
       return { width: s, height: s, png: new Uint8Array(await (await png(can)).arrayBuffer()) };
@@ -126,8 +130,8 @@ export async function prepareExport(args: ExportRequest): Promise<PreparedExport
   }
 
   const size = rectsSize(rects);
-  const w = size.w * opts.scale, h = size.h * opts.scale;
   const canvases = shown.map(f => cropCanvas(opts, f, rects.get(f)!, size));
+  const w = canvases[0].width, h = canvases[0].height;
   const delays = shown.map(f => sprite.frames[f].duration);
 
   if (opts.kind === 'apng') {

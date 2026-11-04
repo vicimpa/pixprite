@@ -201,15 +201,17 @@ impl Native {
             self.app().exit(0);
             return Ok(json!({"saved":true}));
         }
-        if request.method == "select" {
-            self.show();
-        }
         if request.method == "open_file" {
-            let file = storage::read_document(Path::new(
+            let mut file = storage::read_document(Path::new(
                 request.params["path"]
                     .as_str()
                     .ok_or("path must be a string")?,
             ))?;
+            for field in ["contextId", "follow"] {
+                if let Some(value) = request.params.get(field) {
+                    file[field] = value.clone();
+                }
+            }
             request = Request {
                 method: "open_data".into(),
                 params: file,
@@ -240,28 +242,36 @@ impl Native {
         if !["pixprite", "aseprite", "png"].contains(&format) {
             return Err("Save supports .pixprite, .aseprite/.ase and .png".into());
         }
+        let mut export_params = json!({"format":format});
+        for field in [
+            "documentId",
+            "expectedRevision",
+            "contextId",
+            "follow",
+            "applyPixelRatio",
+        ] {
+            if let Some(value) = request.params.get(field) {
+                export_params[field] = value.clone();
+            }
+        }
         let result = self
             .request(Request {
                 method: "export_data".into(),
-                params: json!({"format":format}),
+                params: export_params,
             })
             .await?;
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(result["data"].as_str().ok_or("Invalid export response")?)
             .map_err(|e| e.to_string())?;
-        let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
-        let write = (|| {
-            storage::atomic_bytes(&temporary, &bytes).map_err(|e| e.to_string())?;
-            if overwrite {
-                fs::rename(&temporary, &path)
-            } else {
-                fs::hard_link(&temporary, &path)
-            }
-            .map_err(|e| e.to_string())
-        })();
-        let _ = fs::remove_file(temporary);
-        write?;
-        Ok(json!({"path":path,"format":format,"bytes":bytes.len()}))
+        let protected = result["lossyImport"].as_bool().unwrap_or(false);
+        storage::export_bytes(&path, &bytes, overwrite && !protected).map_err(|e| {
+            if protected && e.kind() == std::io::ErrorKind::AlreadyExists {
+                "This import omitted unsupported data. Save to a new file; existing .aseprite files are protected.".into()
+            } else { e.to_string() }
+        })?;
+        Ok(
+            json!({"path":path,"format":format,"bytes":bytes.len(),"documentId":result["documentId"],"revision":result["revision"],"frame":result["frame"],"warnings":result["warnings"]}),
+        )
     }
     fn cleanup(&self) {
         if let Some((path, token)) = &*self.connection.lock().unwrap() {

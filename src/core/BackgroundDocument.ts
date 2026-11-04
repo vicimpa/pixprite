@@ -7,6 +7,7 @@ import * as rendering from './SpriteRenderer';
 import type { SheetContext } from './SpriteSheet';
 import type { DocumentExportContext } from './SpriteSerialization';
 import type { PixpriteData } from './SpriteValidation';
+import { documentPixelRatio } from './PixelRatio';
 import { serializedBytes } from './Storage';
 
 export function base64(data: Uint32Array) {
@@ -46,7 +47,8 @@ export function hydrateCapture(raw: DocumentCapture) {
     });
     return { ...newLayer(layer.name, raw.frames.length), ...layer, cels };
   });
-  return { ...raw, info: cleanInfo(raw.info), layers, tilesets: raw.tilesets.map(({ d, count: _count, ...ts }) => ({ ...ts, tiles: d })) };
+  const [pixelRatioX, pixelRatioY] = documentPixelRatio(raw);
+  return { ...raw, pixelRatioX, pixelRatioY, info: cleanInfo(raw.info), layers, tilesets: raw.tilesets.map(({ d, count: _count, ...ts }) => ({ ...ts, tiles: d })) };
 }
 
 export function documentContext(raw: DocumentCapture) {
@@ -89,12 +91,13 @@ export async function prepareDocument(raw: DocumentCapture | StorageCapture, pre
   let thumb = '';
   if (preview && typeof OffscreenCanvas !== 'undefined') {
     const ctx = documentContext(decodeCapture(data));
-    const size = 96, k = Math.max(1, Math.floor(size / Math.max(raw.width, raw.height)));
-    const canvas = new OffscreenCanvas(Math.min(size, raw.width * k) || 1, Math.min(size, raw.height * k) || 1);
+    const w = raw.width * ctx.pixelRatioX, h = raw.height * ctx.pixelRatioY;
+    const size = 96, k = Math.max(1, Math.floor(size / Math.max(w, h)));
+    const canvas = new OffscreenCanvas(Math.min(size, w * k) || 1, Math.min(size, h * k) || 1);
     const painter = canvas.getContext('2d')!;
     painter.imageSmoothingEnabled = false;
-    const scale = Math.min(canvas.width / raw.width, canvas.height / raw.height);
-    painter.drawImage(ctx.render(0), 0, 0, raw.width * scale, raw.height * scale);
+    const scale = Math.min(canvas.width / w, canvas.height / h);
+    painter.drawImage(ctx.render(0), 0, 0, w * scale, h * scale);
     const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer());
     let binary = '';
     for (const byte of bytes) binary += String.fromCharCode(byte);

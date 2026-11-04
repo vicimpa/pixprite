@@ -48,12 +48,16 @@ Budgets in `scripts/bundle-budgets.json` are measured in bytes:
 
 | Metric | Baseline | Limit |
 | --- | ---: | ---: |
-| Initial JavaScript gzip | ~499,000 | 512,000 (500 KiB) |
-| Total JavaScript gzip | ~529,000 | 544,768 (532 KiB) |
+| Initial JavaScript gzip | ~538,100 | 540,672 (528 KiB) |
+| Total JavaScript gzip | ~569,600 | 573,440 (560 KiB) |
 
-The shared Web Components migration and React extension pages on 2026-11-01 raise these limits because the editor also ships the kit's minified module sources and an isolated React renderer for sandboxed panels/widgets. See the [UI migration measurements](ui-web-components.md#bundle-measurement) and [React page measurements](ui-web-components.md#react-extension-pages) for the before/after numbers and rationale.
+The shared Web Components migration and React extension pages on 2026-11-01 raised these limits because the editor also ships the kit's minified module sources and an isolated React renderer for sandboxed panels/widgets. See the [UI migration measurements](ui-web-components.md#bundle-measurement) and [React page measurements](ui-web-components.md#react-extension-pages) for the before/after numbers and rationale. MCP atomic editing adds strict in-editor argument validation using Zod Mini, document/revision guards, selection operations and a visible comparison panel. The original atomic MCP changes added 8 KiB to each budget. Sharing the tool catalogue, JSON schemas, executor and task guides with AI Assistant, isolating agent sessions and adding read-only canvas tabs brings the measured bundle to approximately 534 kB initial / 564.5 kB total gzip; this adds another 20 KiB to each limit. Chromium/WebKit scenarios exercise background targeting, manual-write conflicts, idle following, palette ownership, read-only tabs and assistant continuation while browsing Home. The full Zod runtime is kept out of the browser bundle.
 
 Missing build manifests/chunks and exceeded budgets fail the command. Unit tests exercise passing builds, oversized static imports, oversized workers, and missing files. To review a budget change, rebuild, inspect the measured growth and chunk split, then update the limits in the JSON file with the reason in the PR. The checker never updates limits automatically.
+
+The 0.0.6 non-square pixels, export settings validation and `.aseprite` import diagnostics fit within those
+existing budgets: measured 538,128 bytes initial / 569,602 bytes total gzip. The new
+features did not require increasing the limits.
 
 CI builds once, then runs `PIXPRITE_E2E_PREBUILT=1 bun run test:e2e:smoke` against that exact `dist/web` directory. Without this variable, browser tests retain their normal build-first behavior. To inspect another build/budget fixture, use `bun scripts/bundle-check.ts <build-directory> <budget-json>`.
 
@@ -75,6 +79,22 @@ and independent play-once/rewind settings. Security fixtures also check portable
 backups, interrupted activation, disabled updates, invalid panel imports and unified
 workspace migration. `scripts/extension-publication.test.ts` publishes only into a
 temporary Git repository and checks history, tags and immutable version bytes.
+
+`ExportSettings.test.ts` rejects malformed saved export options and stale targets.
+`PixelRatio.test.ts` covers ratio normalization, invalid metadata, undo/redo, quarter-turns,
+legacy import diagnostics and `.pixprite`/`.aseprite` round trips. Browser automation
+checks actual pointer-to-pixel mapping and canvas/Preview proportions for `2:1`, `1:2`,
+`4:5` and `8:7`, raw/baked PNG exports and matching sprite-sheet JSON dimensions.
+Native MCP scenarios verify the saved `.aseprite` header and raw/baked PNG dimensions.
+`AsepriteWarnings.test.ts` uses locally built binary chunks to check unsupported-data
+diagnostics and their persistence through worker preparation and `.pixprite` saves.
+`e2e/mcp-automation.e2e.ts` additionally checks independent successful export settings,
+reload/library restoration, cancelled/failed native saves and completion after a tab switch.
+Its save-dialog adapter is simulated; `e2e/desktop-mcp-editing.e2e.ts` verifies actual native
+MCP writes cannot overwrite a lossy import's source even with `overwrite:true`.
+`storage::tests::protected_exports_never_replace_existing_files_and_cleanup_temporary_data`
+checks the filesystem primitive separately. The browser cannot observe completion of a
+browser-managed download; the native bridge returns true only after a completed write.
 
 Game rig physics checks cover zero coyote time, grace expiration, jump cut, air control,
 fast swept collisions, refresh-rate stability and animation finish duration. Browser checks

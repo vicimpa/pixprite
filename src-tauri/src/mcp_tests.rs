@@ -81,9 +81,30 @@ fn embedded_schemas_validate_native_tool_calls_without_window_routing() {
     assert!(tool("pixprite_edit").validator.is_valid(
         &json!({"operations":[{"method":"sprite.layers.add","args":[{"name":"Layer"}]}]})
     ));
+    assert!(tool("pixprite_pixels_batch").validator.is_valid(&json!({"documentId":"doc", "expectedRevision":2,"operations":[{"action":"fill","frame":59,"layer":5,"fill":"#ff0000"}]})));
+    assert!(tool("pixprite_playback")
+        .validator
+        .is_valid(&json!({"action":"stop"})));
+    assert!(!tool("pixprite_playback")
+        .validator
+        .is_valid(&json!({"action":"toggle"})));
     assert!(!catalog()
         .iter()
         .any(|entry| entry.tool.name == "pixprite_windows"));
+}
+
+#[test]
+fn image_tool_results_preserve_provenance_without_duplicating_image_data() {
+    let result =
+        tool_result(json!({"image":"png-data","documentId":"sprite","frame":59,"revision":42}));
+    let value = serde_json::to_value(result).unwrap();
+    assert_eq!(value["content"][0]["type"], "image");
+    assert_eq!(value["content"][0]["data"], "png-data");
+    assert_eq!(value["structuredContent"]["revision"], 42);
+    assert_eq!(value["structuredContent"]["documentId"], "sprite");
+    assert!(value["structuredContent"].get("image").is_none());
+    let text: Value = serde_json::from_str(value["content"][1]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(text["frame"], 59);
 }
 #[test]
 fn embedded_server_is_off_by_default_and_stops_without_an_idle_delay() {

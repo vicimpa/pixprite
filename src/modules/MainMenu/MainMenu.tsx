@@ -1,3 +1,4 @@
+import { activeViewer, viewerTabs } from '~/core/ViewerTabs';
 import { available, cmd, COMMANDS, commandLabel } from "~/core/Commands";
 import { prettyCombo } from "~/core/Hotkeys";
 import { LANGUAGES, t } from "~/core/i18n";
@@ -71,7 +72,7 @@ const MENUS: { label: string; items: () => MenuItems; }[] = [
   },
   {
     label: 'menu.image', items: () => [
-      item('image.properties'), item('image.colorMode'), '-',
+      item('image.properties'), item('image.colorMode'), item('image.pixelRatio'), '-',
       item('image.canvasSize'), item('image.spriteSize'), '-',
       sub(t('menu.rotateCanvas'), [item('image.rotateCw', '90° right'), item('image.rotateCcw', '90° left'), item('image.rotate180', '180°')]),
       sub(t('menu.mirrorCanvas'), [item('image.flipH', t('menu.horizontally')), item('image.flipV', t('menu.vertically'))]),
@@ -200,7 +201,7 @@ export const MainMenu: FC = () => {
   return (
     <div data-testid="main-menu-bar" style={{ position: 'relative', height: state.ui.row + 2, flexShrink: 0 }}>
     <MenuBar key={state.home ? 'home' : 'editor'} menus={state.home ? HOME_MENUS : withExtensions}>
-      <Title><Logo><LogoMark size={16} />Pixprite</Logo>{!state.home && `${sprite.name} · ${sprite.width}×${sprite.height}`}</Title>
+      <Title><Logo><LogoMark size={16} />Pixprite</Logo>{activeViewer.value ? viewerTabs.value.find(tab => tab.id === activeViewer.value)?.name : !state.home && `${sprite.name} · ${sprite.width}×${sprite.height}`}</Title>
     </MenuBar>
     </div>
   );

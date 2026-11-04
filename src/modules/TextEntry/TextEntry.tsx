@@ -71,11 +71,12 @@ export const TextEntry: FC = () => {
     <Input
       ref={ref}
       style={{
-        left: state.offsetX + x * state.zoom,
-        top: state.offsetY + y * state.zoom,
-        width: Math.max(8, (f ? Math.abs(f.place.w) : 4) * state.zoom),
-        height: (f ? Math.abs(f.place.h) : state.textSize) * state.zoom,
-        fontSize: state.textSize * state.zoom * 0.8,
+        left: state.offsetX + x * state.zoomX,
+        top: state.offsetY + y * state.zoomY,
+        width: Math.max(8, (f ? Math.abs(f.place.w) : 4) * state.zoomY),
+        height: (f ? Math.abs(f.place.h) : state.textSize) * state.zoomY,
+        fontSize: state.textSize * state.zoomY * 0.8,
+        transform: `scaleX(${sprite.pixelRatioX / sprite.pixelRatioY})`, transformOrigin: 'top left',
       }}
       onChange={e => update(e.target.value)}
       onKeyDown={e => {

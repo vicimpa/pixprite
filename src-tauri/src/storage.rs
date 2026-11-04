@@ -62,6 +62,19 @@ pub fn atomic_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
     atomic_bytes(path, &serde_json::to_vec(value).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())
 }
+/// A new export uses a hard link so an existing destination can never be replaced, even in a race.
+pub fn export_bytes(path: &Path, data: &[u8], overwrite: bool) -> io::Result<()> {
+    if overwrite {
+        return atomic_bytes(path, data);
+    }
+    let temporary = path.with_extension(format!("{}.tmp", Uuid::new_v4()));
+    let result = (|| {
+        atomic_bytes(&temporary, data)?;
+        fs::hard_link(&temporary, path)
+    })();
+    let _ = fs::remove_file(temporary);
+    result
+}
 pub fn json<T: DeserializeOwned>(path: &Path) -> Option<T> {
     fs::read(path)
         .ok()
@@ -105,6 +118,21 @@ pub fn read_document(path: &Path) -> Result<serde_json::Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn protected_exports_never_replace_existing_files_and_cleanup_temporary_data() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("original.aseprite");
+        export_bytes(&path, b"original", false).unwrap();
+        assert_eq!(
+            export_bytes(&path, b"lossy", false).unwrap_err().kind(),
+            io::ErrorKind::AlreadyExists
+        );
+        assert_eq!(fs::read(&path).unwrap(), b"original");
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+        export_bytes(&path, b"approved replacement", true).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"approved replacement");
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 1);
+    }
     #[test]
     fn documents_are_bounded_and_atomic_writes_preserve_parent_permissions() {
         let root = tempfile::tempdir().unwrap();

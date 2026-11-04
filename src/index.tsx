@@ -1,3 +1,5 @@
+import { installAgentActivity } from './core/automation/activity';
+import { highlights } from './core/extensions/api/ui';
 import "~/index.css";
 
 import { App } from "~/app";
@@ -48,6 +50,10 @@ void restored.then(async () => {
   // After a crash, offer the snapshot list (on the home page)
   if (state.uncleanExit && !state.home && await askConfirm(t('app.theLastSessionDid'), { title: t('app.recovery'), ok: t('app.showSnapshots') }))
     state.showHome();
+});
+installAgentActivity(following => {
+  if (highlights.peek().length) highlights.value = [];
+  if (following && state.playing) { const frame = state.sprite.frame; state.playing = false; state.sprite.frame = frame; }
 });
 installHotkeys();
 installTooltips();

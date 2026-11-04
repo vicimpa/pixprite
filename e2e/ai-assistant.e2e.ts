@@ -30,7 +30,7 @@ test('TSX assistant uses shared controls, queues prompts, executes a tool and re
   await page.route('http://localhost:11434/v1/chat/completions', async route => {
     const index = requests.push(route.request().postDataJSON());
     if (index === 1) await waiting;
-    const message = index === 1 ? { role: 'assistant', content: '**Checking**', tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'get_sprite', arguments: '{}' } }] }
+    const message = index === 1 ? { role: 'assistant', content: '**Checking**', tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'pixprite_inspect', arguments: '{}' } }] }
       : { role: 'assistant', content: index === 2 ? '**First answer**' : '**Second answer**' };
     await route.fulfill({ json: { choices: [{ message }] }, headers: { 'Access-Control-Allow-Origin': '*' } });
   });
@@ -60,35 +60,35 @@ test('assistant loads only the requested skill, uses it to edit and reads back a
   const call = (id: string, name: string, args: object) => ({ id, type: 'function', function: { name, arguments: JSON.stringify(args) } });
   await page.route('http://localhost:11434/v1/chat/completions', async route => {
     const request = route.request().postDataJSON(), round = requests.push(request);
-    const calls = round === 1 ? [call('skill', 'read_skill', { name: 'draw-pixel-art' })]
-      : round === 2 ? [call('sprite', 'get_sprite', {})]
-      : round === 3 ? [call('selection', 'get_selection', {}), call('before', 'get_pixels', { layer: 0, frame: 0, x: 3, y: 4, w: 2, h: 1 })]
-      : round === 4 ? [call('write', 'fill_rect', { layer: 0, frame: 0, x: 3, y: 4, w: 2, h: 1, color: '#ff0088' }), call('after', 'get_pixels', { layer: 0, frame: 0, x: 3, y: 4, w: 2, h: 1 })] : undefined;
+    const calls = round === 1 ? [call('skill', 'pixprite_read_skill', { name: 'draw-pixel-art' })]
+      : round === 2 ? [call('sprite', 'pixprite_inspect', {})]
+      : round === 3 ? [call('selection', 'pixprite_get_selection', {}), call('before', 'pixprite_pixels', { action: 'read', encoding: 'hex', layer: 0, frame: 0, rect: { x: 3, y: 4, w: 2, h: 1 } })]
+      : round === 4 ? [call('write', 'pixprite_pixels', { action: 'fill', layer: 0, frame: 0, rect: { x: 3, y: 4, w: 2, h: 1 }, fill: '#ff0088' }), call('after', 'pixprite_pixels', { action: 'read', encoding: 'hex', layer: 0, frame: 0, rect: { x: 3, y: 4, w: 2, h: 1 } })] : undefined;
     await route.fulfill({ json: { choices: [{ message: { role: 'assistant', content: calls ? null : 'Painted and verified.', tool_calls: calls } }] }, headers: { 'Access-Control-Allow-Origin': '*' } });
   });
   const { chat, field } = await openAssistant(page);
   await field.fill('Draw two pink pixels at x=3, y=4 on this frame'); await field.press('Enter');
   await expect(chat.locator('.assistant')).toContainText('Painted and verified.');
   expect(requests).toHaveLength(5);
-  const skillSchema = requests[0].tools.find((tool: any) => tool.function.name === 'read_skill');
-  expect(skillSchema.function.parameters.properties.name.enum).toContain('animate-sprite');
+  const skillSchema = requests[0].tools.find((tool: any) => tool.function.name === 'pixprite_read_skill');
+  expect(skillSchema.function.parameters.properties.name.type).toBe('string');
   expect(requests[0].messages[0].content).toContain('draw-pixel-art');
   const loaded = JSON.parse(requests[1].messages.find((message: any) => message.tool_call_id === 'skill').content);
   expect(loaded).toMatchObject({ name: 'draw-pixel-art' });
-  expect(loaded.tools).toContain('put_pixels');
+  expect(loaded.tools).toContain('pixprite_pixels_batch');
   expect(requests[0].messages[0].content).not.toContain(loaded.instructions);
   const readback = JSON.parse(requests[4].messages.find((message: any) => message.tool_call_id === 'after').content);
-  expect(readback).toEqual({ rect: { x: 3, y: 4, w: 2, h: 1 }, rows: [['#ff0088', '#ff0088']] });
+  expect(readback).toMatchObject({ rect: { x: 3, y: 4, w: 2, h: 1 }, rows: [['#ff0088', '#ff0088']] });
 });
 
-test('switching documents during a model request prevents writes to the newly selected sprite', async ({ page }) => {
+test('switching documents does not stop the assistant or redirect its writes', async ({ page }) => {
   const requests: any[] = [];
   let release!: () => void; const waiting = new Promise<void>(resolve => { release = resolve; });
   await page.route('http://localhost:11434/v1/chat/completions', async route => {
     const round = requests.push(route.request().postDataJSON());
     if (round === 1) await waiting;
-    const fn = round === 1 ? { name: 'fill_rect', arguments: JSON.stringify({ layer: 0, frame: 0, x: 0, y: 0, w: 1, h: 1, color: '#ff0000' }) }
-      : { name: 'get_pixels', arguments: JSON.stringify({ layer: 0, frame: 0, x: 0, y: 0, w: 1, h: 1 }) };
+    const fn = round === 1 ? { name: 'pixprite_pixels', arguments: JSON.stringify({ action: 'fill', layer: 0, frame: 0, rect: { x: 0, y: 0, w: 1, h: 1 }, fill: '#ff0000' }) }
+      : { name: 'pixprite_pixels', arguments: JSON.stringify({ action: 'read', encoding: 'hex', layer: 0, frame: 0, rect: { x: 0, y: 0, w: 1, h: 1 } }) };
     const message = round < 3 ? { role: 'assistant', content: null, tool_calls: [{ id: 'call-' + round, type: 'function', function: fn }] }
       : { role: 'assistant', content: 'Checked the selected document.' };
     await route.fulfill({ json: { choices: [{ message }] }, headers: { 'Access-Control-Allow-Origin': '*' } });
@@ -101,9 +101,8 @@ test('switching documents during a model request prevents writes to the newly se
   await expect(page.getByTestId('sprite-canvas')).toBeVisible();
   release();
   await expect(chat.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
-  await field.fill('Inspect the selected document'); await field.press('Enter');
-  await expect(chat.locator('.assistant')).toContainText('Checked the selected document.');
+  await expect.poll(() => requests.length).toBe(3);
   expect(requests).toHaveLength(3);
   const result = JSON.parse(requests[2].messages.find((message: any) => message.tool_call_id === 'call-2').content);
-  expect(result.rows).toEqual([['']]);
+  expect(result.rows).toEqual([['#ff0000']]);
 });

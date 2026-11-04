@@ -13,6 +13,7 @@ import { eventHandlers } from "./api/events";
 import { runtimeHandlers } from "./api/runtime";
 import { spriteHandlers } from "./api/sprite";
 import { uiHandlers } from "./api/ui";
+import { automationHandlers } from './api/automation';
 import type { Manifest } from "./manifest";
 import {
   I18N_CHANGE, INVOKE, isMethod, missingPermission, transferables,
@@ -25,7 +26,7 @@ import { API_VERSION } from "@pixprite/api";
 import { assertCompatible, editorVersion } from './compatibility';
 import { SANDBOX_POLICY } from './sandbox';
 
-const HANDLERS: Handlers = { ...spriteHandlers, ...uiHandlers, ...runtimeHandlers, ...eventHandlers };
+const HANDLERS: Handlers = { ...spriteHandlers, ...uiHandlers, ...runtimeHandlers, ...eventHandlers, ...automationHandlers };
 
 /** How long `activate` may take, and a callback (tool step, filter…) may run */
 const ACTIVATE_MS = 10_000;

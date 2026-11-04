@@ -1,4 +1,5 @@
 import type { AseDocument } from "~/core/formats/Aseprite";
+import { documentPixelRatio } from './PixelRatio';
 import type { SpriteContext } from "./SpriteContext";
 import { cleanInfo, lockOwners, newLayer, TAG_COLORS, tagsByName, trimCel, type Cel, type CelImage, type Frame, type Layer } from "./SpriteModel";
 import { isExtData, isLocksRecord, migratePixpriteV3, migratePixpriteV4, PIXPRITE_VERSION, validateDocumentIntegrity, validatePixpriteShape, type PixpriteData } from "./SpriteValidation";
@@ -61,8 +62,10 @@ function serialize(this: SpriteContext, binary = false, resource?: CaptureResour
     transparentIndex: this.transparentIndex,
     name: this.name,
     ...(Object.keys(this.info).length ? { info: this.info } : {}),
+    ...(this.asepriteWarnings?.length ? { asepriteWarnings: this.asepriteWarnings } : {}),
     width: this.width,
     height: this.height,
+    ...(this.pixelRatioX !== 1 || this.pixelRatioY !== 1 ? { pixelRatioX: this.pixelRatioX, pixelRatioY: this.pixelRatioY } : {}),
     frames: this.frames,
     tags: this.tags,
     slices: this.slices,
@@ -153,6 +156,9 @@ export function load(this: SpriteContext, data: unknown): void {
   const installed = locks ? lockOwners.installed(locks.owner) : false;
   this.reset(data.width, data.height, data.name ?? 'untitled');
   this.info = info;
+  this.asepriteWarnings = data.asepriteWarnings ?? [];
+  [this.pixelRatioX, this.pixelRatioY] = documentPixelRatio(data);
+  this.asepriteWarnings = this.asepriteWarnings.filter(w => w.kind !== 'pixelRatio');
   this.frames = frames;
   this.layers = layers;
   this.tags = tags;
@@ -171,7 +177,7 @@ export function load(this: SpriteContext, data: unknown): void {
 }
 
 export type DocumentExportContext = Pick<SpriteContext,
-  'width' | 'height' | 'frames' | 'tags' | 'framePalettes' | 'slices' | 'colorMode' | 'tilesets' | 'transparentIndex' | 'savedLayers'>;
+  'width' | 'height' | 'pixelRatioX' | 'pixelRatioY' | 'frames' | 'tags' | 'framePalettes' | 'slices' | 'colorMode' | 'tilesets' | 'transparentIndex' | 'savedLayers'>;
 
 export function toDocument(this: DocumentExportContext): AseDocument {
   const layers = this.savedLayers().filter(layer => !layer.reference);
@@ -182,6 +188,7 @@ export function toDocument(this: DocumentExportContext): AseDocument {
   return {
     width: this.width,
     height: this.height,
+    ...(this.pixelRatioX !== 1 || this.pixelRatioY !== 1 ? { pixelRatioX: this.pixelRatioX, pixelRatioY: this.pixelRatioY } : {}),
     frames: this.frames.map(f => ({ ...f })),
     tags: this.tags.map(t => ({ ...t })),
     palette: this.framePalettes[0]?.colors ?? [],
@@ -213,6 +220,8 @@ export function toDocument(this: DocumentExportContext): AseDocument {
 
 export function fromDocument(this: SpriteContext, doc: AseDocument, name = 'untitled'): void {
   this.reset(doc.width, doc.height, name);
+  this.asepriteWarnings = doc.warnings ?? [];
+  [this.pixelRatioX, this.pixelRatioY] = documentPixelRatio(doc);
   const count = doc.frames.length;
   this.frames = doc.frames.map(f => ({ ...f }));
   this.tags = doc.tags.map(t => ({ ...t }));

@@ -283,7 +283,7 @@ function snapTargets(axis: 'x' | 'y', withCel: boolean) {
 /** Nearest snap line to the sub-pixel coordinate `v`, or null when none is within reach */
 export function nearLine(axis: 'x' | 'y', v: number, withCel = true): number | null {
   if (!state.snapToGuides) return null;
-  let best: number | null = null, dist = SNAP_PX / state.zoom;
+  let best: number | null = null, dist = SNAP_PX / (axis === 'x' ? state.zoomX : state.zoomY);
   for (const t of snapTargets(axis, withCel)) {
     const d = Math.abs(v - t);
     if (d <= dist) { dist = d; best = t; }
@@ -1588,20 +1588,20 @@ export type SliceHit = { index: number; kind: 'move' | 'resize' | 'center'; edge
 export function hitSlice(fx: number, fy: number): SliceHit | null {
   const { sprite } = state;
   if (!state.showSlices) return null;
-  const e = 5 / state.zoom;
+  const ex = 5 / state.zoomX, ey = 5 / state.zoomY;
   const order = sprite.slices.map((_, i) => i).reverse();
   // Selected slices win when they overlap others
   order.sort((a, b) => +sprite.selectedSlices.includes(b) - +sprite.selectedSlices.includes(a));
   for (const index of order) {
     const k = sliceKey(sprite.slices[index], sprite.frame);
     if (!k || fx < k.x || fy < k.y || fx > k.x + k.w || fy > k.y + k.h) continue;
-    const edges = { l: fx - k.x < e, r: k.x + k.w - fx < e, t: fy - k.y < e, b: k.y + k.h - fy < e };
+    const edges = { l: fx - k.x < ex, r: k.x + k.w - fx < ex, t: fy - k.y < ey, b: k.y + k.h - fy < ey };
     if (edges.l || edges.r || edges.t || edges.b) return { index, kind: 'resize', edges };
     const c = k.center;
     if (c) {
       const ce = {
-        l: Math.abs(fx - (k.x + c.x)) < e, r: Math.abs(fx - (k.x + c.x + c.w)) < e,
-        t: Math.abs(fy - (k.y + c.y)) < e, b: Math.abs(fy - (k.y + c.y + c.h)) < e,
+        l: Math.abs(fx - (k.x + c.x)) < ex, r: Math.abs(fx - (k.x + c.x + c.w)) < ex,
+        t: Math.abs(fy - (k.y + c.y)) < ey, b: Math.abs(fy - (k.y + c.y + c.h)) < ey,
       };
       if (ce.l || ce.r || ce.t || ce.b) return { index, kind: 'center', edges: ce };
     }
@@ -1734,7 +1734,7 @@ export function referenceCorners(): Point[] | null {
 export function referenceHit(fx: number, fy: number): 'scale' | 'rotate' | 'move' | null {
   const corners = referenceCorners();
   if (!corners) return null;
-  const d = Math.min(...corners.map(([x, y]) => Math.hypot(x - fx, y - fy))) * state.zoom;
+  const d = Math.min(...corners.map(([x, y]) => Math.hypot((x - fx) * state.zoomX, (y - fy) * state.zoomY)));
   if (d <= 6) return 'scale';
   if (d <= 22 && !insideQuad(corners, fx, fy)) return 'rotate';
   return 'move';

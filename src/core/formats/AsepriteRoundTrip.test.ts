@@ -124,8 +124,11 @@ describe('.aseprite round-trip', () => {
     expect([tilemap.width, tilemap.height]).toEqual([6, 6]);
     expect(tilemap.tilesets![0].tiles).toHaveLength(5);
     expect([...tilemap.layers[0].cels[0]!.tiles!.refs]).toEqual([1, 2, 4, 3]);
-    for (const document of [tags, groups, tilemap])
-      expect(await decodeAseprite(await encodeAseprite(document))).toEqual(document);
+    for (const document of [tags, groups, tilemap]) {
+      // Diagnostics describe omitted source metadata; the copied .aseprite contains supported data only.
+      const { warnings: _warnings, ...supported } = document;
+      expect(await decodeAseprite(await encodeAseprite(document))).toEqual(supported);
+    }
   }, 60000);
 
   test('RGB document remains stable through binary save → load → save', async () => {

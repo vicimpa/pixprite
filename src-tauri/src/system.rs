@@ -57,7 +57,8 @@ pub async fn desktop_save_download(
     window: WebviewWindow,
     name: String,
     data: String,
-) -> Result<(), String> {
+    protect_existing: bool,
+) -> Result<bool, String> {
     trusted(&window)?;
     if name.is_empty()
         || name.len() > 255
@@ -87,10 +88,13 @@ pub async fn desktop_save_download(
         let _ = tx.send(path);
     });
     if let Some(path) = rx.await.map_err(|e| e.to_string())? {
-        crate::storage::atomic_bytes(&path.into_path().map_err(|e| e.to_string())?, &bytes)
-            .map_err(|e| e.to_string())?;
+        crate::storage::export_bytes(&path.into_path().map_err(|e| e.to_string())?, &bytes, !protect_existing)
+            .map_err(|e| if protect_existing && e.kind() == std::io::ErrorKind::AlreadyExists {
+                "This import omitted unsupported data. Save the copy to a new file to preserve the original.".into()
+            } else { e.to_string() })?;
+        return Ok(true);
     }
-    Ok(())
+    Ok(false)
 }
 #[tauri::command]
 pub async fn desktop_text_action(window: WebviewWindow, action: String) -> Result<(), String> {

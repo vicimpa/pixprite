@@ -42,9 +42,10 @@ function cssVar(name: string) {
 type Box = { x: number; y: number; w: number; h: number; };
 
 /** Rulers along the top and left edges in sprite pixels, with guide marks and the cursor position */
-function drawRulers(ctx: CanvasRenderingContext2D, width: number, height: number, ox: number, oy: number, zoom: number, flip: boolean, cursor: { sx: number; sy: number; } | null) {
+function drawRulers(ctx: CanvasRenderingContext2D, width: number, height: number, ox: number, oy: number, zoomX: number, zoomY: number, flip: boolean, cursor: { sx: number; sy: number; } | null) {
   const R = RULER;
-  const toX = (v: number) => flip ? width - (ox + v * zoom) : ox + v * zoom;
+  const zoom = Math.min(zoomX, zoomY);
+  const toX = (v: number) => flip ? width - (ox + v * zoomX) : ox + v * zoomX;
   const step = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000].find(s => s * zoom >= 48) ?? 5000;
   const minor = step / ([1, 2].includes(step) ? step : 5);
   const bg = cssVar('--ruler') || '#17141d', fg = cssVar('--ruler-fg') || '#8f87a0';
@@ -58,7 +59,7 @@ function drawRulers(ctx: CanvasRenderingContext2D, width: number, height: number
   ctx.globalAlpha = 0.7;
   ctx.beginPath();
   // Top ruler: sprite x
-  const xa = Math.floor(-ox / zoom / minor) * minor - minor, xb = Math.ceil((width - ox) / zoom / minor) * minor;
+  const xa = Math.floor(-ox / zoomX / minor) * minor - minor, xb = Math.ceil((width - ox) / zoomX / minor) * minor;
   ctx.textBaseline = 'top';
   for (let v = xa; v <= xb; v += minor) {
     const x = Math.round(toX(v)) + 0.5;
@@ -68,9 +69,9 @@ function drawRulers(ctx: CanvasRenderingContext2D, width: number, height: number
     if (major) ctx.fillText(String(v), x + 2, 1);
   }
   // Left ruler: sprite y, numbers written sideways
-  const ya = Math.floor(-oy / zoom / minor) * minor - minor, yb = Math.ceil((height - oy) / zoom / minor) * minor;
+  const ya = Math.floor(-oy / zoomY / minor) * minor - minor, yb = Math.ceil((height - oy) / zoomY / minor) * minor;
   for (let v = ya; v <= yb; v += minor) {
-    const y = Math.round(oy + v * zoom) + 0.5;
+    const y = Math.round(oy + v * zoomY) + 0.5;
     if (y < R || y > height) continue;
     const major = Math.abs(v % step) < 1e-6;
     ctx.moveTo(major ? 0 : R - 4, y); ctx.lineTo(R, y);
@@ -90,7 +91,7 @@ function drawRulers(ctx: CanvasRenderingContext2D, width: number, height: number
   ctx.fillStyle = accent;
   for (const g of state.guides) {
     if (g.axis === 'x') { const x = toX(g.pos); if (x >= R) ctx.fillRect(Math.round(x) - 2, R - 6, 5, 6); }
-    else { const y = oy + g.pos * zoom; if (y >= R) ctx.fillRect(R - 6, Math.round(y) - 2, 6, 5); }
+    else { const y = oy + g.pos * zoomY; if (y >= R) ctx.fillRect(R - 6, Math.round(y) - 2, 6, 5); }
   }
   if (cursor) {
     ctx.fillStyle = fg;
@@ -117,8 +118,8 @@ function boldStroke(ctx: CanvasRenderingContext2D, color: string, path: () => vo
   ctx.restore();
 }
 
-function drawGuides(ctx: CanvasRenderingContext2D, a: Box, b: Box, ox: number, oy: number, zoom: number, color: string) {
-  const X = (v: number) => Math.round(ox + v * zoom) + 0.5, Y = (v: number) => Math.round(oy + v * zoom) + 0.5;
+function drawGuides(ctx: CanvasRenderingContext2D, a: Box, b: Box, ox: number, oy: number, zoomX: number, zoomY: number, color: string) {
+  const X = (v: number) => Math.round(ox + v * zoomX) + 0.5, Y = (v: number) => Math.round(oy + v * zoomY) + 0.5;
   const label = (text: string, x: number, y: number) => {
     ctx.font = `bold ${cssVar('--font-size') || '12px'} sans-serif`;
     const w = ctx.measureText(text).width + 8;
@@ -149,12 +150,12 @@ function drawGuides(ctx: CanvasRenderingContext2D, a: Box, b: Box, ox: number, o
   }
 }
 
-function drawAnts(ctx: CanvasRenderingContext2D, mask: Mask, ox: number, oy: number, zoom: number, time: number) {
+function drawAnts(ctx: CanvasRenderingContext2D, mask: Mask, ox: number, oy: number, zoomX: number, zoomY: number, time: number) {
   const e = mask.edges;
   ctx.beginPath();
   for (let i = 0; i < e.length; i += 4) {
-    ctx.moveTo(Math.round(ox + e[i] * zoom) + 0.5, Math.round(oy + e[i + 1] * zoom) + 0.5);
-    ctx.lineTo(Math.round(ox + e[i + 2] * zoom) + 0.5, Math.round(oy + e[i + 3] * zoom) + 0.5);
+    ctx.moveTo(Math.round(ox + e[i] * zoomX) + 0.5, Math.round(oy + e[i + 1] * zoomY) + 0.5);
+    ctx.lineTo(Math.round(ox + e[i + 2] * zoomX) + 0.5, Math.round(oy + e[i + 3] * zoomY) + 0.5);
   }
   ctx.setLineDash([]);
   ctx.strokeStyle = '#000';
@@ -251,7 +252,7 @@ export const View: FC = () => {
   }, [state.sprite]);
 
   const toPointer = (sx: number, sy: number, mods: Mods): ToolPointer => {
-    const fx = (sx - state.offsetX) / state.zoom, fy = (sy - state.offsetY) / state.zoom;
+    const fx = (sx - state.offsetX) / state.zoomX, fy = (sy - state.offsetY) / state.zoomY;
     return { x: Math.floor(fx), y: Math.floor(fy), fx, fy, sx, sy, space: held.space, ...mods };
   };
 
@@ -266,7 +267,7 @@ export const View: FC = () => {
   };
 
   const toScreen = (x: number, y: number): [number, number] =>
-    [state.offsetX + x * state.zoom, state.offsetY + y * state.zoom];
+    [state.offsetX + x * state.zoomX, state.offsetY + y * state.zoomY];
 
   /** Selection tools (and the move tool on floating pixels) show transform handles */
   const handlesVisible = () => {
@@ -286,13 +287,13 @@ export const View: FC = () => {
     for (const axis of ['x', 'y'] as const) {
       if (!inRuler(sx, sy, axis)) continue;
       const index = state.guides.findIndex(g => g.axis === axis &&
-        Math.abs((axis === 'x' ? state.offsetX : state.offsetY) + (g.pos) * state.zoom - (axis === 'x' ? sx : sy)) < 5);
+        Math.abs((axis === 'x' ? state.offsetX : state.offsetY) + (g.pos) * (axis === 'x' ? state.zoomX : state.zoomY) - (axis === 'x' ? sx : sy)) < 5);
       return { axis, index: index < 0 ? undefined : index };
     }
     // With the move tool a guide line on the canvas can be grabbed too
     if (state.activeTool === 'move') {
       const index = state.guides.findIndex(g =>
-        Math.abs((g.axis === 'x' ? state.offsetX : state.offsetY) + g.pos * state.zoom - (g.axis === 'x' ? sx : sy)) < 4);
+        Math.abs((g.axis === 'x' ? state.offsetX : state.offsetY) + g.pos * (g.axis === 'x' ? state.zoomX : state.zoomY) - (g.axis === 'x' ? sx : sy)) < 4);
       if (index >= 0) return { axis: state.guides[index].axis, index };
     }
     return null;
@@ -300,14 +301,14 @@ export const View: FC = () => {
 
   const symHit = (sx: number, sy: number) => {
     if (!state.symmetryX && !state.symmetryY) return null;
-    const { sprite, zoom, offsetX: ox, offsetY: oy } = state;
+    const { sprite, zoomX, zoomY, offsetX: ox, offsetY: oy } = state;
     if (state.symmetryX) {
-      const x = ox + state.symAxisX * zoom;
-      if (Math.abs(sx - x) < 8 && (Math.abs(sy - (oy - 8)) < 9 || Math.abs(sy - (oy + sprite.height * zoom + 8)) < 9)) return 'symX';
+      const x = ox + state.symAxisX * zoomX;
+      if (Math.abs(sx - x) < 8 && (Math.abs(sy - (oy - 8)) < 9 || Math.abs(sy - (oy + sprite.height * zoomY + 8)) < 9)) return 'symX';
     }
     if (state.symmetryY) {
-      const y = oy + state.symAxisY * zoom;
-      if (Math.abs(sy - y) < 8 && (Math.abs(sx - (ox - 8)) < 9 || Math.abs(sx - (ox + sprite.width * zoom + 8)) < 9)) return 'symY';
+      const y = oy + state.symAxisY * zoomY;
+      if (Math.abs(sy - y) < 8 && (Math.abs(sx - (ox - 8)) < 9 || Math.abs(sx - (ox + sprite.width * zoomX + 8)) < 9)) return 'symY';
     }
     return null;
   };
@@ -322,7 +323,7 @@ export const View: FC = () => {
     const mx = state.flipView ? state.viewW - (a.x + b.x) / 2 : (a.x + b.x) / 2, my = (a.y + b.y) / 2;
     gesture.current = {
       d0: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), z0: state.zoom,
-      px: state.camX + (mx - state.viewW / 2) / state.zoom, py: state.camY + (my - state.viewH / 2) / state.zoom,
+      px: state.camX + (mx - state.viewW / 2) / state.zoomX, py: state.camY + (my - state.viewH / 2) / state.zoomY,
     };
   };
 
@@ -334,7 +335,7 @@ export const View: FC = () => {
     const z = Math.max(0.25, Math.min(128, g.z0 * Math.hypot(a.x - b.x, a.y - b.y) / g.d0));
     state.zoom = state.zoomTarget = z;
     // The sprite point under the fingers' midpoint stays under it
-    state.panTo(g.px - (mx - state.viewW / 2) / z, g.py - (my - state.viewH / 2) / z);
+    state.panTo(g.px - (mx - state.viewW / 2) / (z * state.sprite.pixelRatioX), g.py - (my - state.viewH / 2) / (z * state.sprite.pixelRatioY));
   };
 
   const flushTouch = () => {
@@ -494,8 +495,8 @@ export const View: FC = () => {
     state.cursorY = p.y;
     if (pan.current) {
       state.panTo(
-        pan.current.cx - (sx - pan.current.x) / state.zoom,
-        pan.current.cy - (sy - pan.current.y) / state.zoom,
+        pan.current.cx - (sx - pan.current.x) / state.zoomX,
+        pan.current.cy - (sy - pan.current.y) / state.zoomY,
       );
       return;
     }
@@ -617,7 +618,7 @@ export const View: FC = () => {
 
     // The same document changing size (new sprite in place, canvas resize) re-enables fitting;
     // switching documents keeps each one's own camera
-    const fitKey = `${sprite.width}x${sprite.height}`;
+    const fitKey = `${sprite.width}x${sprite.height}:${sprite.pixelRatioX}:${sprite.pixelRatioY}`;
     if (fittedSprite.current === sprite && fitted.current !== fitKey) state.autoFit = true;
     fitted.current = fitKey;
     fittedSprite.current = sprite;
@@ -632,8 +633,8 @@ export const View: FC = () => {
     }
 
     state.tickCamera(dt);
-    const { zoom, offsetX: ox, offsetY: oy } = state;
-    const sw = sprite.width * zoom, sh = sprite.height * zoom;
+    const { zoom, zoomX, zoomY, offsetX: ox, offsetY: oy } = state;
+    const sw = sprite.width * zoomX, sh = sprite.height * zoomY;
 
     // The camera may have moved under a still mouse (zoom animation, scrolling):
     // re-derive the sprite pixel under the cursor and feed it to an active stroke
@@ -672,7 +673,8 @@ export const View: FC = () => {
     // While a stroke paints one layer, the layers below and above it are composited once
     sprite.focusLayer = s && pressed.current !== null && PAINT_TOOLS.includes(tool) ? sprite.layer : null;
     const image = sprite.render(sprite.frame, undefined, override);
-    const checker = Math.max(1, prefs.checkerSize) * (prefs.checkerFollowsZoom ? zoom : 1);
+    const checkerX = Math.max(1, prefs.checkerSize) * (prefs.checkerFollowsZoom ? zoomX : 1);
+    const checkerY = Math.max(1, prefs.checkerSize) * (prefs.checkerFollowsZoom ? zoomY : 1);
 
     // Tiled mode shows neighbours dimmed around the sprite
     const tx = state.tiledX ? [-1, 0, 1] : [0];
@@ -685,8 +687,8 @@ export const View: FC = () => {
       ctx.fillStyle = prefs.checkerA;
       ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
       ctx.fillStyle = prefs.checkerB;
-      const c0 = Math.floor((x0 - x) / checker), c1 = Math.ceil((x1 - x) / checker);
-      const r0 = Math.floor((y0 - y) / checker), r1 = Math.ceil((y1 - y) / checker);
+      const c0 = Math.floor((x0 - x) / checkerX), c1 = Math.ceil((x1 - x) / checkerX);
+      const r0 = Math.floor((y0 - y) / checkerY), r1 = Math.ceil((y1 - y) / checkerY);
       ctx.save();
       ctx.beginPath();
       ctx.rect(x0, y0, x1 - x0, y1 - y0);
@@ -694,7 +696,7 @@ export const View: FC = () => {
       if ((c1 - c0) * (r1 - r0) < 40000)
         for (let r = r0; r < r1; r++)
           for (let c = c0 + (((c0 + r) % 2) + 2) % 2; c < c1; c += 2)
-            ctx.fillRect(x + c * checker, y + r * checker, checker, checker);
+            ctx.fillRect(x + c * checkerX, y + r * checkerY, checkerX, checkerY);
       ctx.restore();
       if (i || j) {
         ctx.drawImage(image, x, y, sw, sh);
@@ -710,12 +712,13 @@ export const View: FC = () => {
       const img = referenceImage(l.reference.src);
       if (!img) return;
       const { x, y, scale, angle = 0 } = l.reference;
-      const w = img.naturalWidth * scale * zoom, h = img.naturalHeight * scale * zoom;
+      const w = img.naturalWidth * scale, h = img.naturalHeight * scale;
       ctx.save();
       ctx.globalAlpha = l.opacity;
       ctx.imageSmoothingEnabled = scale * zoom < 1 || angle % 90 !== 0;
       // Rotated about its center
-      ctx.translate(ox + x * zoom + w / 2, oy + y * zoom + h / 2);
+      ctx.translate(ox + (x + w / 2) * zoomX, oy + (y + h / 2) * zoomY);
+      ctx.scale(zoomX, zoomY);
       ctx.rotate(angle * Math.PI / 180);
       ctx.drawImage(img, -w / 2, -h / 2, w, h);
       ctx.restore();
@@ -739,11 +742,11 @@ export const View: FC = () => {
     if (!prefs.onionFront) drawOnion();
     ctx.drawImage(image, ox, oy, sw, sh);
     if (prefs.onionFront) drawOnion();
-    drawExtensionOverlay(ctx, ox, oy, zoom);
-    drawExtensionHighlights(ctx, ox, oy, zoom);
+    drawExtensionOverlay(ctx, ox, oy, zoomX, zoomY);
+    drawExtensionHighlights(ctx, ox, oy, zoomX, zoomY);
 
-    const x0 = Math.max(0, Math.floor(-ox / zoom)), x1 = Math.min(sprite.width, Math.ceil((width - ox) / zoom));
-    const y0 = Math.max(0, Math.floor(-oy / zoom)), y1 = Math.min(sprite.height, Math.ceil((height - oy) / zoom));
+    const x0 = Math.max(0, Math.floor(-ox / zoomX)), x1 = Math.min(sprite.width, Math.ceil((width - ox) / zoomX));
+    const y0 = Math.max(0, Math.floor(-oy / zoomY)), y1 = Math.min(sprite.height, Math.ceil((height - oy) / zoomY));
 
     // Pixel grid fades in as you zoom
     // Starts above 2× and reaches full strength at 16×
@@ -751,12 +754,12 @@ export const View: FC = () => {
     if (state.showPixelGrid && pgAlpha > 0.02) {
       ctx.beginPath();
       for (let x = Math.max(1, x0); x < x1; x++) {
-        ctx.moveTo(Math.round(ox + x * zoom) + 0.5, Math.max(0, oy));
-        ctx.lineTo(Math.round(ox + x * zoom) + 0.5, Math.min(height, oy + sh));
+        ctx.moveTo(Math.round(ox + x * zoomX) + 0.5, Math.max(0, oy));
+        ctx.lineTo(Math.round(ox + x * zoomX) + 0.5, Math.min(height, oy + sh));
       }
       for (let y = Math.max(1, y0); y < y1; y++) {
-        ctx.moveTo(Math.max(0, ox), Math.round(oy + y * zoom) + 0.5);
-        ctx.lineTo(Math.min(width, ox + sw), Math.round(oy + y * zoom) + 0.5);
+        ctx.moveTo(Math.max(0, ox), Math.round(oy + y * zoomY) + 0.5);
+        ctx.lineTo(Math.min(width, ox + sw), Math.round(oy + y * zoomY) + 0.5);
       }
       ctx.strokeStyle = `rgba(0, 0, 0, ${0.18 * pgAlpha})`;
       ctx.stroke();
@@ -772,12 +775,12 @@ export const View: FC = () => {
       if (cell > 2 && 0.65 * alpha > 8 / 255) {
         ctx.beginPath();
         for (let x = ((gridX % gridW) + gridW) % gridW; x <= sprite.width; x += gridW) {
-          ctx.moveTo(Math.round(ox + x * zoom) + 0.5, oy);
-          ctx.lineTo(Math.round(ox + x * zoom) + 0.5, oy + sh);
+          ctx.moveTo(Math.round(ox + x * zoomX) + 0.5, oy);
+          ctx.lineTo(Math.round(ox + x * zoomX) + 0.5, oy + sh);
         }
         for (let y = ((gridY % gridH) + gridH) % gridH; y <= sprite.height; y += gridH) {
-          ctx.moveTo(ox, Math.round(oy + y * zoom) + 0.5);
-          ctx.lineTo(ox + sw, Math.round(oy + y * zoom) + 0.5);
+          ctx.moveTo(ox, Math.round(oy + y * zoomY) + 0.5);
+          ctx.lineTo(ox + sw, Math.round(oy + y * zoomY) + 0.5);
         }
         ctx.strokeStyle = prefs.gridColor;
         ctx.globalAlpha = 0.65 * alpha;
@@ -792,11 +795,11 @@ export const View: FC = () => {
       ctx.beginPath();
       ctx.setLineDash([6, 3]);
       if (state.symmetryX) {
-        const x = Math.round(ox + state.symAxisX * zoom) + 0.5;
+        const x = Math.round(ox + state.symAxisX * zoomX) + 0.5;
         ctx.moveTo(x, oy - 4); ctx.lineTo(x, oy + sh + 4);
       }
       if (state.symmetryY) {
-        const y = Math.round(oy + state.symAxisY * zoom) + 0.5;
+        const y = Math.round(oy + state.symAxisY * zoomY) + 0.5;
         ctx.moveTo(ox - 4, y); ctx.lineTo(ox + sw + 4, y);
       }
       ctx.strokeStyle = accent;
@@ -810,9 +813,9 @@ export const View: FC = () => {
         ctx.clip();
         ctx.beginPath();
         ctx.setLineDash([6, 3]);
-        const cx = ox + state.symAxisX * zoom, cy = oy + state.symAxisY * zoom, L = sw + sh;
-        if (state.symmetryD1) { ctx.moveTo(cx - L, cy - L); ctx.lineTo(cx + L, cy + L); }
-        if (state.symmetryD2) { ctx.moveTo(cx - L, cy + L); ctx.lineTo(cx + L, cy - L); }
+        const cx = ox + state.symAxisX * zoomX, cy = oy + state.symAxisY * zoomY, L = sprite.width + sprite.height;
+        if (state.symmetryD1) { ctx.moveTo(cx - L * zoomX, cy - L * zoomY); ctx.lineTo(cx + L * zoomX, cy + L * zoomY); }
+        if (state.symmetryD2) { ctx.moveTo(cx - L * zoomX, cy + L * zoomY); ctx.lineTo(cx + L * zoomX, cy - L * zoomY); }
         ctx.strokeStyle = accent;
         ctx.stroke();
         ctx.restore();
@@ -830,12 +833,12 @@ export const View: FC = () => {
         ctx.stroke();
       };
       if (state.symmetryX) {
-        const x = ox + state.symAxisX * zoom;
+        const x = ox + state.symAxisX * zoomX;
         tri(x, oy - 2, 0, 1);
         tri(x, oy + sh + 2, 0, -1);
       }
       if (state.symmetryY) {
-        const y = oy + state.symAxisY * zoom;
+        const y = oy + state.symAxisY * zoomY;
         tri(ox - 2, y, 1, 0);
         tri(ox + sw + 2, y, -1, 0);
       }
@@ -847,8 +850,8 @@ export const View: FC = () => {
     if (state.guides.length) {
       ctx.beginPath();
       for (const g of state.guides) {
-        if (g.axis === 'x') { const x = Math.round(ox + g.pos * zoom) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, height); }
-        else { const y = Math.round(oy + g.pos * zoom) + 0.5; ctx.moveTo(0, y); ctx.lineTo(width, y); }
+        if (g.axis === 'x') { const x = Math.round(ox + g.pos * zoomX) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, height); }
+        else { const y = Math.round(oy + g.pos * zoomY) + 0.5; ctx.moveTo(0, y); ctx.lineTo(width, y); }
       }
       ctx.strokeStyle = cssVar('--guides') || 'rgba(64, 140, 255, .8)';
       ctx.stroke();
@@ -857,8 +860,8 @@ export const View: FC = () => {
     if (s && state.snapLines.length) {
       ctx.beginPath();
       for (const g of state.snapLines) {
-        if (g.axis === 'x') { const x = Math.round(ox + g.pos * zoom) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, height); }
-        else { const y = Math.round(oy + g.pos * zoom) + 0.5; ctx.moveTo(0, y); ctx.lineTo(width, y); }
+        if (g.axis === 'x') { const x = Math.round(ox + g.pos * zoomX) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, height); }
+        else { const y = Math.round(oy + g.pos * zoomY) + 0.5; ctx.moveTo(0, y); ctx.lineTo(width, y); }
       }
       ctx.save();
       ctx.lineWidth = 2;
@@ -869,7 +872,7 @@ export const View: FC = () => {
     // Move tool on a reference layer: its outline with scale corners
     const refBox = tool === 'move' && !s ? referenceCorners() : null;
     if (refBox) {
-      const pts = refBox.map(([x, y]) => [ox + x * zoom, oy + y * zoom] as const);
+      const pts = refBox.map(([x, y]) => [ox + x * zoomX, oy + y * zoomY] as const);
       ctx.beginPath();
       pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
       ctx.closePath();
@@ -894,7 +897,7 @@ export const View: FC = () => {
     const guides = tool === 'move' && held.ctrl && !sprite.floating && !sprite.mask && prefs.autoGuides;
     const cel = !painting && !state.playing && (state.showLayerEdges || guides) ? sprite.getCel() : null;
     const screenRect = (r: { x: number; y: number; w: number; h: number; }) =>
-      [Math.round(ox + r.x * zoom) + 0.5, Math.round(oy + r.y * zoom) + 0.5, Math.round(r.w * zoom) - 1, Math.round(r.h * zoom) - 1] as const;
+      [Math.round(ox + r.x * zoomX) + 0.5, Math.round(oy + r.y * zoomY) + 0.5, Math.round(r.w * zoomX) - 1, Math.round(r.h * zoomY) - 1] as const;
     if (cel) {
       const edge = cssVar('--layer-edges') || '#6cb6ff';
       // Plain hairline for the layer-edges view, bold while measuring with Ctrl
@@ -910,7 +913,7 @@ export const View: FC = () => {
       }
       const guideColor = cssVar('--guides') || '#6cb6ff';
       if (target) boldStroke(ctx, guideColor, () => ctx.rect(...screenRect(target)));
-      drawGuides(ctx, cel, target ?? sprite.canvasRect, ox, oy, zoom, guideColor);
+      drawGuides(ctx, cel, target ?? sprite.canvasRect, ox, oy, zoomX, zoomY, guideColor);
     }
 
     // Slices: outline in their color, 9-slice lines and pivot fainter, names on top
@@ -922,7 +925,7 @@ export const View: FC = () => {
       sprite.slices.forEach((sl, i) => {
         const k = sliceKey(sl, sprite.frame);
         if (!k) return;
-        const X = (v: number) => Math.round(ox + v * zoom) + 0.5, Y = (v: number) => Math.round(oy + v * zoom) + 0.5;
+        const X = (v: number) => Math.round(ox + v * zoomX) + 0.5, Y = (v: number) => Math.round(oy + v * zoomY) + 0.5;
         const sel = sliceTool && sprite.selectedSlices.includes(i);
         ctx.globalAlpha = 1;
         // Dark halo keeps the outline readable over any pixels
@@ -947,7 +950,7 @@ export const View: FC = () => {
         ctx.setLineDash([]);
         if (k.pivot) {
           ctx.beginPath();
-          ctx.rect(X(k.x + k.pivot.x), Y(k.y + k.pivot.y), zoom, zoom);
+          ctx.rect(X(k.x + k.pivot.x), Y(k.y + k.pivot.y), zoomX, zoomY);
           ctx.stroke();
         }
         ctx.globalAlpha = sliceTool ? 1 : 0.7;
@@ -963,12 +966,12 @@ export const View: FC = () => {
     }
 
     const mask = s?.previewMask ?? sprite.mask;
-    if (mask && !s?.hideAnts) drawAnts(ctx, mask, ox, oy, zoom, time);
+    if (mask && !s?.hideAnts) drawAnts(ctx, mask, ox, oy, zoomX, zoomY, time);
 
     if (s?.preview?.length) {
       ctx.beginPath();
       s.preview.forEach(([x, y], i) => {
-        const px = ox + (x + 0.5) * zoom, py = oy + (y + 0.5) * zoom;
+        const px = ox + (x + 0.5) * zoomX, py = oy + (y + 0.5) * zoomY;
         i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
       });
       if (s.previewClosed) ctx.closePath();
@@ -1020,7 +1023,7 @@ export const View: FC = () => {
     if (prefs.brushPreview !== 'none' && lp && !pan.current && paintsHere && (outlinePreview(tool) || prefs.brushPreview === 'outline' || !override)) {
       const offsets = BRUSH_TOOLS.includes(tool) ? brushOffsets() : [[0, 0]];
       ctx.beginPath();
-      for (const [dx, dy] of offsets) ctx.rect(ox + (cx + dx) * zoom, oy + (cy + dy) * zoom, zoom, zoom);
+      for (const [dx, dy] of offsets) ctx.rect(ox + (cx + dx) * zoomX, oy + (cy + dy) * zoomY, zoomX, zoomY);
       ctx.strokeStyle = 'rgba(0, 0, 0, .8)';
       ctx.lineWidth = 2;
       ctx.stroke();
@@ -1046,7 +1049,7 @@ export const View: FC = () => {
     }
 
     ctx.setTransform(k, 0, 0, k, 0, 0);
-    if (state.showRulers) drawRulers(ctx, width, height, ox, oy, zoom, state.flipView, lp && !pan.current ? lp : null);
+    if (state.showRulers) drawRulers(ctx, width, height, ox, oy, zoomX, zoomY, state.flipView, lp && !pan.current ? lp : null);
 
     // Cursor kind follows what is under the mouse
     const el = can.parentElement;

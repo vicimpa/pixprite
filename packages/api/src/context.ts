@@ -72,6 +72,14 @@ export interface ExtensionContext {
   /** Version of the editor providing this context. Older hosts may omit it at runtime. */
   readonly editorVersion: string;
 
+  /** Shared editor automation; the same tools, schemas and executor as native MCP. */
+  automation: {
+    list(): Promise<{ name: string; description: string; parameters: Record<string, unknown>; readOnly: boolean }[]>;
+    call<T = Record<string, unknown>>(name: string, args?: Record<string, unknown>): Promise<T>;
+    /** Report user interaction inside an isolated extension page to pause visual following. */
+    activity(): Promise<void>;
+  };
+
   sprite: SpriteApi;
 
   documents: {

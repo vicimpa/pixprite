@@ -18,6 +18,8 @@ export type ProjectMeta = {
   updated: number;
   width: number;
   height: number;
+  pixelRatioX?: number;
+  pixelRatioY?: number;
   frames: number;
   layers: number;
   colorMode: string;

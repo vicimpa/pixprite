@@ -1,3 +1,4 @@
+import { activeViewer } from './ViewerTabs';
 import { available, COMMANDS } from "~/core/Commands";
 import { t } from "~/core/i18n";
 import { loadFiles, blobToBitmap } from "~/core/Files";
@@ -140,6 +141,7 @@ function onKeyUp(e: KeyboardEvent) {
 }
 
 async function onPaste(e: ClipboardEvent) {
+  if (activeViewer.peek()) return;
   if (isTyping(e as unknown as KeyboardEvent)) return;
   e.preventDefault();
   const file = [...e.clipboardData?.files ?? []].find(f => f.type.startsWith('image/'));

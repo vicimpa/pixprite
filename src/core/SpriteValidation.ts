@@ -3,6 +3,8 @@ import type { ColorMode } from "~/core/ColorMode";
 import { tileOf, type Tileset } from "~/core/Tilemap";
 import { BLEND_MODES, parentOf, type ExtData, type Frame, type FramePalette, type Guide, type Layer, type Slice, type Tag } from "./SpriteModel";
 import { validateCelTransform, validateLayerFX } from './DocumentModel';
+import { validAsepriteWarnings, type AsepriteWarning } from './AsepriteWarnings';
+import { documentPixelRatio } from './PixelRatio';
 
 export function isExtData(v: unknown): v is ExtData {
   return !!v && typeof v === 'object' && !Array.isArray(v);
@@ -23,6 +25,8 @@ export type PixpriteData = {
   version: number;
   width: number;
   height: number;
+  pixelRatioX?: number;
+  pixelRatioY?: number;
   name?: string;
   info?: unknown;
   frames: Frame[];
@@ -38,6 +42,7 @@ export type PixpriteData = {
   transparentIndex?: number;
   ext?: ExtData;
   locks?: LocksRecord;
+  asepriteWarnings?: AsepriteWarning[];
 };
 
 export function migratePixpriteV3(data: PixpriteData) {
@@ -139,6 +144,8 @@ export function validatePixpriteShape(value: unknown): asserts value is Pixprite
   for (const key of ['tags', 'slices', 'guides', 'framePalettes', 'tilesets'] as const)
     if (candidate[key] !== undefined && !Array.isArray(candidate[key])) throw new Error(`Invalid ${key}`);
   const data = value as PixpriteData;
+  if (data.asepriteWarnings !== undefined && !validAsepriteWarnings(data.asepriteWarnings)) throw new Error('Invalid Aseprite import diagnostics');
+  documentPixelRatio(data);
   const size = (w: unknown, h: unknown, kind: string) => {
     if (!Number.isInteger(w) || !Number.isInteger(h) || (w as number) <= 0 || (h as number) <= 0
       || (w as number) > 4096 || (h as number) > 4096) throw new Error(`Invalid ${kind} dimensions`);

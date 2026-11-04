@@ -1,3 +1,4 @@
+import { activeViewer, closeViewer } from './ViewerTabs';
 import { Color } from "~/core/Color";
 import { exportFile, repeatLastExport, openFile, importIntoDocument, savePalette, copyToSystemClipboard, readSystemClipboard } from "~/core/Files";
 import { flipH, flipV, packRgba, unpackRgba } from "~/core/Image";
@@ -90,7 +91,7 @@ const list: Command[] = [
   },
   { id: 'file.download', group: 'menu.file', run: () => dialogs.saveAs() },
   { id: 'file.export', group: 'menu.file', keys: ['Ctrl+Alt+E'], run: () => dialogs.exportImage() },
-  { id: 'file.exportPng', group: 'menu.file', run: () => exportFile({ kind: 'png', scale: 1 }) },
+  { id: 'file.exportPng', group: 'menu.file', run: () => exportFile({ kind: 'png', scale: 1 }, false) },
   { id: 'file.repeatExport', group: 'menu.file', keys: ['Ctrl+Alt+Shift+E'], run: () => { if (!repeatLastExport()) dialogs.exportImage(); } },
 
   { id: 'edit.undo', group: 'menu.edit', keys: ['Ctrl+Z'], run: changed(() => { const l = s().history.at(-1); s().undo(); if (l) state.showNotice(`Undid: ${l}`); }), enabled: () => s().canUndo },
@@ -229,6 +230,7 @@ const list: Command[] = [
   { id: 'edit.mcp', group: 'menu.edit', home: true, run: () => dialogs.mcp() },
 
   { id: 'image.properties', group: 'menu.image', run: () => dialogs.spriteProperties() },
+  { id: 'image.pixelRatio', group: 'menu.image', run: () => dialogs.spriteProperties() },
   { id: 'image.colorMode', group: 'menu.image', run: () => dialogs.colorMode() },
   { id: 'image.canvasSize', group: 'menu.image', keys: ['Ctrl+Alt+C'], run: () => dialogs.canvasSize() },
   { id: 'image.spriteSize', group: 'menu.image', keys: ['Ctrl+Alt+I'], run: () => dialogs.spriteSize() },
@@ -409,10 +411,10 @@ const list: Command[] = [
   { id: 'brush.smaller', group: 'menu.colors', keys: ['['], run: () => { state.brushSize = Math.max(1, state.brushSize - 1); } },
   { id: 'brush.bigger', group: 'menu.colors', keys: [']'], run: () => { state.brushSize = Math.min(64, state.brushSize + 1); } },
 
-  { id: 'file.close', group: 'menu.file', keys: ['Ctrl+Alt+W'], run: () => state.closeDocument() },
+  { id: 'file.close', group: 'menu.file', keys: ['Ctrl+Alt+W'], run: () => activeViewer.peek() ? closeViewer() : state.closeDocument() },
   { id: 'file.duplicate', group: 'menu.file', run: () => state.duplicateDocument() },
-  { id: 'window.nextTab', group: 'menu.window', keys: ['Alt+PageDown'], run: () => { const d = state.docs; state.switchTo(d[(d.indexOf(state.sprite) + 1) % d.length]); } },
-  { id: 'window.prevTab', group: 'menu.window', keys: ['Alt+PageUp'], run: () => { const d = state.docs; state.switchTo(d[(d.indexOf(state.sprite) - 1 + d.length) % d.length]); } },
+  { id: 'window.nextTab', group: 'menu.window', keys: ['Alt+PageDown'], run: () => state.stepTab(1) },
+  { id: 'window.prevTab', group: 'menu.window', keys: ['Alt+PageUp'], run: () => state.stepTab(-1) },
   {
     id: 'window.fullscreen', group: 'menu.window', keys: ['F11'],
     run: () => { void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => { }); },
@@ -568,6 +570,7 @@ const isHomeCommand = (id: string) => HOME_COMMANDS.has(id) || id.startsWith('wi
 
 /** Can run now: enabled, and outside the editor only the home page commands */
 export function available(c: Command) {
+  if (activeViewer.value) return (c.id === 'file.close' || isHomeCommand(c.id)) && (!c.enabled || c.enabled());
   if (state.home && !isHomeCommand(c.id) && !c.home) return false;
   return !c.enabled || c.enabled();
 }

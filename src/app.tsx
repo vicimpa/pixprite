@@ -1,3 +1,5 @@
+import { activeViewer } from './core/ViewerTabs';
+import { ViewerWorkspace } from './modules/Editor/ViewerWorkspace';
 import { state } from "~/core/State";
 import { MainMenu } from "~/modules/MainMenu";
 import { CommandPalette } from "~/modules/CommandPalette";
@@ -18,7 +20,14 @@ export const App = () => {
     <DocTabs />
     <MainMenu />
     <DesktopUpdate />
-    {state.home ? <div style={{ position: 'relative', flex: '1 1 0', minHeight: 0, overflow: 'hidden' }}><Home /></div> : <EditorWorkspace />}
+    <div style={{ display: 'flex', flex: '1 1 0', minHeight: 0 }}>
+      <ExtPanels dock="left" />
+      <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 0', minHeight: 0, minWidth: 0 }}>
+        {activeViewer.value ? <ViewerWorkspace /> : state.home ? <div style={{ position: 'relative', flex: '1 1 0', minHeight: 0, overflow: 'hidden' }}><Home /></div> : <EditorWorkspace />}
+        <ExtPanels dock="bottom" />
+      </div>
+      <ExtPanels dock="right" />
+    </div>
     <DropZone /><ExtPanels dock="float" /><ExtensionNotices />
     <DialogHost /><ContextMenuHost /><CommandPalette /><ProgressOverlay />
   </div>;

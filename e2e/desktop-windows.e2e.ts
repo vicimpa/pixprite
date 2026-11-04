@@ -13,7 +13,10 @@ test('one compact window persists documents, reopens files and rejects overwrite
     expect(docs).toHaveLength(1);
     await f.call('pixels', { action: 'write', rect: { x: 1, y: 2, w: 1, h: 1 }, fill: '#ff008080' });
     await f.stop(); await f.launch();
-    expect((await f.call('documents')).documents).toHaveLength(1);
+    const restored = (await f.call('documents')).documents;
+    expect(restored).toHaveLength(1);
+    // Background creation does not change the user's Home tab; bind the restored target explicitly.
+    await f.call('select', { id: restored[0].id });
     expect((await f.call('inspect')).name).toBe(created.name);
     expect([...Buffer.from((await f.call('pixels', { action: 'read', rect: { x: 1, y: 2, w: 1, h: 1 } })).data, 'base64')]).toEqual([255, 0, 128, 128]);
     const path = `${f.directory}/saved.pixprite`;

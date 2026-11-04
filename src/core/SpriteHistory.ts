@@ -14,6 +14,8 @@ export type Snapshot = {
   transparentIndex: number;
   width: number;
   height: number;
+  pixelRatioX: number;
+  pixelRatioY: number;
   layers: Layer[];
   frames: Frame[];
   tags: Tag[];
@@ -34,7 +36,7 @@ export type HistoryGuard = { commit(): void; cancel(): void; abandon(): void; on
 
 export function snapshot(this: SpriteContext, label: string): Snapshot {
   const { width, height, layers, frames, tags, loop, mask, floating, layer, frame } = this;
-  return { label, ext: this.ext, guides: this.guides, palette: this.paletteHost?.get() ?? null, framePalettes: this.framePalettes, colorMode: this.colorMode, transparentIndex: this.transparentIndex, width, height, layers: copyLayers(layers), frames: frames.map(f => ({ ...f })), tags: tags.map(t => ({ ...t })), slices: this.slices, tilesets: this.tilesets, loop, mask, floating, floatingStart: this.floatingStart, layer, frame };
+  return { label, pixelRatioX: this.pixelRatioX, pixelRatioY: this.pixelRatioY, ext: this.ext, guides: this.guides, palette: this.paletteHost?.get() ?? null, framePalettes: this.framePalettes, colorMode: this.colorMode, transparentIndex: this.transparentIndex, width, height, layers: copyLayers(layers), frames: frames.map(f => ({ ...f })), tags: tags.map(t => ({ ...t })), slices: this.slices, tilesets: this.tilesets, loop, mask, floating, floatingStart: this.floatingStart, layer, frame };
 }
 
 export function restore(this: SpriteContext, s: Snapshot): void {
@@ -45,6 +47,8 @@ export function restore(this: SpriteContext, s: Snapshot): void {
   this.transparentIndex = s.transparentIndex;
   this.width = s.width;
   this.height = s.height;
+  this.pixelRatioX = s.pixelRatioX;
+  this.pixelRatioY = s.pixelRatioY;
   this.layers = copyLayers(s.layers);
   this.frames = s.frames.map(f => ({ ...f }));
   this.tags = s.tags.map(t => ({ ...t }));
@@ -70,9 +74,30 @@ export function syncHistory(this: SpriteContext): void {
 
 /** Call before any mutation that should be undoable; `label` is shown in the history panel */
 export function checkpoint(this: SpriteContext, label = 'Edit'): void {
+  if (this.historyBatch) return;
   this.undoStack.push(this.snapshot(label));
   this.redoStack = [];
   this.syncHistory();
+}
+
+/** Synchronous logical edit: nested checkpoints coalesce, failures also preserve redo. */
+export function atomicEdit<T>(this: SpriteContext, label: string, change: () => T): T {
+  if (this.historyBatch) return change();
+  const redo = this.redoStack.slice();
+  const guard = this.protectHistory();
+  this.checkpoint(label);
+  this.historyBatch = true;
+  try {
+    const result = change();
+    if (result instanceof Promise) throw new Error('Atomic edits must be synchronous');
+    guard.commit();
+    return result;
+  } catch (error) {
+    guard.cancel();
+    this.redoStack = redo;
+    this.syncHistory();
+    throw error;
+  } finally { this.historyBatch = false; }
 }
 
 export function undo(this: SpriteContext): void {

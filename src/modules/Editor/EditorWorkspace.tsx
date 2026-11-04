@@ -9,7 +9,6 @@ import { FullscreenPreview, PreviewWindow } from "~/modules/Preview";
 import { TextEntry } from "~/modules/TextEntry";
 import { CanvasHint } from "~/modules/Editor/modules/CanvasHint";
 import { Splitter } from "~/ui/Splitter";
-import { ExtPanels } from "~/modules/Extensions";
 import { useSignals } from "@preact/signals-react/runtime";
 import { type FC, type ReactNode } from "react";
 import styled from "styled-components";
@@ -82,7 +81,6 @@ export const EditorWorkspace: FC = () => {
     <Column style={{ flex: '1 1 0' }}>
       {layout.timeline === 'top' && <>{timeline}{timelineSplit(1)}</>}
       <Grow><View /><TextEntry /><CanvasHint /><PreviewWindow /></Grow>
-      <ExtPanels dock="bottom" />
       {layout.timeline === 'bottom' && <>{timelineSplit(-1)}{timeline}</>}
     </Column>
   );
@@ -92,7 +90,7 @@ export const EditorWorkspace: FC = () => {
     <Row style={{ flex: '1 1 0' }}>
       {layout.colors === 'left' && <>{colors}{colorsSplit(1)}</>}
       {layout.toolbar === 'left' && toolbar}
-      <ExtPanels dock="left" />{workspace}<ExtPanels dock="right" />
+      {workspace}
       {layout.toolbar === 'right' && toolbar}
       {layout.colors === 'right' && <>{colorsSplit(-1)}{colors}</>}
     </Row>

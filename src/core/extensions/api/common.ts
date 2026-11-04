@@ -5,8 +5,9 @@
 import type { ErrorCode } from "../protocol";
 import type { Method } from "../protocol";
 import type { ExtensionHost, Endpoint } from "../Host";
+import type { Sprite } from '~/core/Sprite';
 
-export type Call = { host: ExtensionHost; endpoint: Endpoint; tx?: number; };
+export type Call = { host: ExtensionHost; endpoint: Endpoint; tx?: number; doc?: Sprite; };
 
 export type Handler = (c: Call, ...params: any[]) => unknown;
 export type Handlers = Partial<Record<Method, Handler>>;

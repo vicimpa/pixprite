@@ -222,7 +222,7 @@ impl ServerHandler for McpHandler {
     fn get_info(&self) -> ServerConfig {
         let mut info = ServerConfig::new(ServerCapabilities::builder().enable_tools().build());
         info.server_info = Implementation::new("pixprite", crate::updates::CURRENT_VERSION);
-        info.instructions = Some("Pixprite uses one editor window. Use pixprite_documents to discover its open documents and pixprite_select to activate a document.".into());
+        info.instructions = Some("Pixprite tools share the same schemas and executor as the built-in AI Assistant. Use pixprite_documents to discover stable IDs, pixprite_select to bind your target and contextId to isolate parallel workflows. Targets are independent of the visible tab; no tool raises or focuses the window. Inspect before writing and pin expectedRevision; a conflict requires re-reading and re-evaluating the edit. Use pixprite_skills and pixprite_read_skill for task guides, pixprite_analyze for bounds/colors, pixprite_pixels_batch for atomic edits and pixprite_compare for read-only comparison tabs. The UI follows agent activity only after 10 idle seconds while focused; follow:false disables this for a call.".into());
         info
     }
     async fn list_tools(
@@ -278,14 +278,27 @@ impl ServerHandler for McpHandler {
             })
             .await
         {
-            Ok(value) => match value.get("image").and_then(Value::as_str) {
-                Some(data) => CallToolResult::success(vec![ContentBlock::image(data, "image/png")]),
-                None => CallToolResult::success(vec![ContentBlock::text(value.to_string())]),
-            },
+            Ok(value) => tool_result(value),
             Err(error) => CallToolResult::error(vec![ContentBlock::text(error)]),
         };
         Ok(result.into())
     }
+}
+
+fn tool_result(mut value: Value) -> CallToolResult {
+    let image = value
+        .as_object_mut()
+        .and_then(|object| object.remove("image"));
+    let mut content = Vec::new();
+    if let Some(data) = image.as_ref().and_then(Value::as_str) {
+        content.push(ContentBlock::image(data, "image/png"));
+    }
+    content.push(ContentBlock::text(value.to_string()));
+    let mut result = CallToolResult::success(content);
+    if value.is_object() {
+        result.structured_content = Some(value);
+    }
+    result
 }
 
 async fn authorize(

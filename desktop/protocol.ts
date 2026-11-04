@@ -22,7 +22,8 @@ export type McpState = {
 export type DesktopBridge = {
   runtime?: 'tauri';
   library?(request: Uint8Array): Promise<any>;
-  saveDownload?(name: string, blob: Blob): Promise<void>;
+  /** false when the user cancels; true only after the native file is written. */
+  saveDownload?(name: string, blob: Blob, protectExisting?: boolean): Promise<boolean>;
   copyImage?(bitmap: { w: number; h: number; data: Uint32Array }): Promise<void>;
   copyText?(text: string): Promise<void>;
   pasteImage?(): Promise<{ w: number; h: number; data: Uint32Array } | null>;
@@ -46,12 +47,6 @@ export type DesktopBridge = {
   mcp?(enabled?: boolean, port?: number): Promise<McpState>;
 };
 
-export const editMethods = [
-  'sprite.layers.add', 'sprite.layers.remove', 'sprite.layers.update', 'sprite.layers.move',
-  'sprite.frames.add', 'sprite.frames.remove', 'sprite.frames.setDuration', 'sprite.frames.move',
-  'sprite.tags.add', 'sprite.tags.remove', 'sprite.tags.update',
-  'sprite.slices.add', 'sprite.slices.remove', 'sprite.slices.update',
-  'sprite.palette.set', 'sprite.selection.set',
-] as const;
+export { editMethods } from '../src/core/automation/methods';
 
 declare global { interface Window { pixpriteDesktop?: DesktopBridge } }

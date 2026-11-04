@@ -430,3 +430,19 @@ document changes while a model reply is pending, further tools for that request 
 The guides improve the context supplied to a model; they do not guarantee its choices.
 Provider-independent tests cover skill loading, tool arguments, actual pixel edits and
 document switching without making paid requests to a live model.
+
+
+## Shared automation API
+
+MCP and AI Assistant use the editor's shared tool catalogue and executor. Extensions with `sprite:read` can discover it with `ctx.automation.list()`; mutating tools additionally require `sprite:write`. Native filesystem tools are not exposed to extensions.
+
+```ts
+const tools = await ctx.automation.list();
+const before = await ctx.automation.call('pixprite_inspect', { documentId, contextId: 'my-task' });
+await ctx.automation.call('pixprite_pixels', {
+  documentId, contextId: 'my-task', expectedRevision: before.revision,
+  action: 'write', rect: { x: 2, y: 3, w: 2, h: 1 }, rows: [['#ff0088', '']],
+});
+```
+
+Contexts own their cursor, selection, clipboard and revision expectations, independent of the visible tab. Tools never raise the native window; idle following is managed by the editor and user input takes priority. Use the same names and returned schemas for model function calling instead of maintaining a second tool protocol. Load on-demand task guides with `pixprite_skills` / `pixprite_read_skill`. See [the automation reference](../desktop-mcp.md).

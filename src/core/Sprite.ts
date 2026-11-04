@@ -1,5 +1,6 @@
 import { runTask, type TaskOptions } from './BackgroundTask';
 import { hydrateCapture } from './BackgroundDocument';
+import { documentPixelRatio, pixelRatio } from './PixelRatio';
 import type { Locks, LocksRecord, MetaTarget } from "@pixprite/api";
 import { prop, reactive } from "@vicimpa/decorators";
 import { convertPixels, type ColorMode, type Dither, type PaletteMap } from "~/core/ColorMode";
@@ -68,6 +69,17 @@ export class Sprite {
 
   /** Pixels are always RGBA; indexed / gray sprites keep every written pixel on the palette / gray */
   @prop colorMode: ColorMode = 'rgb';
+  @prop pixelRatioX = 1;
+  @prop pixelRatioY = 1;
+
+  setPixelRatio(x: number, y: number) {
+    const [rx, ry] = pixelRatio(x, y);
+    if (rx === this.pixelRatioX && ry === this.pixelRatioY || this.refuse('canvas', 'resize')) return;
+    this.dropFloating();
+    this.checkpoint('Pixel aspect ratio');
+    this.pixelRatioX = rx; this.pixelRatioY = ry;
+    this.touch();
+  }
   /** Palettes that change over the animation (empty = one palette for every frame) */
   @prop framePalettes: FramePalette[] = [];
 
@@ -158,6 +170,10 @@ export class Sprite {
   view: { zoom: number; camX: number; camY: number; } | null = null;
   /** Editor settings that belong to this project (tool, colors, view toggles…), applied when it is shown */
   editor: Record<string, unknown> | null = null;
+  /** Successful dialog export settings; view preferences, outside document undo. */
+  lastExport: import('./ExportSettings').LastExport | null = null;
+  /** Data omitted while importing .aseprite; retained so later exports cannot hide the loss. */
+  asepriteWarnings: import('./AsepriteWarnings').AsepriteWarning[] = [];
   /** `version` when last saved on purpose (Ctrl+S), -1 = has unsaved changes from an earlier session */
   @prop savedVersion = 0;
 
@@ -184,6 +200,7 @@ export class Sprite {
 
   private undoStack: Snapshot[] = [];
   private redoStack: Snapshot[] = [];
+  private historyBatch = false;
   private cache = new Map<string, OffscreenCanvas>();
   private cacheVersion = -1;
 
@@ -242,7 +259,10 @@ export class Sprite {
     this.floatingStart = -1;
     this.name = name;
     this.info = {};
+    this.lastExport = null;
+    this.asepriteWarnings = [];
     this.colorMode = 'rgb';
+    this.pixelRatioX = this.pixelRatioY = 1;
     this.width = width;
     this.height = height;
     this.layers = [newLayer('Layer 1', 1)];
@@ -310,6 +330,10 @@ export class Sprite {
   /** Call before any mutation that should be undoable; `label` is shown in the history panel */
   checkpoint(label = 'Edit'): void {
     return SpriteHistory.checkpoint.call(this.operationContext, label);
+  }
+
+  atomicEdit<T>(label: string, change: () => T): T {
+    return SpriteHistory.atomicEdit.call(this.operationContext, label, change) as T;
   }
 
   undo(): void {
@@ -1354,7 +1378,10 @@ export class Sprite {
       const y = turns === 1 ? k.x : turns === 2 ? H - k.y - k.h : W - k.x - k.w;
       return { frame: k.frame, x, y, w: turns % 2 ? k.h : k.w, h: turns % 2 ? k.w : k.h };
     });
-    if (turns % 2) [this.width, this.height] = [H, W];
+    if (turns % 2) {
+      [this.width, this.height] = [H, W];
+      [this.pixelRatioX, this.pixelRatioY] = [this.pixelRatioY, this.pixelRatioX];
+    }
     this.mask = null;
     this.touch();
   }
@@ -1434,6 +1461,13 @@ export class Sprite {
     return SpriteRenderer.render.call(this.operationContext, frame, only, override);
   }
 
+  /** Automation/export can explicitly render the current model without retained composites. */
+  flushRender() {
+    this.cache.clear();
+    this.split = null;
+    this.cacheVersion = -1;
+  }
+
   // Serialization
 
   /** Layers with floating pixels merged in, as they would be saved */
@@ -1454,6 +1488,9 @@ export class Sprite {
     const model = hydrateCapture(prepared);
     this.reset(model.width, model.height, model.name ?? 'untitled');
     this.info = model.info;
+    this.asepriteWarnings = model.asepriteWarnings ?? [];
+    [this.pixelRatioX, this.pixelRatioY] = documentPixelRatio(model);
+    this.asepriteWarnings = this.asepriteWarnings.filter(w => w.kind !== 'pixelRatio');
     this.layers = model.layers;
     this.frames = model.frames;
     this.tags = model.tags ?? [];

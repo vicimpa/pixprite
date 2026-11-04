@@ -289,17 +289,17 @@ function overlayCanvas(data: PixelData) {
 }
 
 /** Draws the extension tool's stroke preview; called by the canvas view every frame */
-export function drawExtensionOverlay(ctx: CanvasRenderingContext2D, ox: number, oy: number, zoom: number) {
+export function drawExtensionOverlay(ctx: CanvasRenderingContext2D, ox: number, oy: number, zoom: number, zoomY = zoom) {
   const data = extensionsHost.peek()?.overlay.peek();
   if (!data || !data.rect.w || !data.rect.h) return;
   const smooth = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(overlayCanvas(data), ox + data.rect.x * zoom, oy + data.rect.y * zoom, data.rect.w * zoom, data.rect.h * zoom);
+  ctx.drawImage(overlayCanvas(data), ox + data.rect.x * zoom, oy + data.rect.y * zoomY, data.rect.w * zoom, data.rect.h * zoomY);
   ctx.imageSmoothingEnabled = smooth;
 }
 
 /** Outlines places shown with `view.reveal`, fading out; called by the canvas view every frame */
-export function drawExtensionHighlights(ctx: CanvasRenderingContext2D, ox: number, oy: number, zoom: number) {
+export function drawExtensionHighlights(ctx: CanvasRenderingContext2D, ox: number, oy: number, zoom: number, zoomY = zoom) {
   const list = extensionsHost.peek()?.highlights.peek();
   if (!list?.length) return;
   const now = performance.now();
@@ -312,8 +312,8 @@ export function drawExtensionHighlights(ctx: CanvasRenderingContext2D, ox: numbe
     if (left <= 0) continue;
     // Fully visible most of the time, fades out over the last 400 ms
     const a = Math.min(1, left / 400);
-    const x = Math.round(ox + rect.x * zoom), y = Math.round(oy + rect.y * zoom);
-    const w = Math.round(rect.w * zoom), h = Math.round(rect.h * zoom);
+    const x = Math.round(ox + rect.x * zoom), y = Math.round(oy + rect.y * zoomY);
+    const w = Math.round(rect.w * zoom), h = Math.round(rect.h * zoomY);
     ctx.globalAlpha = a * 0.18;
     ctx.fillRect(x, y, w, h);
     ctx.globalAlpha = a;

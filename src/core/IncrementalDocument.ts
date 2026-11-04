@@ -37,6 +37,7 @@ export class IncrementalDocument {
     // Preview depends on rendering, rather than document title, info, tags or editor state.
     const visual = {
       width: draft.width, height: draft.height, colorMode: draft.colorMode, transparentIndex: draft.transparentIndex,
+      pixelRatioX: draft.pixelRatioX, pixelRatioY: draft.pixelRatioY,
       images: draft.images.map(image => [image.id, image.w, image.h, tokens.get(image.d)]),
       tilesets: draft.tilesets.map(ts => ({ ...ts, name: undefined, userData: undefined, d: tokens.get(ts.d as string | Uint32Array) })),
       framePalettes: draft.framePalettes,

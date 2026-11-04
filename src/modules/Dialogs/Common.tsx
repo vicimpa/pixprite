@@ -23,6 +23,8 @@ import { InfoFields } from "~/modules/ProjectInfo";
 
 import { loadDialogPrefs, saveDialogPrefs, num, Field, NumberField } from "./fields";
 import { openMcp } from './Mcp';
+import { lastExportOptions } from '~/core/ExportSettings';
+import { PixelRatioField, ratioValue } from './PixelRatioField';
 
 const ColorInput: FC<{ value: string; onChange: (v: string) => void; }> = ({ value, onChange }) => (
   <ColorField value={value.slice(0, 7)} onChange={onChange} />
@@ -132,17 +134,20 @@ const SpriteProperties: FC<{ close: () => void; }> = ({ close }) => {
   const { sprite } = state;
   const [name, setName] = useState(sprite.name);
   const [info, setInfo] = useState(sprite.info);
+  const [ratio, setRatio] = useState<[string, string]>([String(sprite.pixelRatioX), String(sprite.pixelRatioY)]);
   const total = sprite.frames.reduce((s, f) => s + f.duration, 0);
   const submit = () => {
     const nextName = name || 'untitled';
     if (sprite.name !== nextName) { sprite.name = nextName; sprite.touch(); }
     if (JSON.stringify(cleanInfo(info)) !== JSON.stringify(sprite.info)) sprite.setInfo(info);
+    sprite.setPixelRatio(...ratioValue(ratio));
     state.save();
   };
   return (
     <Dialog title={t('dialog.spriteProperties.imageProperties')} width={Math.min(420, innerWidth - 32)} onClose={close} onSubmit={submit}>
       <Field label={t('common.name')}><Input value={name} style={{ width: 160 }} onChange={e => setName(e.target.value)} /></Field>
       <Field label={t('common.size')}><span>{sprite.width}×{sprite.height}</span></Field>
+      <PixelRatioField value={ratio} onChange={setRatio} />
       <Field label={t('common.layers')}><span>{sprite.layers.length}</span></Field>
       <Field label={t('common.frames')}><span>{sprite.frames.length} · {(total / 1000).toFixed(2)}s</span></Field>
       <Section>{t('info.section')}</Section>
@@ -374,15 +379,16 @@ const SheetPreview: FC<{ opts: ExportOptions; }> = ({ opts }) => {
       const can = ref.current;
       if (!can) return;
       // Fit into the box with whole-number zoom when it fits
-      const box = 380, k = Math.min(8, box / Math.max(sheet.width, sheet.height));
+      const rx = opts.applyPixelRatio ? state.sprite.pixelRatioX : 1, ry = opts.applyPixelRatio ? state.sprite.pixelRatioY : 1;
+      const box = 380, k = Math.min(8, box / Math.max(sheet.width * rx, sheet.height * ry));
       const z = k >= 1 ? Math.floor(k) : k;
-      can.width = Math.max(1, Math.round(sheet.width * z));
-      can.height = Math.max(1, Math.round(sheet.height * z));
+      can.width = Math.max(1, Math.round(sheet.width * z * rx));
+      can.height = Math.max(1, Math.round(sheet.height * z * ry));
       const ctx = can.getContext('2d')!;
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(sheet.canvas, 0, 0, can.width, can.height);
       const unique = new Set(sheet.samples.map(s => s.slot)).size;
-      const text = `${sheet.width * opts.scale}×${sheet.height * opts.scale}px · ${sheet.samples.length} ${t('common.framesLower')}${unique < sheet.samples.length ? ` · ${unique} ${t('dialog.sheetPreview.uniqueImages')}` : ''}`;
+      const text = `${sheet.width * opts.scale * rx}×${sheet.height * opts.scale * ry}px · ${sheet.samples.length} ${t('common.framesLower')}${unique < sheet.samples.length ? ` · ${unique} ${t('dialog.sheetPreview.uniqueImages')}` : ''}`;
       setInfo(text);
       // File size of the PNG that will be written (at 1×; scaling adds little to PNG size)
       sheet.canvas.convertToBlob({ type: 'image/png' }).then(b => setInfo(`${text} · ~${b.size < 1024 ? `${b.size} B` : `${(b.size / 1024).toFixed(1)} KB`}`), () => { });
@@ -399,16 +405,18 @@ const SheetPreview: FC<{ opts: ExportOptions; }> = ({ opts }) => {
 
 const ExportImage: FC<{ close: () => void; }> = ({ close }) => {
   const { sprite } = state;
-  const last = loadDialogPrefs('export', {
+  const saved = lastExportOptions(sprite, sprite.lastExport);
+  const last = {
     kind: (sprite.frames.length > 1 ? 'gif' : 'png') as ExportOptions['kind'],
-    scale: 1, json: 'none' as 'none' | 'hash' | 'array', currentLayer: false, loop: true,
+    scale: 1, json: 'none' as 'none' | 'hash' | 'array', currentLayer: false, loop: true, applyPixelRatio: false,
     sheet: SHEET_DEFAULTS,
     area: undefined as ExportOptions['area'],
     trim: false, split: 'none' as NonNullable<ExportOptions['split']>,
     icoSizes: [16, 32, 48] as number[],
-  });
+    ...saved,
+  };
   const [o, setO] = useState({ ...last, sheet: { ...SHEET_DEFAULTS, ...last.sheet } });
-  const [tag, setTag] = useState(sprite.range ? -1 : -2);
+  const [tag, setTag] = useState(saved ? saved.tag ?? -2 : sprite.range ? -1 : -2);
   const [name, setName] = useState(sprite.name);
   const set = (patch: Partial<typeof o>) => setO({ ...o, ...patch });
   const sh = o.sheet;
@@ -417,8 +425,7 @@ const ExportImage: FC<{ close: () => void; }> = ({ close }) => {
   const frameCount = exportFrames(opts.tag).length;
   return (
     <Dialog title={t('dialog.exportImage.export')} onClose={close} submitLabel={t('dialog.exportImage.export')} width={o.kind === 'sheet' ? 820 : 420} onSubmit={() => {
-      saveDialogPrefs('export', o);
-      exportFile(opts);
+      void exportFile(opts);
     }}>
       <div style={{ display: 'flex', gap: 16 }}>
         <div style={{ flex: '0 0 380px', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -467,7 +474,8 @@ const ExportImage: FC<{ close: () => void; }> = ({ close }) => {
               <option value="current">Only "{sprite.current?.name}"</option>
             </Select>
           </Field>
-          <NumberField label={t('common.scale')} value={String(o.scale)} onChange={v => set({ scale: Math.max(1, Math.min(32, num(v, 1) | 0)) })} min={1} max={32} suffix={`× → ${sprite.width * o.scale}×${sprite.height * o.scale}`} />
+          <NumberField label={t('common.scale')} value={String(o.scale)} onChange={v => set({ scale: Math.max(1, Math.min(32, num(v, 1) | 0)) })} min={1} max={32} suffix={`× → ${sprite.width * o.scale * (o.applyPixelRatio ? sprite.pixelRatioX : 1)}×${sprite.height * o.scale * (o.applyPixelRatio ? sprite.pixelRatioY : 1)}`} />
+          {(sprite.pixelRatioX !== 1 || sprite.pixelRatioY !== 1) && <Label><Check checked={o.applyPixelRatio} onChange={e => set({ applyPixelRatio: e.target.checked })} /> {t('pixelRatio.applyExport')}</Label>}
           <Field label={t('dialog.exportImage.separateFiles')}>
             <Select value={o.split} onChange={e => set({ split: e.target.value as typeof o.split })} title={t('dialog.exportImage.oneExportPerLayer')}>
               <option value="none">{t('dialog.exportImage.no')}</option>

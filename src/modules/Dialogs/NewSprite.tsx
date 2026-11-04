@@ -4,6 +4,7 @@ import { Button, Input, Muted, Select } from "~/ui/Button";
 import { Dialog, openDialog, Row, FieldLabel } from "~/ui/Dialog";
 import { useState, type FC } from "react";
 import { loadDialogPrefs, saveDialogPrefs, num, Field, NumberField } from "./fields";
+import { PixelRatioField, ratioValue } from './PixelRatioField';
 
 const PRESETS = [[16, 16], [32, 32], [48, 48], [64, 64], [128, 128], [160, 144], [256, 240]];
 
@@ -15,12 +16,14 @@ const NewSprite: FC<{ close: () => void; }> = ({ close }) => {
   const [h, setH] = useState(String(clip?.h ?? last.h));
   const [name, setName] = useState('untitled');
   const [bg, setBg] = useState(last.bg);
+  const [ratio, setRatio] = useState<[string, string]>(['1', '1']);
   return (
     <Dialog title={t('common.newSprite')} onClose={close} submitLabel={t('common.create')} onSubmit={() => {
       const W = Math.max(1, Math.min(4096, num(w, 32) | 0)), H = Math.max(1, Math.min(4096, num(h, 32) | 0));
       saveDialogPrefs('new', { w: W, h: H, bg });
       const sprite = state.newDocument();
       sprite.reset(W, H, name || 'untitled');
+      [sprite.pixelRatioX, sprite.pixelRatioY] = ratioValue(ratio);
       if (bg !== 'transparent') {
         // A solid background becomes a real background layer
         const fill = bg === 'white' ? 0xffffffff : bg === 'black' ? 0xff000000 : sprite.backgroundFill;
@@ -33,6 +36,7 @@ const NewSprite: FC<{ close: () => void; }> = ({ close }) => {
       <Field label={t('common.name')}><Input value={name} style={{ width: 160 }} onChange={e => setName(e.target.value)} /></Field>
       <NumberField label={t('common.width')} value={w} onChange={setW} min={1} max={4096} suffix="px" />
       <NumberField label={t('common.height')} value={h} onChange={setH} min={1} max={4096} suffix="px" />
+      <PixelRatioField value={ratio} onChange={setRatio} />
       <Row>
         <FieldLabel>{t('dialog.newSprite.presets')}</FieldLabel>
         {PRESETS.map(([pw, ph]) => (

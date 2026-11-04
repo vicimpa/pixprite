@@ -216,6 +216,9 @@ export type SpriteSnapshot = {
   name: string;
   width: number;
   height: number;
+  /** Logical pixel shape; omitted by hosts older than 0.0.6. */
+  pixelRatioX?: number;
+  pixelRatioY?: number;
   colorMode: ColorMode;
   /** The palette, css hex colors (in the indexed mode the only colors pixels can have); null for a document that isn't active */
   palette: string[] | null;

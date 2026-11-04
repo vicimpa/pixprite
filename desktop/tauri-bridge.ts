@@ -22,7 +22,7 @@ if (window.top === window.self) {
   const states = new Set<(state: WindowState) => void>(), updates = new Set<(state: UpdateState) => void>();
   const bridge: DesktopBridge & { startup: Promise<void> } = {
     library(request) { return invoke('desktop_library', request); },
-    async saveDownload(name, blob) { await invoke('desktop_save_download', { name, data: encode(new Uint8Array(await blob.arrayBuffer())) }); },
+    async saveDownload(name, blob, protectExisting = false) { return invoke<boolean>('desktop_save_download', { name, data: encode(new Uint8Array(await blob.arrayBuffer())), protectExisting }); },
     copyImage(bitmap) { return invoke('desktop_copy_image', { bitmap: { ...bitmap, data: encode(new Uint8Array(bitmap.data.buffer, bitmap.data.byteOffset, bitmap.data.byteLength)) } }); },
     copyText(text) { return invoke('desktop_copy_text', { text }); },
     async pasteImage() { const image = await invoke<{ w: number; h: number; data: string } | null>('desktop_paste_image'); return image && { ...image, data: new Uint32Array(Uint8Array.from(atob(image.data), c => c.charCodeAt(0)).buffer) }; },

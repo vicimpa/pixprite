@@ -1,3 +1,5 @@
+import { activeViewer, viewerTabs } from './ViewerTabs';
+import { readLastExport, type LastExport } from './ExportSettings';
 import { EMPTY_PANEL_LAYOUT, normalizePanelLayout, panelLayout, restorePanelLayout, type ExtensionPanelLayout } from './extensions/panels';
 import { deferSetting, flushSettings } from './DeferredSettings';
 import { IncrementalDocument } from './IncrementalDocument';
@@ -10,7 +12,7 @@ import { applyTheme } from "~/core/Themes";
 import { DEFAULT_ICON_PACK, selectedIconPack } from "~/core/IconPacks";
 import { windowSessionId, windowSessionKey } from './WindowSession';
 import {
-  deleteSession, getProjectMeta, homeFolder, loadProjectData, loadProjectState, loadSession, loadSnapshot, listSnapshots, loadLastGoodProject, loadLastGoodSession, newProjectId, saveProjectData, saveSessionRecord, saveSnapshot,
+  deleteSession, getProjectMeta, homeFolder, loadProjectData, loadProjectState, loadSession, loadSnapshot, listSnapshots, loadLastGoodProject, loadLastGoodSession, newProjectId, saveProjectData, saveProjectState, saveSessionRecord, saveSnapshot,
   type SessionHead,
 } from "~/core/Projects";
 import type { Bitmap } from "~/core/Image";
@@ -504,7 +506,7 @@ export class State {
 
   /** Where pasted pixels go: back to their origin if visible, else centered in the view (per axis) */
   pastePosition(bmp: Bitmap & { x?: number; y?: number; }) {
-    const vw = this.viewW / this.zoom, vh = this.viewH / this.zoom;
+    const vw = this.viewW / this.zoomX, vh = this.viewH / this.zoomY;
     const axis = (origin: number | undefined, size: number, cam: number, view: number) => {
       const center = Math.round(cam - size / 2);
       if (origin === undefined || !view) return center;
@@ -566,16 +568,19 @@ export class State {
   // View
 
   /** Screen position of the sprite's top-left corner, derived from the centered camera */
-  get offsetX() { return Math.round(this.viewW / 2 - this.camX * this.zoom); }
-  set offsetX(v: number) { this.camX = (this.viewW / 2 - v) / this.zoom; }
-  get offsetY() { return Math.round(this.viewH / 2 - this.camY * this.zoom); }
-  set offsetY(v: number) { this.camY = (this.viewH / 2 - v) / this.zoom; }
+  get zoomX() { return this.zoom * this.sprite.pixelRatioX; }
+  get zoomY() { return this.zoom * this.sprite.pixelRatioY; }
+  get offsetX() { return Math.round(this.viewW / 2 - this.camX * this.zoomX); }
+  set offsetX(v: number) { this.camX = (this.viewW / 2 - v) / this.zoomX; }
+  get offsetY() { return Math.round(this.viewH / 2 - this.camY * this.zoomY); }
+  set offsetY(v: number) { this.camY = (this.viewH / 2 - v) / this.zoomY; }
 
   /** Largest integer zoom that fits the sprite into the viewport with a margin */
   fitZoom() {
     const { sprite, viewW, viewH } = this;
     if (!viewW || !viewH) return this.zoom;
-    return Math.max(1, Math.floor(Math.min(viewW / sprite.width, viewH / sprite.height) * 0.85));
+    const fit = Math.min(viewW / (sprite.width * sprite.pixelRatioX), viewH / (sprite.height * sprite.pixelRatioY)) * 0.85;
+    return Math.max(0.25, fit >= 1 ? Math.floor(fit) : fit);
   }
 
   /** Fit instantly and keep fitting while the viewport settles (new / opened sprites) */
@@ -629,8 +634,8 @@ export class State {
   panBy(dx: number, dy: number) {
     this.autoFit = false;
     this.camTarget = null;
-    this.camX += dx / this.zoom;
-    this.camY += dy / this.zoom;
+    this.camX += dx / this.zoomX;
+    this.camY += dy / this.zoomY;
   }
 
   panTo(camX: number, camY: number) {
@@ -643,11 +648,11 @@ export class State {
   /** Instantly set zoom keeping the screen point (x, y) fixed */
   private zoomAround(zoom: number, x = this.viewW / 2, y = this.viewH / 2) {
     // Exact (unrounded) sprite point under (x, y), so repeated calls don't drift
-    const px = this.camX + (x - this.viewW / 2) / this.zoom;
-    const py = this.camY + (y - this.viewH / 2) / this.zoom;
+    const px = this.camX + (x - this.viewW / 2) / this.zoomX;
+    const py = this.camY + (y - this.viewH / 2) / this.zoomY;
     this.zoom = zoom;
-    this.camX = px - (x - this.viewW / 2) / zoom;
-    this.camY = py - (y - this.viewH / 2) / zoom;
+    this.camX = px - (x - this.viewW / 2) / this.zoomX;
+    this.camY = py - (y - this.viewH / 2) / this.zoomY;
   }
 
   /** Advance the zoom/camera animation; called every frame by the view */
@@ -825,6 +830,21 @@ export class State {
     return next;
   }
 
+  /** Preferences must survive both session restore and closing/reopening a saved library project. */
+  rememberExport(doc: Sprite, lastExport: LastExport): Promise<void> {
+    doc.lastExport = lastExport;
+    doc.editor = { ...doc.editor, lastExport };
+    const next = (this.documentSaves.get(doc) ?? Promise.resolve()).catch(() => {}).then(async () => {
+      if (doc.projectId) {
+        const editor = await loadProjectState(doc.projectId);
+        await saveProjectState(doc.projectId, { ...editor, lastExport: doc.lastExport });
+      }
+      await this.persist();
+    });
+    this.documentSaves.set(doc, next);
+    return next;
+  }
+
   private async writeDocument(doc: Sprite) {
     const wasOpen = this.docs.includes(doc);
     const now = Date.now(), id = doc.projectId ?? newProjectId();
@@ -839,6 +859,7 @@ export class State {
     await saveProjectData({
       id, name: raw.name ?? 'untitled', created: meta?.created ?? now, updated: now,
       width: raw.width, height: raw.height, frames: raw.frames.length, layers: raw.layers.length,
+      ...(raw.pixelRatioX !== undefined ? { pixelRatioX: raw.pixelRatioX, pixelRatioY: raw.pixelRatioY } : {}),
       colorMode: raw.colorMode ?? 'rgb', thumb, info: raw.info as Sprite['info'],
       folderId,
     }, prepared.data, editor ? { ...editor, doc: { ...(editor.doc as object), unsaved: false } } : undefined);
@@ -937,6 +958,7 @@ export class State {
   confirmClose: (doc: Sprite) => Promise<'save' | 'discard' | 'cancel'> = async () => 'discard';
 
   showHome() {
+    activeViewer.value = null;
     this.playing = false;
     this.sprite.dropFloating();
     this.home = true;
@@ -945,8 +967,22 @@ export class State {
 
   // Documents
 
+  stepTab(direction: 1 | -1, wrap = true) {
+    const tabs: (Sprite | string)[] = [...this.docs, ...viewerTabs.peek().map(tab => tab.id)];
+    if (!tabs.length) return this.showHome();
+    const current = activeViewer.peek() ?? (this.home ? null : this.sprite);
+    let index = (current === null ? -1 : tabs.indexOf(current)) + direction;
+    if (!wrap && index < 0) return this.showHome();
+    if (!wrap && index >= tabs.length) return;
+    index = (index + tabs.length) % tabs.length;
+    const tab = tabs[index];
+    if (typeof tab === 'string') activeViewer.value = tab;
+    else this.switchTo(tab);
+  }
+
   /** Shows another open document, keeping each one's camera */
   switchTo(doc: Sprite) {
+    activeViewer.value = null;
     if (!this.docs.includes(doc)) return;
     const wasHome = this.home;
     this.home = false;
@@ -991,10 +1027,12 @@ export class State {
       tilesetMode: doc.tilesetMode, transformAlgo: doc.transformAlgo,
       mask: doc.mask && !doc.floating ? encodeMask(doc.mask) : null,
     };
+    out.lastExport = doc.lastExport;
     return out;
   }
 
   applyEditor(e: Record<string, unknown>) {
+    this.sprite.lastExport = readLastExport(e.lastExport);
     const self = this as unknown as Record<string, unknown>;
     for (const k of EDITOR_KEYS) if (k in e && e[k] !== undefined) self[k] = e[k];
     if (!Array.isArray(e.docBrushes)) this.docBrushes = [];
@@ -1228,6 +1266,50 @@ let lastPalette: number[] = [];
 let lastHex: string[] = [];
 let lastSprite: Sprite | null = null;
 let restoringPalette = false;
+const paletteRestores = new WeakMap<Sprite, string>();
+
+/** Each document owns its palette even while another tab is being edited. */
+export function bindDocumentPalette(sprite: Sprite) {
+  sprite.editor ??= { palette: state.palette.slice() };
+  sprite.paletteHost ??= {
+    get: () => sprite === state.sprite ? state.palette.slice() : ((sprite.editor?.palette as string[] | undefined) ?? DEFAULT_PALETTE).slice(),
+    set: p => {
+      sprite.editor = { ...sprite.editor, palette: p.slice() };
+      sprite.palette = new PaletteMap(p.map(hexToPixel), sprite.transparentIndex);
+      if (sprite === state.sprite) {
+        paletteRestores.set(sprite, p.join());
+        restoringPalette = true;
+        try { state.palette = p.slice(); } finally { restoringPalette = false; }
+      }
+    },
+  };
+  sprite.palette ??= new PaletteMap(sprite.paletteHost.get().map(hexToPixel), sprite.transparentIndex);
+}
+
+export function replaceDocumentPalette(sprite: Sprite, next: string[], keep = false) {
+  bindDocumentPalette(sprite);
+  const key = sprite.framePaletteAt();
+  const old = key?.colors ?? sprite.paletteHost!.get();
+  if (old.join() === next.join()) return;
+  sprite.paletteStep(old);
+  if (key) sprite.framePalettes = sprite.framePalettes.map(k => k === key ? { ...k, colors: next.slice() } : k);
+  if (!keep && sprite.colorMode === 'indexed' && old.length === next.length) {
+    const colors = old.map(hexToPixel), changes = new Map<number, number>();
+    next.map(hexToPixel).forEach((value, i) => { if (value !== colors[i] && colors.indexOf(colors[i]) === colors.lastIndexOf(colors[i])) changes.set(colors[i], value); });
+    sprite.recolor(changes, key ? sprite.framesOfPalette(key) : undefined);
+  }
+  if (key) sprite.palette = new PaletteMap(next.map(hexToPixel), sprite.transparentIndex);
+  else sprite.paletteHost!.set(next);
+  sprite.touch();
+}
+
+export function documentPalette(sprite: Sprite, frame = sprite.frame) {
+  bindDocumentPalette(sprite);
+  return (sprite.framePaletteAt(frame)?.colors ?? sprite.paletteHost!.get()).slice();
+}
+export function documentPaletteMap(sprite: Sprite, frame = sprite.frame) {
+  return new PaletteMap(documentPalette(sprite, frame).map(hexToPixel), sprite.transparentIndex);
+}
 /** Palette reorders: entries move, pixels keep their colors (no recolor in the indexed mode) */
 let keepPixels = false;
 export function setPaletteKeepingPixels(p: string[]) {
@@ -1238,19 +1320,18 @@ effect(() => {
   const colors = state.palette.map(hexToPixel);
   const sprite = state.sprite;
   untracked(() => {
-    sprite.paletteHost ??= {
-      get: () => state.palette.slice(),
-      set: p => { restoringPalette = true; state.palette = p.slice(); restoringPalette = false; },
-    };
+    bindDocumentPalette(sprite);
+    const restored = restoringPalette || paletteRestores.get(sprite) === state.palette.join();
+    paletteRestores.delete(sprite);
     const switched = sprite !== lastSprite;
     lastSprite = sprite;
-    const edited = !switched && !restoringPalette && lastHex.length && lastHex.join() !== state.palette.join();
+    const edited = !switched && !restored && lastHex.length && lastHex.join() !== state.palette.join();
     if (edited) sprite.paletteStep(lastHex);
     lastHex = state.palette.slice();
     // With palettes per frame, an edit changes the palette of the current frame
     const key = sprite.framePaletteAt();
     if (edited && key) sprite.framePalettes = sprite.framePalettes.map(k => k === key ? { ...k, colors: state.palette.slice() } : k);
-    if (!switched && !restoringPalette && !keepPixels && sprite.colorMode === 'indexed' && lastPalette.length === colors.length) {
+    if (!switched && !restored && !keepPixels && sprite.colorMode === 'indexed' && lastPalette.length === colors.length) {
       const changes = new Map<number, number>();
       colors.forEach((c, i) => {
         const old = lastPalette[i];

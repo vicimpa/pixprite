@@ -16,6 +16,9 @@ export { DOCUMENTS_CHANGE, I18N_CHANGE, INVOKE, statePrefix, transferables } fro
  * `*.register` take `[id]`, `*.unregister` take `[id]`; the host later calls back with `invoke`.
  */
 export const PERMISSION_FOR_METHOD = {
+  'automation.list': 'sprite:read',
+  'automation.call': 'sprite:read',
+  'automation.activity': null,
   'sprite.get': 'sprite:read',
   'sprite.getPixels': 'sprite:read',
   'sprite.render': 'sprite:read',

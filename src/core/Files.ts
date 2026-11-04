@@ -6,9 +6,10 @@ import { sliceKey } from "~/core/Sprite";
 import { state } from "~/core/State";
 import { t } from "~/core/i18n";
 import { Sprite } from "~/core/Sprite";
-import { loadProjectData } from "~/core/Projects";
+import { loadProjectData, loadProjectState } from "~/core/Projects";
 import { type SheetOptions } from "~/core/SpriteSheet";
 import { tilesFromImage } from "~/core/Tilemap";
+import { captureLastExport, lastExportOptions } from './ExportSettings';
 
 
 export type ExportKind = 'png' | 'sheet' | 'gif' | 'apng' | 'webm' | 'frames' | 'zip' | 'ico' | 'cur';
@@ -17,6 +18,8 @@ export type SplitMode = 'none' | 'layers' | 'selectedLayers' | 'tags' | 'slices'
 export type ExportOptions = {
   kind: ExportKind;
   scale: number;
+  /** Bake document pixel shape into raster output; false keeps the original logical pixel grid. */
+  applyPixelRatio?: boolean;
   name?: string;
   /** Frames of this tag only; -1 = selected frames, undefined = all */
   tag?: number;
@@ -38,14 +41,20 @@ export type ExportOptions = {
   icoSizes?: number[];
 };
 
-export function download(blob: Blob, name: string) {
-  if (window.pixpriteDesktop?.saveDownload) { void window.pixpriteDesktop.saveDownload(name, blob).catch(error => state.showTip(`${t('msg.exportFailed')}: ${String(error)}`, 5000)); return; }
+/** Browser success means handing a download to the browser; native success means a completed write. */
+async function deliverDownload(blob: Blob, name: string, protectExisting = false): Promise<boolean> {
+  if (window.pixpriteDesktop?.saveDownload) return window.pixpriteDesktop.saveDownload(name, blob, protectExisting);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return true;
+}
+
+export function download(blob: Blob, name: string) {
+  void deliverDownload(blob, name).catch(error => state.showTip(`${t('msg.exportFailed')}: ${String(error)}`, 5000));
 }
 
 export function exportFrames(tag?: number) {
@@ -103,17 +112,14 @@ function splitParts(opts: ExportOptions, base: string): [ExportOptions, string][
 
 async function zipOutputs(outs: Output[], name: string) {
   const entries = await Promise.all(outs.map(async o => ({ name: o.name, data: new Uint8Array(await o.blob.arrayBuffer()) })));
-  download(new Blob([await runTask('zip', { entries }) as BlobPart], { type: 'application/zip' }), name);
+  return deliverDownload(new Blob([await runTask('zip', { entries }) as BlobPart], { type: 'application/zip' }), name);
 }
 
-const LAST_EXPORT_KEY = 'pixprite:lastExport';
-
-export async function exportFile(opts: ExportOptions) {
-  const base = safeName(opts.name ?? state.sprite.name);
-  if (opts.kind !== 'png' || opts.scale !== 1 || opts.area || opts.trim) {
-    try { localStorage.setItem(LAST_EXPORT_KEY, JSON.stringify({ ...opts, name: undefined })); } catch { }
-  }
+export async function exportFile(opts: ExportOptions, remember = true) {
+  const doc = state.sprite;
+  const base = safeName(opts.name ?? doc.name);
   try {
+    const last = captureLastExport(doc, opts);
     const split = opts.split && opts.split !== 'none';
     const parts = splitParts(opts, base);
     if (split && !parts.length) return state.showTip(t('msg.nothingToExport'));
@@ -141,8 +147,12 @@ export async function exportFile(opts: ExportOptions) {
       }
     }
     if (!outs.length) return state.showTip(t('msg.theSliceIsHidden'));
-    if (split || opts.kind === 'zip') return zipOutputs(outs, `${base}${split ? `-${opts.split}` : ''}.zip`);
-    for (const o of outs) download(o.blob, o.name);
+    if (split || opts.kind === 'zip') {
+      if (!await zipOutputs(outs, `${base}${split ? `-${opts.split}` : ''}.zip`)) return;
+    } else for (const o of outs) if (!await deliverDownload(o.blob, o.name)) return;
+    if (remember) {
+      await state.rememberExport(doc, last).catch(error => state.showTip(`${t('msg.couldNotSave')}: ${String(error)}`, 5000));
+    }
   } catch (err) {
     if (isCancelled(err)) return;
     console.error('Export failed', err);
@@ -152,30 +162,23 @@ export async function exportFile(opts: ExportOptions) {
 
 /** Runs the last export from the dialog again (on the current sprite); false when there was none */
 export function repeatLastExport() {
-  try {
-    const raw = localStorage.getItem(LAST_EXPORT_KEY);
-    if (!raw) return false;
-    const opts = JSON.parse(raw) as ExportOptions;
-    const { sprite } = state;
-    // Things that may not exist in this sprite fall back to the whole sprite
-    if (opts.tag !== undefined && opts.tag >= 0 && !sprite.tags[opts.tag]) opts.tag = undefined;
-    if (opts.area?.kind === 'slice' && !sprite.slices[opts.area.index]) opts.area = undefined;
-    if (opts.area?.kind === 'selection' && !sprite.mask) opts.area = undefined;
-    if (opts.layer !== undefined && !sprite.layers[opts.layer]) opts.layer = undefined;
-    void exportFile(opts);
-    return true;
-  } catch { return false; }
+  const opts = lastExportOptions(state.sprite, state.sprite.lastExport);
+  if (!opts) return false;
+  void exportFile(opts);
+  return true;
 }
 
 export type ProjectFormat = 'pixprite' | 'aseprite';
 
-async function projectBlob(doc: Sprite, format: ProjectFormat) {
-  return runTask('projectFile', { raw: doc.captureDocument(), format, palette: state.palette.slice() });
+async function projectBlob(doc: Sprite, format: ProjectFormat, name = doc.name) {
+  const savedPalette = doc.editor?.palette;
+  const palette = doc.paletteHost?.get() ?? (Array.isArray(savedPalette) ? savedPalette as string[] : state.palette.slice());
+  return runTask('projectFile', { raw: { ...doc.captureDocument(), name }, format, palette });
 }
 
 /** What a document loses (or keeps only for Pixprite) when saved as .aseprite, translated */
 export function asepriteLosses(doc: Sprite): string[] {
-  const out: string[] = [];
+  const out: string[] = doc.asepriteWarnings.map(w => `${t(`aseprite.warning.${w.kind}`)}${w.detail ? ` (${w.detail})` : ''}`);
   const refs = doc.layers.filter(l => l.reference).length;
   if (refs) out.push(`${t('msg.referenceLayers')} (${refs})`);
   if (doc.guides?.length) out.push(`${t('common.guides')} (${doc.guides.length})`);
@@ -192,18 +195,31 @@ export async function downloadProject(id: string, format: ProjectFormat = 'pixpr
     } catch (e) { state.showTip(`${t('storage.failed')}: ${(e as Error).message}`, 4000); }
     return;
   }
-  const data = await loadProjectData(id);
-  if (!data) return state.showTip(t('msg.theProjectCouldNot'));
-  const doc = new Sprite(32, 32);
-  await doc.loadAsync(data);
-  download(await projectBlob(doc, format), `${doc.name}.${format}`);
-  const lost = format === 'aseprite' ? asepriteLosses(doc) : [];
-  if (lost.length) state.showTip(`${t('dialog.saveAs.notSavedInThis')}: ${lost.join(', ')}`, 4000);
+  try {
+    const data = await loadProjectData(id);
+    if (!data) return state.showTip(t('msg.theProjectCouldNot'));
+    const doc = new Sprite(32, 32);
+    await doc.loadAsync(data);
+    doc.editor = await loadProjectState(id);
+    await saveProjectCopy(doc, doc.name, format);
+  } catch (error) {
+    state.showTip(`${t('msg.exportFailed')}: ${error instanceof Error ? error.message : error}`, 5000);
+  }
 }
 
 export async function saveProject(name = state.sprite.name, format: ProjectFormat = 'pixprite') {
-  state.sprite.name = name;
-  download(await projectBlob(state.sprite, format), `${name}.${format}`);
+  await saveProjectCopy(state.sprite, name, format);
+}
+
+async function saveProjectCopy(doc: Sprite, name: string, format: ProjectFormat) {
+  const losses = format === 'aseprite' ? asepriteLosses(doc) : [];
+  if (losses.length) {
+    const { askConfirm } = await import('~/ui/Dialog');
+    if (!await askConfirm(`${t('aseprite.saveWarning')}\n\n${losses.join('\n')}`, { title: t('aseprite.saveTitle') })) return;
+  }
+  const protect = format === 'aseprite' && doc.asepriteWarnings.length > 0;
+  const blob = await projectBlob(doc, format, name);
+  if (await deliverDownload(blob, `${safeName(name)}${protect ? '-copy' : ''}.${format}`, protect)) doc.name = name;
 }
 
 export function pickFiles(accept: string, multiple = false) {
@@ -242,6 +258,7 @@ export async function readDocument(file: File): Promise<Sprite> {
   if (e === 'aseprite' || e === 'ase') {
     const ase = await (await import('./formats/Aseprite')).decodeAseprite(new Uint8Array(await file.arrayBuffer()));
     doc.fromDocument(ase, name);
+    if (doc.asepriteWarnings.length) state.showTip(`${t('aseprite.importWarning')} ${asepriteLosses(doc).join(', ')}`, 10000);
     // The file's palette travels with the document (it becomes the palette when the tab is shown)
     if (ase.palette.length) doc.editor = { palette: ase.palette.map(c => c.slice(0, 7)) };
   } else if (e === 'gif') {

@@ -224,8 +224,8 @@ export function buildSheet(o: SheetOptions, { sprite, prefs }: SheetContext) {
 }
 
 /** The data file (hash or array flavour) describing every frame of a built sheet */
-export function sheetData(sheet: Sheet, title: string, image: string, flavour: 'hash' | 'array', sprite: SheetContext['sprite']) {
-  const o = sheet.options, k = o.scale, ex = sheet.extrude;
+export function sheetData(sheet: Sheet, title: string, image: string, flavour: 'hash' | 'array', sprite: SheetContext['sprite'], ratioX = 1, ratioY = 1) {
+  const o = sheet.options, k = o.scale, kx = k * ratioX, ky = k * ratioY, ex = sheet.extrude;
   const entries = sheet.samples.map((s, i) => {
     const vars: Record<string, string> = {
       title, extension: 'png', layer: s.layer !== null ? sprite.layers[s.layer].name : '',
@@ -236,14 +236,14 @@ export function sheetData(sheet: Sheet, title: string, image: string, flavour: '
     };
     const name = fillTemplate(o.template || defaultTemplate(o), vars, i, s.index);
     // The frame rectangle leaves the extruded pixels out
-    const frame = { x: (s.slot.x + ex) * k, y: (s.slot.y + ex) * k, w: (s.slot.w - 2 * ex) * k, h: (s.slot.h - 2 * ex) * k };
+    const frame = { x: (s.slot.x + ex) * kx, y: (s.slot.y + ex) * ky, w: (s.slot.w - 2 * ex) * kx, h: (s.slot.h - 2 * ex) * ky };
     return {
       filename: name,
       frame,
       rotated: false,
       trimmed: s.src.x !== 0 || s.src.y !== 0 || s.src.w !== sprite.width || s.src.h !== sprite.height,
-      spriteSourceSize: { x: s.src.x * k, y: s.src.y * k, w: s.src.w * k, h: s.src.h * k },
-      sourceSize: { w: sprite.width * k, h: sprite.height * k },
+      spriteSourceSize: { x: s.src.x * kx, y: s.src.y * ky, w: s.src.w * kx, h: s.src.h * ky },
+      sourceSize: { w: sprite.width * kx, h: sprite.height * ky },
       duration: sprite.frames[s.frame].duration,
     };
   });
@@ -255,14 +255,15 @@ export function sheetData(sheet: Sheet, title: string, image: string, flavour: '
       version: '0.1',
       image,
       format: 'RGBA8888',
-      size: { w: sheet.width * k, h: sheet.height * k },
+      size: { w: sheet.width * kx, h: sheet.height * ky },
       scale: String(k),
+      ...(ratioX !== 1 || ratioY !== 1 ? { scaleX: kx, scaleY: ky } : {}),
       frameTags: sprite.tags.map(t => ({ name: t.name, from: t.from, to: t.to, direction: t.direction, color: t.color, ...(t.repeat ? { repeat: String(t.repeat) } : {}), ...(t.userData?.text ? { data: t.userData.text } : {}) })),
       slices: sprite.slices.map(sl => ({
         name: sl.name, color: sl.color, ...(sl.userData?.text ? { data: sl.userData.text } : {}),
         keys: sl.keys.map(key => ({
-          frame: key.frame, bounds: { x: key.x, y: key.y, w: key.w, h: key.h },
-          ...(key.center ? { center: key.center } : {}), ...(key.pivot ? { pivot: key.pivot } : {}),
+          frame: key.frame, bounds: { x: key.x * kx, y: key.y * ky, w: key.w * kx, h: key.h * ky },
+          ...(key.center ? { center: { x: key.center.x * kx, y: key.center.y * ky, w: key.center.w * kx, h: key.center.h * ky } } : {}), ...(key.pivot ? { pivot: { x: key.pivot.x * kx, y: key.pivot.y * ky } } : {}),
         })),
       })),
       layers: sprite.layers.map((l, i) => {

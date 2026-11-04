@@ -1,3 +1,5 @@
+import { activeViewer, viewerTabs, closeViewer } from '~/core/ViewerTabs';
+import { agentActivity } from '~/core/automation/activity';
 import type { Sprite } from "~/core/Sprite";
 import { state } from "~/core/State";
 import { dialogs } from "~/modules/Dialogs";
@@ -75,7 +77,7 @@ export const DocTabs: FC = () => {
   useSignals();
   const desktop = window.pixpriteDesktop;
   const [drag, setDrag] = useState<{ doc: WeakRef<Sprite>; over: number; } | null>(null);
-  const title = state.home ? 'Pixprite' : `${state.sprite.name} — Pixprite`;
+  const title = activeViewer.value ? `${viewerTabs.value.find(tab => tab.id === activeViewer.value)?.name} — Pixprite` : state.home ? 'Pixprite' : `${state.sprite.name} — Pixprite`;
   useEffect(() => { if (desktop) document.title = title; }, [desktop, title]);
   const drop = (e: React.DragEvent, index: number) => {
     e.preventDefault(); e.stopPropagation();
@@ -88,18 +90,17 @@ export const DocTabs: FC = () => {
       onDragOver={e => { if (drag) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } }}
       onDrop={e => drop(e, state.docs.length)}
       onWheel={e => {
-        const i = (state.home ? -1 : state.docs.indexOf(state.sprite)) + (e.deltaY > 0 || e.deltaX > 0 ? 1 : -1);
-        if (state.docs[i]) state.switchTo(state.docs[i]); else if (i < 0) state.showHome();
+        state.stepTab(e.deltaY > 0 || e.deltaX > 0 ? 1 : -1, false);
       }}
       onDoubleClick={e => { if (!desktop && e.target === e.currentTarget) dialogs.newSprite(); }}>
-      <Tab data-active={state.home} data-home title={t('tabs.home')} style={{ flex: '0 0 auto' }}
+      <Tab data-active={state.home && !activeViewer.value} data-home title={t('tabs.home')} style={{ flex: '0 0 auto' }}
         onPointerDown={e => { if (e.button === 0) state.showHome(); }}><Icon name="home" scale="glyph" /></Tab>
       {state.docs.map((doc, i) => {
         const sid = doc.sessionId ??= crypto.randomUUID();
         const ref = new WeakRef(doc);
         const resolve = () => { const current = ref.deref(); return current && state.docs.includes(current) ? current : null; };
         return <Tab key={sid} data-session={sid}
-          data-active={!state.home && doc === state.sprite}
+          data-active={!activeViewer.value && !state.home && doc === state.sprite}
           data-drop={!!drag && drag.over === i && drag.doc.deref() !== doc}
           title={`${doc.name} · ${doc.width}×${doc.height}`} draggable
           onDragStart={e => {
@@ -129,6 +130,12 @@ export const DocTabs: FC = () => {
             onClick={() => { const current = resolve(); if (current) void state.closeDocument(current); }}><i>×</i></Close>
         </Tab>;
       })}
+      {viewerTabs.value.map(tab => <Tab key={tab.id} data-viewer={tab.id} data-active={activeViewer.value === tab.id}
+        title={tab.name} onPointerDown={e => { if (e.button === 0) activeViewer.value = tab.id; else if (e.button === 1) closeViewer(tab.id); }}>
+        <span>◈ {tab.name}</span><Close title={t('common.close')} onPointerDown={e => e.stopPropagation()} onClick={() => closeViewer(tab.id)}>×</Close>
+      </Tab>)}
+      {agentActivity.value && <span data-testid="agent-activity" data-following={agentActivity.value.following} style={{ alignSelf: 'center', padding: '0 8px', color: 'var(--accent)' }}
+        title={`${agentActivity.value.source}: ${agentActivity.value.label}`}>{agentActivity.value.following ? '◉' : '◌'} AI</span>}
       {desktop && <Close style={{ alignSelf: 'center', width: 26 }} title={t('common.newSprite')} onClick={() => dialogs.newSprite()}>+</Close>}
       <Fill data-window-drag data-tauri-drag-region onDoubleClick={() => { if (!desktop) dialogs.newSprite(); }} title={desktop ? undefined : t('tabs.doubleClickForA')} />
       {desktop && <WindowControls bridge={desktop} />}

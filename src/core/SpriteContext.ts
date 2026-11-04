@@ -17,6 +17,7 @@ export type SpriteContext = Pick<Sprite, keyof Sprite> & {
   historyOffset: number;
   undoStack: Snapshot[];
   redoStack: Snapshot[];
+  historyBatch: boolean;
   cache: Map<string, OffscreenCanvas>;
   cacheVersion: number;
   snapshot(label: string): Snapshot;

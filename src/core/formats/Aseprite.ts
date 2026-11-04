@@ -8,6 +8,8 @@ import type { ColorMode } from "~/core/ColorMode";
 import type { BlendMode, Cel, FramePalette, Slice } from "~/core/Sprite";
 import { renderTiles, type Tileset, type UserData } from "~/core/Tilemap";
 import { inflatePixels } from "~/core/formats/Inflate";
+import type { AsepriteWarning } from '../AsepriteWarnings';
+import { pixelRatio } from '../PixelRatio';
 
 export type AseLayer = {
   name: string;
@@ -80,8 +82,12 @@ export type AseTag = {
 };
 
 export type AseDocument = {
+  /** Diagnostics for data the importer could not preserve. Never a claim of lossless import. */
+  warnings?: AsepriteWarning[];
   width: number;
   height: number;
+  pixelRatioX?: number;
+  pixelRatioY?: number;
   frames: { duration: number; }[];
   /** bottom-to-top */
   layers: AseLayer[];
@@ -227,17 +233,21 @@ function readUserData(r: Reader, end: number) {
   const uf = r.dword();
   const ud: UserData = {};
   const props: Record<string, boolean> = {};
+  let unsupported = false;
   if (uf & 1) ud.text = r.string();
   if (uf & 2) { const [cr, cg, cb, ca] = [r.byte(), r.byte(), r.byte(), r.byte()]; ud.color = `#${hex2(cr)}${hex2(cg)}${hex2(cb)}${ca === 255 ? '' : hex2(ca)}`; }
   if (uf & 4) {
     // Fixed-size values are skipped; anything else ends parsing (the chunk is bounded anyway)
     const sizes: Record<number, number> = { 2: 1, 3: 1, 4: 2, 5: 2, 6: 4, 7: 4, 8: 8, 9: 8, 0xA: 4, 0xB: 4, 0xC: 8, 0xE: 8, 0xF: 8, 0x10: 16, 0x13: 16 };
-    r.skip(4);
+    const start = r.pos;
+    const propertySize = r.dword();
+    if (propertySize < 8 || start + propertySize > end) throw new Error('Invalid Aseprite property map length');
     const maps = r.dword();
     out: for (let m = 0; m < maps && r.pos < end; m++) {
       const key = r.dword(), count = r.dword();
       for (let k = 0; k < count && r.pos < end; k++) {
         const name = r.string(), type = r.word();
+        if (key !== 0 || name !== CLIP_PROP || type !== 1) unsupported = true;
         if (type === 1) { const v = !!r.byte(); if (key === 0) props[name] = v; }
         else if (type === 0xD) r.string();
         else if (sizes[type]) r.skip(sizes[type]);
@@ -245,7 +255,7 @@ function readUserData(r: Reader, end: number) {
       }
     }
   }
-  return { ud, props };
+  return { ud, props, unsupported };
 }
 
 export async function encodeAseprite(doc: AseDocument): Promise<Uint8Array> {
@@ -304,6 +314,8 @@ export async function encodeAseprite(doc: AseDocument): Promise<Uint8Array> {
   w.byte(mode === 'indexed' ? transparent : 0);
   w.zeros(3);
   w.word(palette.length >= 256 ? 0 : palette.length);
+  const [ratioX, ratioY] = pixelRatio(doc.pixelRatioX ?? 1, doc.pixelRatioY ?? 1);
+  w.byte(ratioX); w.byte(ratioY);
   w.zeros(128 - w.pos);
 
   for (let f = 0; f < frames.length; f++) {
@@ -475,6 +487,12 @@ export async function encodeAseprite(doc: AseDocument): Promise<Uint8Array> {
 type RawCel = { layer: number; x: number; y: number; opacity: number; type: number; link: number; w: number; h: number; pixels: Uint8Array | null; refs?: Uint32Array; idMask?: number; };
 
 export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
+  if (bytes.length < 128) throw new Error('Truncated Aseprite header');
+  const warnings: AsepriteWarning[] = [];
+  const warn = (kind: AsepriteWarning['kind'], detail?: string) => {
+    if (warnings.length < 256 && !warnings.some(w => w.kind === kind && w.detail === detail))
+      warnings.push({ kind, ...(detail === undefined ? {} : { detail }) });
+  };
   const r = new Reader(bytes);
   r.skip(4);
   if (r.word() !== 0xA5E0) throw new Error('Not an Aseprite file');
@@ -486,9 +504,13 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
   const depth = r.word();
   if (![8, 16, 32].includes(depth)) throw new Error('Invalid Aseprite color depth');
   const flags = r.dword();
+  if (flags & ~3) warn('layerMetadata');
   const speed = r.word();
   r.skip(8);
   const transparentIndex = r.byte();
+  r.pos = 34;
+  const pixelWidth = r.byte(), pixelHeight = r.byte();
+  const [pixelRatioX, pixelRatioY] = pixelWidth && pixelHeight ? pixelRatio(pixelWidth, pixelHeight) : [1, 1];
   r.pos = 128;
 
   const bpp = depth === 32 ? 4 : depth === 16 ? 2 : 1;
@@ -583,16 +605,19 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
         for (let i = first; i <= last; i++) {
           const entryFlags = r.word();
           const [cr, cg, cb, ca] = [r.byte(), r.byte(), r.byte(), r.byte()];
-          if (entryFlags & 1) r.string();
+          if (entryFlags & 1 && r.string()) warn('paletteNames');
           newPalette[i] = `#${hex2(cr)}${hex2(cg)}${hex2(cb)}${ca === 255 ? '' : hex2(ca)}`;
         }
       } else if (type === 0x2004) {
         if ((fileLayers.length + 1) * frameCount > 1_000_000) throw new Error('Aseprite document has too many cels');
         const lf = r.word();
         const lt = r.word();
+        if (lt > 2) warn('layerType', String(lt));
+        if (lf & (4 | 64) || lf & ~127) warn('layerMetadata');
         const level = r.word();
         r.skip(4);
         const blend = r.word();
+        if (!ASE_BLENDS[blend]) warn('blendMode', String(blend));
         const opacity = r.byte();
         r.skip(3);
         const name = r.string();
@@ -622,7 +647,8 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
           layer: r.word(), x: r.short(), y: r.short(), opacity: r.byte(), type: r.word(),
           link: -1, w: 0, h: 0, pixels: null,
         };
-        r.skip(7);
+        if (r.short() !== 0) warn('celZIndex');
+        r.skip(5);
         if (cel.type === 1) {
           cel.link = r.word();
         } else if (cel.type === 0 || cel.type === 2) {
@@ -639,13 +665,17 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
           const bits = r.word();
           if (bits !== 32) throw new Error('Unsupported Aseprite tile size');
           cel.idMask = r.dword();
-          r.skip(12 + 10);
+          const flipX = r.dword(), flipY = r.dword(), flipD = r.dword();
+          if (cel.idMask !== 0x1fffffff || flipX !== 0x80000000 || flipY !== 0x40000000 || flipD !== 0x20000000) warn('tileFlags');
+          r.skip(10);
           const data = await inflatePixels(r.bytes(chunkStart + chunkSize - r.pos), count * 4);
           if (bits === 32) cel.refs = new Uint32Array(data.buffer.slice(data.byteOffset, data.byteOffset + cel.w * cel.h * 4));
-        }
+        } else warn('celType', String(cel.type));
         cels.push(cel);
       } else if (type === 0x2023) {
         const id = r.dword(), tf = r.dword(), count = r.dword();
+        if (tf & 1 || !(tf & 2)) warn('externalTileset');
+        if (tf & ~7) warn('tileFlags');
         const tw = r.word(), th = r.word(), base = r.short();
         if (id > 65535 || !count) throw new Error('Invalid Aseprite tileset');
         const length = pixelCount(tw, th, count) * bpp;
@@ -683,12 +713,14 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
         };
       } else if (type === 0x2020) {
         // User data of the chunk before it (layer, tileset, slice), or of the next tag after a tags chunk
-        const { ud, props } = readUserData(r, chunkStart + chunkSize);
+        const { ud, props, unsupported } = readUserData(r, chunkStart + chunkSize);
+        if (unsupported) warn('userProperties');
         const tag = tagQueue.shift();
         if (tag) {
           if (ud.color) tag.color = ud.color.slice(0, 7);
           if (ud.text) tag.userData = { text: ud.text };
-        } else udTarget?.(ud, props);
+        } else if (udTarget) udTarget(ud, props);
+        else if (ud.text || ud.color || Object.keys(props).length) warn('userData');
         udTarget = null;
       } else if (type === 0x2018) {
         const count = r.word();
@@ -709,6 +741,15 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
           });
         }
         tagQueue = count ? tags.slice(-count) : [];
+      } else if (type === 0x2007) {
+        const profile = r.word(), profileFlags = r.word();
+        if (profile > 1 || profileFlags) warn('colorProfile');
+      } else if (type === 0x2008) {
+        if (r.dword()) warn('externalFiles');
+      } else if (type === 0x2006) {
+        if (r.dword()) warn('celBounds');
+      } else {
+        warn('unknownChunk', `0x${type.toString(16).padStart(4, '0')}`);
       }
 
       r.pos = chunkStart + chunkSize;
@@ -780,5 +821,7 @@ export async function decodeAseprite(bytes: Uint8Array): Promise<AseDocument> {
   const colorMode: ColorMode = depth === 8 ? 'indexed' : depth === 16 ? 'gray' : 'rgb';
   // A transparent entry inside the real palette is a chosen one; the extra slot past it is not
   const docTransparent = depth === 8 && transparentIndex < palette.length ? transparentIndex : -1;
-  return { width, height, frames, layers, tags, palette, slices, colorMode, framePalettes, tilesets, transparentIndex: docTransparent };
+  return { width, height, frames, layers, tags, palette, slices, colorMode, framePalettes, tilesets, transparentIndex: docTransparent,
+    ...(pixelRatioX !== 1 || pixelRatioY !== 1 ? { pixelRatioX, pixelRatioY } : {}),
+    ...(warnings.length ? { warnings } : {}) };
 }

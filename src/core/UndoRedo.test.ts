@@ -38,6 +38,50 @@ afterEach(() => {
   historyLimits.operationBytes = 0;
 });
 
+test('an atomic edit coalesces native structure and pixel checkpoints, with monotonic revisions through undo/redo', () => {
+  const sprite = spriteWith([cel(A)]);
+  const before = sprite.version;
+  sprite.atomicEdit('Logical change', () => {
+    sprite.addLayer();
+    sprite.addFrame('empty');
+    edit(sprite, B, 'Nested paint');
+    sprite.atomicEdit('Nested batch', () => edit(sprite, C));
+  });
+  expect(sprite.history).toEqual(['Logical change']);
+  expect(sprite.layers).toHaveLength(2);
+  expect(sprite.frames).toHaveLength(2);
+  const revision = sprite.version;
+  expect(revision).toBeGreaterThan(before);
+  sprite.undo();
+  expect(sprite.layers).toHaveLength(1);
+  expect(sprite.frames).toHaveLength(1);
+  expect(sprite.layers[0].cels[0]!.data[0]).toBe(A);
+  expect(sprite.version).toBeGreaterThan(revision);
+  sprite.redo();
+  expect(sprite.layers).toHaveLength(2);
+  expect(sprite.frames).toHaveLength(2);
+  expect(sprite.layers[0].cels[1]!.data[0]).toBe(C);
+  expect(sprite.historyGuardCount).toBe(0);
+});
+
+test('failed atomic edits restore pixels, structure, active indices and pre-existing redo', () => {
+  const sprite = spriteWith([cel(A)]);
+  edit(sprite, B, 'Previous paint'); sprite.undo();
+  expect(() => sprite.atomicEdit('Failed edit', () => {
+    sprite.addLayer(); sprite.addFrame('empty'); edit(sprite, C);
+    throw new Error('second operation failed');
+  })).toThrow('second operation failed');
+  expect(sprite.history).toEqual([]);
+  expect(sprite.future).toEqual(['Previous paint']);
+  expect(sprite.layers).toHaveLength(1);
+  expect(sprite.frames).toHaveLength(1);
+  expect(sprite.layer).toBe(0); expect(sprite.frame).toBe(0);
+  expect(sprite.layers[0].cels[0]!.data[0]).toBe(A);
+  sprite.redo();
+  expect(sprite.layers[0].cels[0]!.data[0]).toBe(B);
+  expect(sprite.historyGuardCount).toBe(0);
+});
+
 describe('Undo and redo', () => {
   test('empty history is a no-op', () => {
     const sprite = spriteWith([cel(A)]);
