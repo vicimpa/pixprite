@@ -11,6 +11,14 @@ const sourceCommit = (entry: Release) => /@([a-f0-9]{40})\//.exec(entry.path)?.[
 const fingerprint = (entry: Release) => JSON.stringify(Object.entries(entry.files).sort(([a], [b]) => a.localeCompare(b)));
 const plain = ({ versions: _versions, ...entry }: RegistryEntry): Release => entry;
 
+// Correct catalog eligibility for the first shared-automation package without rewriting its bytes/tag.
+const minimumCorrections: Record<string, string> = { 'ai-assistant@0.4.0': '0.0.6' };
+function catalogRelease(entry: Release): Release {
+  const minimum = minimumCorrections[`${entry.id}@${entry.version}`];
+  return minimum && compareVersions(minimum, entry.minEditorVersion ?? '0.0.0') > 0
+    ? { ...entry, minEditorVersion: minimum } : entry;
+}
+
 export function publishExtensions(worktree: string, cdn: string, source = 'local', root = SRC) {
   const out = realpathSync(resolve(worktree));
   const git = (...args: string[]) => execFileSync('git', ['-C', out, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -63,7 +71,7 @@ export function publishExtensions(worktree: string, cdn: string, source = 'local
     const versions = history.get(entry.id) ?? new Map<string, Release>();
     if (!versions.has(entry.version)) versions.set(entry.version, { ...entry, path: `${cdn.replace(/\/$/, '')}@${current}/${entry.id}/` });
     history.set(entry.id, versions);
-    const ordered = [...versions.values()].sort((a, b) => compareVersions(b.version, a.version));
+    const ordered = [...versions.values()].map(catalogRelease).sort((a, b) => compareVersions(b.version, a.version));
     return { ...ordered[0], versions: ordered };
   });
   writeFileSync(join(out, 'registry.json'), JSON.stringify({ version: 3, extensions }, null, 2) + '\n');
