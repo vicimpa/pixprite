@@ -86,6 +86,11 @@ test('@smoke floating extension drag and resize commit geometry without losing t
     localStorage.setItem('pixprite:prefs', JSON.stringify({ language: 'en', keyStyle: 'pc' }));
   });
   await page.goto('/');
+  const iframe = page.locator('iframe[title="Floating probe"]');
+  await expect(iframe).toBeAttached();
+  await expect(iframe).toBeHidden();
+  await page.getByRole('button', { name: '32×32', exact: true }).click();
+  await expect(page.getByTestId('sprite-canvas')).toBeVisible();
   const title = page.getByText('Floating probe', { exact: true }).locator('xpath=..');
   await expect(title).toBeVisible();
   const panel = title.locator('xpath=..');
