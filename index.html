@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pixprite</title>
+  <meta name="description" content="Pixel art and animation editor in the browser">
+  <meta name="theme-color" content="#231f2b">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32.png">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+  <style>html,body{background:#231f2b;margin:0}#startup-screen{z-index:100000;color:#e9dfed;background:#231f2b;place-content:center;justify-items:center;gap:24px;font:14px ui-monospace,monospace;display:grid;position:fixed;inset:0}#startup-screen img{width:64px;height:64px;image-rendering:pixelated;animation:1.6s ease-in-out infinite startup-float}#startup-screen strong{letter-spacing:.25em;margin-left:.25em;font-size:20px;font-weight:500}.startup-track{background:#3d3448;width:144px;height:4px;overflow:hidden}.startup-track:after{content:"";background:#c4a0f0;width:48px;height:100%;animation:1.2s steps(12,end) infinite startup-progress;display:block}#startup-retry{color:inherit;font:inherit;cursor:pointer;background:#3d3448;border:1px solid #8b729e;padding:8px 16px}#startup-screen[data-error] .startup-track{display:none}#startup-screen[data-error] img{animation:none}@keyframes startup-progress{0%{transform:translate(-48px)}to{transform:translate(144px)}}@keyframes startup-float{50%{transform:translateY(-6px)}}@media (prefers-reduced-motion:reduce){#startup-screen img,.startup-track:after{animation:none}.startup-track:after{opacity:.6;width:100%}}</style>
+  <script type="module" crossorigin src="./assets/index-D3ikmy8U.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-CCWSREH2.css">
+</head>
+
+<body>
+  <div id="startup-screen" role="status" aria-label="Loading Pixprite">
+    <img src="./favicon.svg" alt="" width="64" height="64">
+    <strong>PIXPRITE</strong>
+    <div class="startup-track" aria-hidden="true"></div>
+    <button id="startup-retry" hidden>Retry</button>
+    <noscript>Enable JavaScript to open Pixprite.</noscript>
+  </div>
+  <div id="root"></div>
+  <script>
+    (() => {
+      const screen = document.getElementById('startup-screen');
+      const retry = document.getElementById('startup-retry');
+      const failed = () => {
+        if (!screen.isConnected) return;
+        screen.dataset.error = '';
+        screen.setAttribute('role', 'alert');
+        screen.setAttribute('aria-label', 'Could not start Pixprite');
+        retry.hidden = false;
+      };
+      addEventListener('error', event => { if (event.error || event.target instanceof HTMLScriptElement) failed(); }, true);
+      addEventListener('unhandledrejection', failed);
+      retry.addEventListener('click', () => location.reload());
+    })();
+  </script>
+</body>
+
+</html>
