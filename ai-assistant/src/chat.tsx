@@ -8,7 +8,7 @@ import { Button, TextArea, type ExtensionPageProps } from '@pixprite/ui-react';
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react';
 import { chatCss } from './styles';
 import { markdown } from "./markdown";
-import { makeTools, TOOL_SCHEMAS } from "./tools";
+import { makeTools } from "./tools";
 import { assistantInstructions } from './skills';
 
 
@@ -48,7 +48,7 @@ function Transcript({ messages }: { messages: DisplayMessage[] }) {
   </div>)}</div>;
 }
 export default function Chat({ ctx }: ExtensionPageProps) {
-  if (!ctx.editorVersion) throw new Error('AI assistant requires Pixprite 0.0.4 or newer.');
+  if (!ctx.automation) throw new Error('AI assistant requires a Pixprite build with the shared automation API. Update the editor.');
   const [, refresh] = useReducer(n => n + 1, 0);
   const controller = useMemo(() => chatController(ctx, refresh), [ctx]);
   useEffect(() => controller.start(), [controller]);
@@ -82,7 +82,7 @@ function chatController(ctx: ExtensionPageProps['ctx'], refresh: () => void) {
    */
   let queue: string[] = [];
 
-  const instructions = assistantInstructions();
+  let instructions = assistantInstructions([]);
   const system = (): Message => ({ role: 'system', content: `${t('system', { lang: ctx.i18n.lang })}\n\n${instructions}` });
 
   const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
@@ -238,7 +238,7 @@ function chatController(ctx: ExtensionPageProps['ctx'], refresh: () => void) {
     const res = await ctx.net.fetch(`${settings.endpoint}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...settings.key ? { Authorization: `Bearer ${settings.key}` } : {} },
-      body: JSON.stringify({ model: settings.model, messages, tools: TOOL_SCHEMAS, tool_choice: 'auto' }),
+      body: JSON.stringify({ model: settings.model, messages, tools: await tools.schemas(), tool_choice: 'auto' }),
     });
     const body = new TextDecoder().decode(res.body);
     if (res.status >= 400) throw new Error(t('error.http', { status: res.status, body: body.slice(0, 300) }));
@@ -252,6 +252,7 @@ function chatController(ctx: ExtensionPageProps['ctx'], refresh: () => void) {
     if (!active) return;
     if (!doc) { add('error', t('noDocument')); return; }
     const documentId = doc.id;
+    const contextId = `chat:${chat?.id ?? documentId}`;
     if (!ready()) { await editSettings(); if (!ready()) return; }
     busy = true;
     stopped = false;
@@ -264,6 +265,7 @@ function chatController(ctx: ExtensionPageProps['ctx'], refresh: () => void) {
     const thinking = add('tool', t('thinking'));
     let failed = false;
     try {
+      await tools.bind(documentId, contextId);
       const limit = settings.maxRounds || Infinity;
       for (let round = 0; round < limit; round++) {
         const reply = await complete([system(), ...history]);
@@ -276,18 +278,10 @@ function chatController(ctx: ExtensionPageProps['ctx'], refresh: () => void) {
         for (const call of reply.tool_calls) {
           // Every tool call needs an answer, or the next request is rejected
           if (stopped) { history.push({ role: 'tool', tool_call_id: call.id, content: '{"error":"request stopped before tool execution"}' }); continue; }
-          const fn = tools[call.function.name];
           add('tool', `→ ${call.function.name}(${call.function.arguments.slice(0, 120)})`);
           let content: string;
           try {
-            // The model's answer may arrive after the user switched documents.
-            // A guide cannot protect the target on its own: stop before any tool runs.
-            if ((await ctx.documents.active())?.id !== documentId) {
-              stopped = true;
-              throw new Error(t('error.documentChanged'));
-            }
-            if (!fn) throw new Error(`unknown tool ${call.function.name}`);
-            const out = await fn(JSON.parse(call.function.arguments || '{}'));
+            const out = await tools.run(call.function.name, JSON.parse(call.function.arguments || '{}'), contextId);
             if (out.image) add('tool', t('rendered'), out.image);
             content = out.content;
           } catch (e) {
@@ -387,6 +381,8 @@ function chatController(ctx: ExtensionPageProps['ctx'], refresh: () => void) {
       if (!active) return;
       await load(await ctx.documents.active().catch(() => null));
       if (!active) return;
+      instructions = assistantInstructions(await tools.skills());
+      await tools.schemas();
       initialized = true; grow(); labels();
       void ctx.storage.delete('history');
     })().catch(error => { initialized = true; add('error', String(error)); });
