@@ -18,7 +18,7 @@ Playwright builds the application and serves `dist/web` on `127.0.0.1:4173`. Sto
 
 The suite performs real pointer drawing, command palette actions, file selection/download, tab navigation, and page reloads. Browser IndexedDB reads verify the saved documents; PNG comparisons decode the browser's exported image. The production application has no test API.
 
-`e2e/responsive.e2e.ts` checks the tool options, timeline actions and status strip at 800, 1024 and 1280 px with large Russian and English UI. It detects clipped controls as well as scrollbars, verifies the extra-tools palette, and exercises draft/preset retention when controls move into More, nested dropdowns and Escape during a pending transform.
+`e2e/responsive.e2e.ts` verifies that status playback/zoom controls stay at the right edge across long hints and differing frame durations, while the information lane clips. It also checks the tool options, timeline actions and status strip at 800, 1024 and 1280 px with large Russian and English UI. It detects clipped controls as well as scrollbars, verifies the extra-tools palette, and exercises draft/preset retention when controls move into More, nested dropdowns and Escape during a pending transform.
 
 `e2e/ui-elements.e2e.ts` checks the shared Web Components' labels, native FormData/reset/required behavior, numeric drafts, readonly/fieldset semantics and virtual-list keys. `e2e/composite-ui.e2e.ts` covers React/native dialog adoption, menu keyboard/ARIA behavior, declarative forms and drag/reconnect cleanup. `e2e/game-rig.e2e.ts` installs the actual TSX extension and checks dropdowns, dock resizing, input focus, saved settings, collider drags and the game preview; compatibility scenarios also cover catalog gating, rejected updates, stored packages and an older host without version metadata; `e2e/visual-ui.e2e.ts` checks canvas cleanup and GPU/Canvas gradient color/alpha parity. These scenarios run in Chromium and WebKit using the same production bundle.
 
@@ -48,15 +48,15 @@ Budgets in `scripts/bundle-budgets.json` are measured in bytes:
 
 | Metric | Baseline | Limit |
 | --- | ---: | ---: |
-| Initial JavaScript gzip | ~538,100 | 540,672 (528 KiB) |
-| Total JavaScript gzip | ~569,600 | 573,440 (560 KiB) |
+| Initial JavaScript gzip | ~538,300 | 540,672 (528 KiB) |
+| Total JavaScript gzip | ~569,800 | 573,440 (560 KiB) |
 
 The shared Web Components migration and React extension pages on 2026-11-01 raised these limits because the editor also ships the kit's minified module sources and an isolated React renderer for sandboxed panels/widgets. See the [UI migration measurements](ui-web-components.md#bundle-measurement) and [React page measurements](ui-web-components.md#react-extension-pages) for the before/after numbers and rationale. MCP atomic editing adds strict in-editor argument validation using Zod Mini, document/revision guards, selection operations and a visible comparison panel. The original atomic MCP changes added 8 KiB to each budget. Sharing the tool catalogue, JSON schemas, executor and task guides with AI Assistant, isolating agent sessions and adding read-only canvas tabs brings the measured bundle to approximately 534 kB initial / 564.5 kB total gzip; this adds another 20 KiB to each limit. Chromium/WebKit scenarios exercise background targeting, manual-write conflicts, idle following, palette ownership, read-only tabs and assistant continuation while browsing Home. The full Zod runtime is kept out of the browser bundle.
 
 Missing build manifests/chunks and exceeded budgets fail the command. Unit tests exercise passing builds, oversized static imports, oversized workers, and missing files. To review a budget change, rebuild, inspect the measured growth and chunk split, then update the limits in the JSON file with the reason in the PR. The checker never updates limits automatically.
 
 The 0.0.6 non-square pixels, export settings validation and `.aseprite` import diagnostics fit within those
-existing budgets: measured 538,128 bytes initial / 569,602 bytes total gzip. The new
+existing budgets: measured 538,297 bytes initial / 569,769 bytes total gzip. The new
 features did not require increasing the limits.
 
 CI builds once, then runs `PIXPRITE_E2E_PREBUILT=1 bun run test:e2e:smoke` against that exact `dist/web` directory. Without this variable, browser tests retain their normal build-first behavior. To inspect another build/budget fixture, use `bun scripts/bundle-check.ts <build-directory> <budget-json>`.

@@ -155,3 +155,37 @@ test('a locally changed preset label reflows the strip without a window resize',
   await more.click();
   await expect(page.getByRole('button', { name: en['options.preset'], exact: true })).toHaveText(name.trim());
 });
+
+test('status controls stay pinned right while dynamic information clips and frame durations change', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 850 });
+  await openEditor(page);
+  const fixture = { format: 'pixprite', version: 5, name: 'Status alignment', width: 8, height: 8,
+    frames: [10, 65535].map(duration => ({ duration })), images: [],
+    layers: [{ name: 'Long layer name '.repeat(12), cels: [null, null] }], tags: [] };
+  const chooser = page.waitForEvent('filechooser');
+  await command(page, 'file.open');
+  await (await chooser).setFiles({ name: 'Status alignment.pixprite', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(fixture)) });
+  await expect(page.getByTestId('document-tabs').getByText(fixture.name, { exact: true })).toBeVisible();
+  const status = page.getByTestId('status-bar');
+  const play = status.getByTitle(en['status.playEnter'], { exact: true });
+  const zoom = status.getByTitle(en['status.zoom'], { exact: true });
+  const info = page.getByTestId('status-info');
+  const first = page.locator('[data-hit=frame][data-f="0"]');
+  const last = page.locator('[data-hit=frame][data-f="1"]');
+  for (const width of [1280, 800, 1024]) {
+    await page.setViewportSize({ width, height: 850 });
+    await first.click();
+    await expect(play).toBeVisible();
+    const before = { play: (await play.boundingBox())!, zoom: (await zoom.boundingBox())! };
+    await last.click();
+    await last.hover();
+    await expect(info).toContainText('Frame 2');
+    await expect.poll(async () => ({ play: (await play.boundingBox())!.x, zoom: (await zoom.boundingBox())!.x }))
+      .toEqual({ play: before.play.x, zoom: before.zoom.x });
+    const plus = (await status.getByTitle(en['status.zoomIn'], { exact: true }).boundingBox())!;
+    expect(Math.abs(width - plus.x - plus.width - 6)).toBeLessThanOrEqual(1);
+    expect(await info.evaluate(el => getComputedStyle(el).overflowX)).toBe('hidden');
+    if (width === 800) expect(await info.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+    await expectBarsFit(page);
+  }
+});

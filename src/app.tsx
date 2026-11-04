@@ -16,19 +16,20 @@ import { DesktopUpdate } from "~/modules/DesktopUpdate";
 
 export const App = () => {
   useSignals();
+  const panelVisibility = { display: state.home && !activeViewer.value ? 'none' : 'contents' };
   return <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
     <DocTabs />
     <MainMenu />
     <DesktopUpdate />
     <div style={{ display: 'flex', flex: '1 1 0', minHeight: 0 }}>
-      <ExtPanels dock="left" />
+      <div data-extension-dock="left" style={panelVisibility}><ExtPanels dock="left" /></div>
       <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 0', minHeight: 0, minWidth: 0 }}>
         {activeViewer.value ? <ViewerWorkspace /> : state.home ? <div style={{ position: 'relative', flex: '1 1 0', minHeight: 0, overflow: 'hidden' }}><Home /></div> : <EditorWorkspace />}
-        <ExtPanels dock="bottom" />
+        <div data-extension-dock="bottom" style={panelVisibility}><ExtPanels dock="bottom" /></div>
       </div>
-      <ExtPanels dock="right" />
+      <div data-extension-dock="right" style={panelVisibility}><ExtPanels dock="right" /></div>
     </div>
-    <DropZone /><ExtPanels dock="float" /><ExtensionNotices />
+    <DropZone /><div data-extension-dock="float" style={panelVisibility}><ExtPanels dock="float" /></div><ExtensionNotices />
     <DialogHost /><ContextMenuHost /><CommandPalette /><ProgressOverlay />
   </div>;
 };

@@ -24,6 +24,31 @@ const Bar = styled.div`
   overflow: hidden;
 `;
 
+const Info = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+
+  & > * { flex-shrink: 0; }
+`;
+
+const Controls = styled.div`
+  flex: 0 1 calc(7 * var(--row) + 14em + 88px);
+  min-width: 0;
+  height: 100%;
+
+  & .px-adaptive-lane { justify-content: flex-end; }
+`;
+
+const Duration = styled(Muted)`
+  width: 7ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+`;
+
 const Swatch = styled.span`
   width: calc(var(--font-size) + 2px);
   height: calc(var(--font-size) + 2px);
@@ -114,9 +139,8 @@ export const StatusBar: FC = () => {
     : '';
 
   return (
-    <Bar>
-      <AdaptiveBar label={t('status.moreControls')}>
-        <AdaptiveItem priority={-5}>
+    <Bar data-testid="status-bar">
+      <Info data-testid="status-info">
         <span style={{ minWidth: '5.5em' }}>{x > -50 ? `${x}, ${y}` : '–'}</span>
         {inside && <>
           <Swatch title={`rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(2)})`}><span style={{ background: `rgba(${r},${g},${b},${a / 255})` }} /></Swatch>
@@ -124,14 +148,16 @@ export const StatusBar: FC = () => {
         </>}
         {cell && <Muted>{cell}</Muted>}
         {inside && a > 0 && sprite.colorMode === 'indexed' && sprite.palette && <Muted>index {sprite.palette.index(sprite.pick(x, y))}</Muted>}
-        </AdaptiveItem>
-        <AdaptiveItem priority={5}><Muted>{sel ? `Selection ${sel.w}×${sel.h} at ${sel.x}, ${sel.y}` : `${sprite.width}×${sprite.height}`}{sprite.colorMode !== 'rgb' ? ` · ${sprite.colorMode}` : ''}</Muted></AdaptiveItem>
+        <Muted>{sel ? `Selection ${sel.w}×${sel.h} at ${sel.x}, ${sel.y}` : `${sprite.width}×${sprite.height}`}{sprite.colorMode !== 'rgb' ? ` · ${sprite.colorMode}` : ''}</Muted>
         {state.snapToGrid && <Snap title={`${t('status.snapToGridOn')} · ${t('status.clickToTurnSnapping')}`} aria-label={t('status.snapToGridOn')} onClick={() => { state.snapToGrid = false; }}><Icon name="grid" scale="glyph" /></Snap>}
-        <AdaptiveItem priority={state.notice ? 20 : -20}><span title={state.notice || keyNames(state.hint)} style={{ maxWidth: '28em', overflow: 'hidden', textOverflow: 'ellipsis', color: state.notice ? undefined : 'var(--fg-dim)' }}>{state.notice || keyNames(state.hint)}</span></AdaptiveItem>
+        <span title={state.notice || keyNames(state.hint)} style={{ maxWidth: '28em', overflow: 'hidden', textOverflow: 'ellipsis', color: state.notice ? undefined : 'var(--fg-dim)' }}>{state.notice || keyNames(state.hint)}</span>
         <ExtWidgets slot="statusbar" />
         <Separator />
-        <AdaptiveItem priority={-10}><Muted title={sprite.current?.name} style={{ maxWidth: '8em', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sprite.current?.name}</Muted></AdaptiveItem>
+        <Muted title={sprite.current?.name} style={{ maxWidth: '8em', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sprite.current?.name}</Muted>
         <Separator />
+      </Info>
+      <Controls data-testid="status-controls">
+      <AdaptiveBar label={t('status.moreControls')}>
         <AdaptiveItem priority={50}>
         <Button $square title={t('status.firstFrameHome')} onClick={() => runCommand('anim.first')}><Icon name="first" scale="glyph" /></Button>
         <Button $square title={t('status.previousFrameLeft')} onClick={() => runCommand('anim.prev')}><Icon name="prev" scale="glyph" /></Button>
@@ -147,7 +173,7 @@ export const StatusBar: FC = () => {
             onCommit={n => { sprite.dropFloating(); sprite.frame = Math.max(0, Math.min(sprite.frames.length - 1, Math.round(n) - 1)); }}
             suffix={` / ${sprite.frames.length}`} />
         </span>
-        {sprite.frames.length > 1 && <Muted>{frame?.duration}ms</Muted>}
+        {sprite.frames.length > 1 && <Duration>{frame?.duration}ms</Duration>}
         <Separator />
         </AdaptiveItem>
         <AdaptiveItem priority={100}>
@@ -158,6 +184,7 @@ export const StatusBar: FC = () => {
         <Button $square title={t('status.zoomIn')} onClick={() => runCommand('view.zoomIn')}><Icon name="plus" scale="glyph" /></Button>
         </AdaptiveItem>
       </AdaptiveBar>
+      </Controls>
       {state.tip && <Tip>{state.tip}</Tip>}
     </Bar>
   );
