@@ -4,10 +4,10 @@
     {
       "id": "ai-assistant",
       "name": "AI assistant",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "description": "Chat with an AI model that can inspect and edit your sprite",
       "author": "Pixprite contributors",
-      "minEditorVersion": "0.0.4",
+      "minEditorVersion": "0.0.5",
       "category": "automation",
       "tags": [
         "ai",
@@ -25,16 +25,16 @@
         "network:localhost:11434",
         "network:localhost:1234"
       ],
-      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@6a3164fd62b93a41152fa83b14183a8a1d62aa5d/ai-assistant/",
+      "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@b7bf8c7f238f9e1b2a97f5536d63cd7399209a88/ai-assistant/",
       "files": {
         "locales/en.json": "sha256-qxuf4sJZ6SahzQSTN617mxElnAl2ahbgOYF4DtWubr0=",
         "locales/ru.json": "sha256-eXk/HrUigEHLbAjmt0D9YKlZV/2oBYzHVprBXF7IxSU=",
-        "manifest.json": "sha256-No9z09jes2aKbZi6cwDP8NcuVwte0XBPIF+O9N9SCoA=",
-        "src/chat.tsx": "sha256-H/1w20lWN3IfFoP9gjanZVnWeY1hYzu+l0YgJ+bn/Vc=",
+        "manifest.json": "sha256-I4Zg833dFHv8ptMOPPGSSHUuom/zTUsBGNv8PYdOQa0=",
+        "src/chat.tsx": "sha256-hyMRWmh2XHLJzi4gf38fl3MtYUONPhqKXmOSz2fztoE=",
         "src/markdown.ts": "sha256-0pYiMvqWVfutVrjU4iN/1Bbj5nAuxqpX7/ws3W21+KA=",
-        "src/skills.ts": "sha256-Un1XQntnJkT8nBNAf7Sn3APjj7uAgm5kLcpTnz7U+9E=",
+        "src/skills.ts": "sha256-NXOp1mowFnjGWzW3YhRXu5NkreWfsNrY1bQzaJBIuw0=",
         "src/styles.ts": "sha256-lRKYt8A2MG/5/dQ2AKfH9HrjQU0Rt/SQoHh/gcR/ZbE=",
-        "src/tools.ts": "sha256-fubBJWaH/WYSDADEYyw/tko4XKLk/5Kny/JQQvrAO0I="
+        "src/tools.ts": "sha256-Xks4M6lSOY0QDZRkXmHE9A5u2rBlwKJA62ahXlf2g14="
       },
       "i18n": {
         "ru": {
@@ -43,6 +43,48 @@
         }
       },
       "versions": [
+        {
+          "id": "ai-assistant",
+          "name": "AI assistant",
+          "version": "0.4.0",
+          "description": "Chat with an AI model that can inspect and edit your sprite",
+          "author": "Pixprite contributors",
+          "minEditorVersion": "0.0.5",
+          "category": "automation",
+          "tags": [
+            "ai",
+            "chat",
+            "assistant"
+          ],
+          "permissions": [
+            "sprite:read",
+            "sprite:write",
+            "ui:panel",
+            "storage",
+            "network:api.deepseek.com",
+            "network:api.openai.com",
+            "network:openrouter.ai",
+            "network:localhost:11434",
+            "network:localhost:1234"
+          ],
+          "path": "https://cdn.jsdelivr.net/gh/vicimpa/pixprite@b7bf8c7f238f9e1b2a97f5536d63cd7399209a88/ai-assistant/",
+          "files": {
+            "locales/en.json": "sha256-qxuf4sJZ6SahzQSTN617mxElnAl2ahbgOYF4DtWubr0=",
+            "locales/ru.json": "sha256-eXk/HrUigEHLbAjmt0D9YKlZV/2oBYzHVprBXF7IxSU=",
+            "manifest.json": "sha256-I4Zg833dFHv8ptMOPPGSSHUuom/zTUsBGNv8PYdOQa0=",
+            "src/chat.tsx": "sha256-hyMRWmh2XHLJzi4gf38fl3MtYUONPhqKXmOSz2fztoE=",
+            "src/markdown.ts": "sha256-0pYiMvqWVfutVrjU4iN/1Bbj5nAuxqpX7/ws3W21+KA=",
+            "src/skills.ts": "sha256-NXOp1mowFnjGWzW3YhRXu5NkreWfsNrY1bQzaJBIuw0=",
+            "src/styles.ts": "sha256-lRKYt8A2MG/5/dQ2AKfH9HrjQU0Rt/SQoHh/gcR/ZbE=",
+            "src/tools.ts": "sha256-Xks4M6lSOY0QDZRkXmHE9A5u2rBlwKJA62ahXlf2g14="
+          },
+          "i18n": {
+            "ru": {
+              "name": "ИИ-ассистент",
+              "description": "Чат с ИИ-моделью, которая может смотреть и править ваш спрайт"
+            }
+          }
+        },
         {
           "id": "ai-assistant",
           "name": "AI assistant",
