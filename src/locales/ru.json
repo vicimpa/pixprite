@@ -1,5 +1,4 @@
 {
-  "text.loading": "Загружается шрифт текста…",
   "text.entry": "Текст на холсте",
   "text.help": "Enter — применить, Shift+Enter — новая строка, Escape — отмена. Перетаскивайте текст на холсте для перемещения.",
   "pixelRatio.title": "Соотношение сторон пикселя",
@@ -1018,11 +1017,6 @@
   "options.pattern": "узор",
   "options.patternFromSelection": "Узор из выделения",
   "options.pen": "Перо:",
-  "options.penSettings": "Перо",
-  "options.pressureSize": "Нажим → размер",
-  "options.pressureAlpha": "Нажим → прозрачность",
-  "options.pressureDensity": "Нажим → плотность",
-  "options.stabilizer": "Стабилизатор",
   "options.penPressureAMouse": "Нажим пера (мышь рисует как обычно)",
   "options.pickASliceTo": "Выберите срез, чтобы выделить его и показать",
   "options.pickTheTopmostLayer": "Выбирать верхний слой под курсором (также с Ctrl)",

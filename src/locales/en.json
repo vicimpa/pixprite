@@ -1,5 +1,4 @@
 {
-  "text.loading": "Loading text font…",
   "text.entry": "Text on canvas",
   "text.help": "Enter applies, Shift+Enter adds a line, Escape cancels. Drag the text on the canvas to move it.",
   "pixelRatio.title": "Pixel aspect ratio",
@@ -1018,11 +1017,6 @@
   "options.pattern": "pattern",
   "options.patternFromSelection": "Pattern from selection",
   "options.pen": "Pen:",
-  "options.penSettings": "Pen",
-  "options.pressureSize": "Pressure → size",
-  "options.pressureAlpha": "Pressure → opacity",
-  "options.pressureDensity": "Pressure → density",
-  "options.stabilizer": "Stabilizer",
   "options.penPressureAMouse": "Pen pressure (a mouse paints as usual)",
   "options.pickASliceTo": "Pick a slice to select it and bring it into view",
   "options.pickTheTopmostLayer": "Pick the topmost layer under the cursor (also with Ctrl)",
