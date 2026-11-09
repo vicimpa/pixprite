@@ -28,3 +28,5 @@ Thumbs.db
 # Tauri generated schemas and Rust fallback output
 /src-tauri/gen/
 /src-tauri/target/
+tasks/plan.md
+tasks/todo.md

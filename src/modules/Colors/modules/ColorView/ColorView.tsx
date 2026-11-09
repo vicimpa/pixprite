@@ -9,12 +9,13 @@ import { Grid } from "~/ui/Grid";
 export type ColorViewProps = {
   color: Color;
   index?: number;
+  title?: string;
   onClick?: () => void;
 };
 
-export const ColorView: FC<ColorViewProps> = ({ color, index = -1, onClick }) => {
+export const ColorView: FC<ColorViewProps> = ({ color, index = -1, title, onClick }) => {
   return (
-    <styled.ColorBox onClick={onClick}>
+    <styled.ColorBox onClick={onClick} title={title}>
       <Panel>
         <Grid inset />
         <Variables color={color.toHexString(true)}>

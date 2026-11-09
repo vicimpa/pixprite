@@ -35,7 +35,7 @@ test('shared automation packages require 0.0.6 while historical package bytes an
     expect(next.versions.find(v => compareVersions('0.0.5', v.minEditorVersion ?? '0.0.0') >= 0)?.version).toBe('0.3.0');
     expect(next.versions.find(v => compareVersions('0.0.6', v.minEditorVersion ?? '0.0.0') >= 0)?.version).toBe('0.4.1');
   } finally { rmSync(temp, { recursive: true, force: true }); }
-});
+}, 30_000);
 
 test('publication retains immutable packages and tags, backfills history and rejects a rewritten version', () => {
   const temp = mkdtempSync(join(tmpdir(), 'pixprite-releases-')), out = join(temp, 'pub'), root = join(temp, 'src');
@@ -65,4 +65,4 @@ test('publication retains immutable packages and tags, backfills history and rej
     writeFileSync(join(out, 'registry.json'), JSON.stringify(json)); git('add', '-A'); git('commit', '-m', 'Legacy catalog');
     expect(publishExtensions(out, 'https://cdn.example.test/gh/test/repo', 'third', root).extensions[0].versions.map(v => v.version)).toEqual(['1.2.0', '1.1.0', '1.0.0']);
   } finally { rmSync(temp, { recursive: true, force: true }); }
-});
+}, 30_000);

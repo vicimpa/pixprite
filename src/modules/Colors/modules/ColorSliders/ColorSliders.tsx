@@ -2,7 +2,7 @@ import { Color } from "~/core/Color";
 import { state } from "~/core/State";
 import { Input, Range } from "~/ui/Button";
 import { useSignals } from "@preact/signals-react/runtime";
-import { useEffect, useState, type FC } from "react";
+import type { FC } from "react";
 import styled from "styled-components";
 
 const Root = styled.div`
@@ -53,17 +53,13 @@ const Num = styled(Input)`
 
 const checker = 'repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 8px 8px';
 
-/** RGB / HSV / alpha sliders and a hex field; tracks show the gradient for the current color */
+/** RGB / HSV / alpha sliders; tracks show the gradient for the current color */
 export const ColorSliders: FC<{ alt: boolean; }> = ({ alt }) => {
   useSignals();
   const color = alt ? state.colorB : state.colorA;
   const set = (c: Color) => { if (alt) state.colorB = c; else state.colorA = c; };
   const [r, g, b, a] = color.rgba;
   const [h, s, v] = color.hsv;
-  const [hex, setHex] = useState(color.toHexString(false));
-  const [typing, setTyping] = useState(false);
-  // The hex field follows the color unless it is being typed into
-  useEffect(() => { if (!typing) setHex(color.toHexString(false)); }, [color, typing]);
 
   const rgbTrack = (k: 0 | 1 | 2) => {
     const lo = [r, g, b], hi = [r, g, b];
@@ -90,23 +86,6 @@ export const ColorSliders: FC<{ alt: boolean; }> = ({ alt }) => {
           <Num type="number" min={0} max={max} value={value} onChange={e => onChange(Math.max(0, Math.min(max, +e.target.value || 0)))} />
         </Row>
       ))}
-      <Row>
-        <Name>#</Name>
-        <Input
-          value={hex.replace('#', '')}
-          style={{ flexGrow: 1 }}
-          onFocus={() => setTyping(true)}
-          onBlur={() => setTyping(false)}
-          onKeyDown={e => e.stopPropagation()}
-          onChange={e => {
-            const raw = e.target.value.replace(/[^0-9a-f]/gi, '').slice(0, 8);
-            setHex('#' + raw);
-            // Short input is padded so the color updates while typing
-            if (raw.length >= 3) {
-              try { set(Color.fromHex(raw.length === 3 || raw.length === 6 || raw.length === 8 ? raw : raw.padEnd(6, '0'))); } catch { }
-            }
-          }} />
-      </Row>
     </Root>
   );
 };

@@ -47,15 +47,21 @@ export type Ink = 'simple' | 'alpha' | 'copy' | 'lockAlpha' | 'shade';
 /** Two-color pattern used by the brush and the bucket: on cells take the primary color, off cells the secondary */
 export type PaintPattern = 'none' | 'checker' | 'ordered2' | 'ordered4' | 'custom';
 export type BrushShape = 'square' | 'circle' | 'line';
+
+/** Brush angle dynamics mode */
+export type BrushAngleDynamics = 'fixed' | 'stroke' | 'tilt' | 'twist';
+
+export type Point = [x: number, y: number];
+
 export type PickChannel = 'all' | 'color' | 'alpha';
 export type RightClick = 'secondary' | 'pick' | 'erase' | 'scroll';
 export type PivotAnchor = 'nw' | 'n' | 'ne' | 'w' | 'center' | 'e' | 'sw' | 's' | 'se';
 export type OnionMode = 'merge' | 'tint';
 
 /** A brush captured from pixels; `align` decides how its pattern lines up while painting */
-export type CustomBrush = { bmp: Bitmap; ox: number; oy: number; align: 'source' | 'stroke' | 'dab'; };
+export type CustomBrush = { bmp: Bitmap; ox: number; oy: number; align: 'source' | 'stroke' | 'dab'; tint?: boolean; };
 /** A saved brush or two-color pattern in JSON-friendly form (pixels as base64 RGBA or bits) */
-export type LibraryItem = { id: string; name: string; kind: 'brush' | 'pattern'; w: number; h: number; data: string; ox?: number; oy?: number; align?: CustomBrush['align']; };
+export type LibraryItem = { id: string; name: string; kind: 'brush' | 'pattern'; w: number; h: number; data: string; ox?: number; oy?: number; align?: CustomBrush['align']; tint?: boolean; };
 /** Named tool settings switched in one click */
 export type ToolPreset = { name: string; tool: ToolName; values: Record<string, unknown>; };
 /** Pen pressure mapping: which parameters follow the pressure, and the lowest share it scales down to (%) */
@@ -337,7 +343,10 @@ export class State {
   @prop brushSize = 1;
   @prop brushShape: BrushShape = 'square';
   @prop brushAngle = 0;
+  @prop brushAngleDynamics: BrushAngleDynamics = 'fixed';
   @prop customBrush: CustomBrush | null = null;
+  /** Id of the active built-in stamp preset, or null for a captured custom brush */
+  @prop activeStamp: string | null = null;
   @prop ink: Ink = 'simple';
   @prop stopAtGrid = true;
   @prop pickChannel: PickChannel = 'all';
@@ -353,6 +362,7 @@ export class State {
   @prop symAxisY = 16;
   /** Transient message near the status bar */
   @prop tip = '';
+
   /** Live filter preview replacing one cel while a filter dialog is open */
   @prop filterPreview: { layer: number; frame: number; data: Uint32Array; } | null = null;
   @prop opacity = 255;

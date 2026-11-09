@@ -2,9 +2,9 @@ import { t } from "~/core/i18n";
 import { runCommand } from "~/core/Commands";
 import { dialogs } from "~/modules/Dialogs";
 import type { SelectMode } from "~/core/Mask";
-import { state, TEXT_FONTS, type Ink, type PaintPattern, type PickChannel, type PivotAnchor } from "~/core/State";
+import { state, TEXT_FONTS, type Ink, type PaintPattern, type PickChannel, type PivotAnchor, type BrushAngleDynamics } from "~/core/State";
 import { toolDef } from "~/core/Tools";
-import { applyPreset, deletePreset, removeItem, saveCurrentToLibrary, savePreset, useItem } from "~/core/Brushes";
+import { applyPreset, deletePreset, removeItem, saveCurrentToLibrary, savePreset, useItem, applyStamp } from "~/core/Brushes";
 import { askText } from "~/ui/Dialog";
 import { Button, Check, Input, Label, Muted, Range as Slider, Select, Separator } from "~/ui/Button";
 import { Icon } from "~/ui/Icon";
@@ -14,6 +14,7 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useRef, useState, type FC, type ReactNode } from "react";
 import styled from "styled-components";
 import * as styled2 from "./styled";
+import { BUILTIN_STAMPS } from "~/core/Stamps";
 
 const Bar = styled.div`
   position: absolute;
@@ -210,6 +211,49 @@ const BrushLibrary: FC = () => {
   </>;
 };
 
+/** Built-in stamp presets plus the captured custom brush */
+const StampPresets: FC = () => {
+  useSignals();
+  const custom = !!state.customBrush && state.activeStamp === null;
+  const value = state.activeStamp ?? (custom ? 'custom' : '');
+  return (
+    <Label title={t('options.stampPresetHint')}>
+      {t('options.stampPreset')}
+      <Select value={value} onChange={e => {
+        const id = e.target.value;
+        if (id === 'custom') { state.activeStamp = null; return; }
+        if (!id) { state.customBrush = null; state.activeStamp = null; return; }
+        const stamp = BUILTIN_STAMPS.find(s => s.id === id);
+        if (stamp) applyStamp(stamp);
+      }}>
+        <option value="">—</option>
+        {BUILTIN_STAMPS.map(s => <option key={s.id} value={s.id}>{t(s.nameKey)}</option>)}
+        {custom && <option value="custom">{t('stamp.custom')}</option>}
+      </Select>
+    </Label>
+  );
+};
+
+const ANGLE_DYNAMICS: [BrushAngleDynamics, string][] = [
+  ['fixed', 'options.angleDynamicsFixed'],
+  ['stroke', 'options.angleDynamicsStroke'],
+  ['tilt', 'options.angleDynamicsTilt'],
+  ['twist', 'options.angleDynamicsTwist'],
+];
+
+/** Brush angle dynamics: fixed, along the stroke, pen tilt or pen twist */
+const AngleDynamics: FC = () => {
+  useSignals();
+  return (
+    <Label title={t('options.angleDynamicsHint')}>
+      {t('options.angleDynamics')}
+      <Select value={state.brushAngleDynamics} onChange={e => { state.brushAngleDynamics = e.target.value as BrushAngleDynamics; }}>
+        {ANGLE_DYNAMICS.map(([v, l]) => <option key={v} value={v}>{t(l)}</option>)}
+      </Select>
+    </Label>
+  );
+};
+
 const Pressure: FC<{ spray: boolean; }> = ({ spray }) => {
   useSignals();
   const m = state.pressure;
@@ -250,8 +294,10 @@ export const ToolOptions: FC = () => {
           )}
         </>}
 
+        {/* has(BRUSH) && <AdaptiveItem priority={30}><AngleDynamics /></AdaptiveItem> */}
+
         {has(INK) && state.customBrush && <>
-          <Muted>Custom brush {state.customBrush.bmp.w}×{state.customBrush.bmp.h}</Muted>
+          <Muted>{state.activeStamp ? t(BUILTIN_STAMPS.find(s => s.id === state.activeStamp)?.nameKey ?? 'stamp.custom') : t('options.customBrush')} {state.customBrush.bmp.w}×{state.customBrush.bmp.h}</Muted>
           <Label title={t('options.howTheBrushPattern')}>
             {t('common.pattern')}
             <Select value={state.customBrush.align} onChange={e => { state.customBrush = { ...state.customBrush!, align: e.target.value as 'source' | 'stroke' | 'dab' }; }}>
@@ -433,10 +479,14 @@ export const ToolOptions: FC = () => {
           <Separator />
           <More>
             {(tool === 'pencil' || tool === 'eraser' || tool === 'spray') && <PopupRow><Pressure spray={tool === 'spray'} /></PopupRow>}
+            {/* (tool === 'pencil' || tool === 'eraser') && (
+              <PopupRow><AngleDynamics /></PopupRow>
+            ) */}
             {(tool === 'pencil' || tool === 'eraser') && (
               <Num label={t('options.smooth')} value={state.stabilizer} min={0} max={64} set={v => { state.stabilizer = v; }}
                 title={t('options.stabilizerTheBrushTrails')} />
             )}
+            {/* has(INK) && <PopupRow><StampPresets /></PopupRow> */}
             {has(INK) && !state.customBrush && state.ink !== 'shade' && <PopupRow>
           <Label title={t('options.mixThePrimaryAnd')}>
             {t('common.pattern')}

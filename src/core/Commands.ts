@@ -180,6 +180,7 @@ const list: Command[] = [
     const origin = sprite.selectionOrigin ?? { x: 0, y: 0 };
     if (!bmp) return;
     state.customBrush = { bmp, ox: origin.x, oy: origin.y, align: state.customBrush?.align ?? 'stroke' };
+    state.activeStamp = null;
     sprite.deselect();
     state.tool = 'pencil';
     state.showTip(t('msg.brushCaptured'));
@@ -198,7 +199,7 @@ const list: Command[] = [
   { id: 'edit.fillWithBrush', group: 'menu.edit', run: changed(() => { paintSelection(0, 'inside', 'Fill selection'); }), enabled: () => !!s().mask && !s().floating },
   { id: 'brush.saveToLibrary', group: 'menu.edit', run: () => { if (saveCurrentToLibrary('library')) state.showTip(t('msg.savedToTheBrush')); }, enabled: () => !!state.customBrush || !!state.patternBits },
   { id: 'brush.saveToDocument', group: 'menu.edit', run: () => { if (saveCurrentToLibrary('document')) { state.showTip(t('msg.savedInTheProject')); save(); } }, enabled: () => !!state.customBrush || !!state.patternBits },
-  { id: 'edit.discardBrush', group: 'menu.edit', run: () => { state.customBrush = null; }, enabled: () => !!state.customBrush },
+  { id: 'edit.discardBrush', group: 'menu.edit', run: () => { state.customBrush = null; state.activeStamp = null; }, enabled: () => !!state.customBrush },
   { id: 'edit.replaceColor', group: 'menu.edit', run: () => dialogs.replaceColor() },
   {
     id: 'edit.invert', group: 'menu.edit', keys: ['Ctrl+I'], run: changed(() => s().mapPixels('Negative', v => {

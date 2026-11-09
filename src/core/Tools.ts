@@ -2,14 +2,12 @@ import { Color } from "~/core/Color";
 import { signal } from "@preact/signals-react";
 import { blendOver, packRgba, unpackRgba, type Bitmap } from "~/core/Image";
 import { Mask, type SelectMode } from "~/core/Mask";
-import { state, type ToolName } from "~/core/State";
+import { state, type ToolName, type Point } from "~/core/State";
 import { referenceImage } from "~/core/Reference";
 import { sliceKey, type Guide, type RefImage, type SliceKey } from "~/core/Sprite";
 import { placementCorners, type Placement } from "~/core/Transform";
+import { computeBrushAngle, computePressureScale, resetStrokeTracking, updateStrokePoint } from "~/core/BrushDynamics";
 
-export type Point = [x: number, y: number];
-
-/** Pointer position in sprite pixels plus modifiers */
 export type ToolPointer = {
   x: number;
   y: number;
@@ -27,12 +25,41 @@ export type ToolPointer = {
 };
 
 /** Live pen input: pressure 0..1 while a pen touches the canvas; `active` is false for mouse and touch */
-export const pen = { active: false, pressure: 1 };
+export const pen = {
+  active: false,
+  pressure: 1,
+  /** Pen tilt on X axis (-1 to 1, 0 = upright), undefined when not supported */
+  tiltX: undefined as number | undefined,
+  /** Pen tilt on Y axis (-1 to 1, 0 = upright), undefined when not supported */
+  tiltY: undefined as number | undefined,
+  /** Pen barrel rotation (twist) in degrees 0-359, undefined when not supported */
+  twist: undefined as number | undefined,
+};
 
 /** Updates the pen state from a pointer event (call on every pointer event of the canvas) */
-export function trackPen(e: { pointerType?: string; pressure?: number; buttons?: number; }) {
+export function trackPen(e: {
+  pointerType?: string;
+  pressure?: number;
+  buttons?: number;
+  tiltX?: number;
+  tiltY?: number;
+  twist?: number;
+}) {
   pen.active = e.pointerType === 'pen' && (e.buttons ?? 1) !== 0;
-  if (pen.active) pen.pressure = Math.max(0, Math.min(1, e.pressure ?? 1));
+  if (pen.active) {
+    pen.pressure = Math.max(0, Math.min(1, e.pressure ?? 1));
+    // Tilt values are typically in radians (-0.5 to 0.5 approx) or degrees depending on browser
+    // Store raw values; consumers handle conversion
+    pen.tiltX = e.tiltX ?? undefined;
+    pen.tiltY = e.tiltY ?? undefined;
+    // Twist is in degrees 0-359
+    pen.twist = e.twist !== undefined ? e.twist : undefined;
+  } else {
+    // Reset tilt/twist when pen is not active
+    pen.tiltX = undefined;
+    pen.tiltY = undefined;
+    pen.twist = undefined;
+  }
 }
 
 /** Share 0..1 a pressure-mapped parameter gets now: 1 unless a pen is used and the parameter is mapped */
@@ -321,7 +348,7 @@ function snapShift(axis: 'x' | 'y', lo: number, hi: number, lines: Guide[]) {
 }
 
 /** Pixel offsets of the current brush relative to the cursor pixel */
-export function brushOffsets(size = state.brushSize, shape = state.brushShape, angle = state.brushAngle): Point[] {
+export function brushOffsets(size = state.brushSize, shape = state.brushShape, angle = computeBrushAngle(pen, state.brushAngleDynamics, state.brushAngle)): Point[] {
   if (size <= 1) return [[0, 0]];
   const out: Point[] = [];
   const half = Math.floor(size / 2);
@@ -343,7 +370,7 @@ export function brushOffsets(size = state.brushSize, shape = state.brushShape, a
   const r = size / 2;
   for (let y = 0; y < size; y++)
     for (let x = 0; x < size; x++)
-      if (shape === 'square' || size <= 2 || (x + 0.5 - r) ** 2 + (y + 0.5 - r) ** 2 <= r * r)
+      if (shape === 'square' || size <= 2 || (x - half === 0 && y - half === 0) || (x + 0.5 - r) ** 2 + (y + 0.5 - r) ** 2 <= r * r)
         out.push([x - half, y - half]);
   return out;
 }
@@ -448,7 +475,7 @@ class Painter {
   h = this.sprite.height;
   cel: Uint32Array;
   origin: Uint32Array;
-  painted: Uint8Array;
+  pressureMap: Float32Array;
   mask = this.sprite.mask;
   primary: number;
   secondary: number;
@@ -458,6 +485,10 @@ class Painter {
   anchor: Point | null = null;
   /** Opacity follows pen pressure (freehand tools) */
   pressured = false;
+  /** Stamp rotation in degrees for the current dab */
+  angle = 0;
+  /** Stamp scale factor from pen pressure */
+  scale = 1;
 
   constructor(public kind: 'paint' | 'erase', public alt: boolean, label: string, public mode: PaintMode = 'stroke', public dry = false) {
     if (!dry) this.sprite.checkpoint(label);
@@ -465,7 +496,7 @@ class Painter {
     const cel = this.sprite.canvasPixels();
     this.cel = cel;
     this.origin = cel.slice();
-    this.painted = new Uint8Array(cel.length);
+    this.pressureMap = new Float32Array(cel.length);
     const a = colorValue(state.colorA), b = colorValue(state.colorB);
     [this.primary, this.secondary] = alt ? [b, a] : [a, b];
     this.background = !!this.sprite.current?.background;
@@ -514,7 +545,9 @@ class Painter {
       const a = this.anchor ?? [x, y];
       const bx = ((x - a[0]) % brush.bmp.w + brush.bmp.w) % brush.bmp.w;
       const by = ((y - a[1]) % brush.bmp.h + brush.bmp.h) % brush.bmp.h;
-      const v = brush.bmp.data[by * brush.bmp.w + bx];
+      const raw = brush.bmp.data[by * brush.bmp.w + bx];
+      // Built-in stamps are masks: they take the current primary color
+      const v = brush.tint ? withAlpha(this.primary, raw >>> 24) : raw;
       return blendOver(src, withAlpha(v, (v >>> 24) * op));
     }
 
@@ -548,10 +581,12 @@ class Painter {
   }
 
   pixel(x: number, y: number) {
+    const pf = this.pressured ? pressureFactor('opacity') : 1;
     for (const [i, tx, ty] of this.targets(x, y)) {
       if (this.mode === 'stroke') {
-        if (this.painted[i]) continue;
-        this.painted[i] = 1;
+        // Allow overwriting if the new pressure factor is higher (e.g., pressure increased during stroke)
+        if (this.pressureMap[i] >= pf) continue;
+        this.pressureMap[i] = pf;
       }
       this.cel[i] = this.ink(i, tx, ty);
     }
@@ -562,9 +597,22 @@ class Painter {
     if (b && this.kind === 'paint') {
       const shape: Point[] = [];
       const hx = Math.floor(b.bmp.w / 2), hy = Math.floor(b.bmp.h / 2);
+      const rad = this.angle * Math.PI / 180;
+      const cos = Math.cos(rad), sin = Math.sin(rad);
+      const rotate = this.angle % 360 !== 0;
+      const scale = this.scale;
       for (let y = 0; y < b.bmp.h; y++)
-        for (let x = 0; x < b.bmp.w; x++)
-          if (b.bmp.data[y * b.bmp.w + x] >>> 24) shape.push([x - hx, y - hy]);
+        for (let x = 0; x < b.bmp.w; x++) {
+          if (!(b.bmp.data[y * b.bmp.w + x] >>> 24)) continue;
+          let ox = x - hx, oy = y - hy;
+          if (scale !== 1) { ox *= scale; oy *= scale; }
+          if (rotate) {
+            const rx = ox * cos - oy * sin;
+            oy = ox * sin + oy * cos;
+            ox = rx;
+          }
+          shape.push([Math.round(ox), Math.round(oy)]);
+        }
       for (const [px, py] of points) {
         // The pattern follows each dab, starts at the stroke start, or stays where it was captured
         if (b.align === 'dab' || !this.anchor)
@@ -586,7 +634,7 @@ class Painter {
 
   reset() {
     this.cel.set(this.origin);
-    this.painted.fill(0);
+    this.pressureMap.fill(0);
     this.anchor = null;
   }
 }
@@ -625,8 +673,18 @@ function freehand(p: ToolPointer, kind: 'paint' | 'erase', label: string): Sessi
 
   if (p.shift && lastPoint) path.push(lastPoint);
   add([p.x, p.y]);
+
+  // Angle / scale for the current dab; stroke mode uses the previous tracked point
+  const updateDab = (q: ToolPointer) => {
+    painter.angle = computeBrushAngle(pen, state.brushAngleDynamics, state.brushAngle, q.x, q.y);
+    painter.scale = computePressureScale(pen, state.pressure.size, state.pressure.min);
+    updateStrokePoint(q.x, q.y);
+  };
+
+  resetStrokeTracking();
+  updateDab(p);
   if (perfect) render();
-  else painter.stamp(path, brushOffsets(pressureSize()));
+  else painter.stamp(path, brushOffsets(pressureSize(), state.brushShape, painter.angle));
 
   // Stabilizer: the brush point follows the pointer on a string, covering 1/strength of the gap per move
   let sx = p.x, sy = p.y;
@@ -642,8 +700,9 @@ function freehand(p: ToolPointer, kind: 'paint' | 'erase', label: string): Sessi
       const before = path.length;
       add(follow(q));
       if (path.length === before) return;
+      updateDab(q);
       if (perfect) render();
-      else painter.stamp(path.slice(Math.max(0, before - 1)), brushOffsets(pressureSize()));
+      else painter.stamp(path.slice(Math.max(0, before - 1)), brushOffsets(pressureSize(), state.brushShape, painter.angle));
     },
     up() {
       lastPoint = path[path.length - 1] ?? null;
@@ -1244,7 +1303,9 @@ function spraySession(p: ToolPointer): Session {
       const angle = Math.random() * Math.PI * 2, dist = Math.sqrt(Math.random()) * r;
       points.push([Math.round(at[0] + Math.cos(angle) * dist), Math.round(at[1] + Math.sin(angle) * dist)]);
     }
-    painter.stamp(points, brushOffsets(pressureSize()));
+    painter.angle = computeBrushAngle(pen, state.brushAngleDynamics, state.brushAngle, at[0], at[1]);
+    painter.scale = computePressureScale(pen, state.pressure.size, state.pressure.min);
+    painter.stamp(points, brushOffsets(pressureSize(), state.brushShape, painter.angle));
   };
   spray();
   return {
@@ -1281,7 +1342,9 @@ export function previewDab(tool: ToolName, x: number, y: number): Uint32Array | 
   const { sprite } = state;
   if (!sprite.editable || sprite.floating || !PAINT_TOOLS.includes(tool)) return null;
   const painter = new Painter('paint', false, '', 'stroke', true);
-  painter.stamp([[x, y]], tool === 'fill' || tool === 'contour' || tool === 'polygon' ? [[0, 0]] : brushOffsets());
+  painter.angle = computeBrushAngle(pen, state.brushAngleDynamics, state.brushAngle, x, y);
+  painter.scale = computePressureScale(pen, state.pressure.size, state.pressure.min);
+  painter.stamp([[x, y]], tool === 'fill' || tool === 'contour' || tool === 'polygon' ? [[0, 0]] : brushOffsets(pressureSize(), state.brushShape, painter.angle));
   return painter.cel;
 }
 

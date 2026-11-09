@@ -1,5 +1,6 @@
 import { t } from "~/core/i18n";
 import { state } from "~/core/State";
+import { Color } from "~/core/Color";
 import { Flex } from "~/ui/Flex";
 import { prop, reactive, real } from "@vicimpa/decorators";
 import { provide } from "@vicimpa/react-decorators";
@@ -14,10 +15,11 @@ import { Icon } from "~/ui/Icon";
 import { runCommand } from "~/core/Commands";
 import { ColorView } from "./modules/ColorView";
 import { ColorSliders } from "./modules/ColorSliders";
+import { HexInput } from "~/ui/HexInput";
 import * as styled from "./styled";
 import { Splitter } from "~/ui/Splitter";
 import { useEffect } from "~/utils/decorators";
-import { batch, effect } from "@preact/signals-react";
+import { batch, effect, untracked } from "@preact/signals-react";
 import rsp from "@vicimpa/rsp";
 import { dispose } from "~/utils/common";
 
@@ -59,6 +61,20 @@ const PickerArea: FC<{ colors: Colors; children: React.ReactNode; }> = ({ colors
   );
 };
 
+/** The global HEX field. It lives in its own component so its signal reads are tracked:
+ * the Colors class itself is not re-rendered when the A/B colors change. */
+const ColorHex: FC<{ colors: Colors; }> = ({ colors }) => {
+  useSignals();
+  return (
+    <HexInput
+      color={colors.current}
+      alt={colors.pickerAlt}
+      onToggleAlt={alt => { colors.pickerAlt = alt; }}
+      onColorChange={color => { colors.current = color; }}
+    />
+  );
+};
+
 @reactive()
 @provide()
 export class Colors extends Component {
@@ -72,8 +88,11 @@ export class Colors extends Component {
 
   @prop pickerAlt = false;
 
+  /** Explicitly read BOTH colorA and colorB so that effect in detectChange reacts to swapColors */
   get current() {
-    return this.pickerAlt ? this.colorB : this.colorA;
+    const a = state.colorA;
+    const b = state.colorB;
+    return this.pickerAlt ? b : a;
   }
 
   set current(v) {
@@ -107,13 +126,38 @@ export class Colors extends Component {
     });
   }
 
+
+
+  /** Swap colors AND keep pickerAlt bound to the same logical color.
+   * If we were editing A, after swap we should edit what is now in A's place (which was B). */
+  swapColorsAndSyncPicker() {
+    batch(() => {
+      // Read current values
+      const a = state.colorA;
+      const b = state.colorB;
+      // Swap the signals
+      state.colorA = b;
+      state.colorB = a;
+      // Toggle pickerAlt so we keep editing the same logical color
+      this.pickerAlt = !this.pickerAlt;
+    });
+  }
+
   render() {
     return (
       <Flex $inset $column>
         <Flex $items="center" $gap={4} $padding="4px 4px 0" $shrink={0}>
           <PickerTabs colors={this} />
           <span style={{ flexGrow: 1 }} />
-          <Button $square title={t('colors.swapColorsX')} onClick={() => runCommand('color.swap')}><Icon name="swap" scale="glyph" /></Button>
+          <Button $square title={t('colors.swapColorsX')} onClick={() => this.swapColorsAndSyncPicker()}><Icon name="swap" scale="glyph" /></Button>
+          {(window as any).EyeDropper && (
+            <Button $square title={t('common.pick')} onClick={async () => {
+              try {
+                const result = await new (window as any).EyeDropper().open();
+                this.current = Color.fromHex(result.sRGBHex);
+              } catch {}
+            }}><Icon name="picker" scale="glyph" /></Button>
+          )}
           <Button title={t('colors.blackAndWhiteD')} onClick={() => runCommand('color.reset')}>{t('colors.bW')}</Button>
         </Flex>
         <Flex $grow>
@@ -129,7 +173,9 @@ export class Colors extends Component {
                 ref={this.picker}
                 onChange={(color, alt) => {
                   batch(() => {
-                    this.pickerAlt = alt;
+                    // FIX: Only update pickerAlt when user explicitly right-clicks (alt === true).
+                    // Left-click (alt === false) should NOT reset pickerAlt — keep editing the currently selected A/B.
+                    if (alt) this.pickerAlt = true;
                     this.current = color;
                   });
                 }} />
@@ -137,10 +183,13 @@ export class Colors extends Component {
             </PickerBox>
           </Flex>
         </Flex>
+        <ColorHex colors={this} />
         <styled.FlexWrap data-color-samples>
           <rsp.$ $target={ColorView} color={real(state, 'colorA')}
+            title={t('colors.editPrimaryHint')}
             onClick={() => { this.pickerAlt = false; }} />
           <rsp.$ $target={ColorView} color={real(state, 'colorB')}
+            title={t('colors.editSecondaryHint')}
             onClick={() => { this.pickerAlt = true; }} />
         </styled.FlexWrap>
       </Flex>
