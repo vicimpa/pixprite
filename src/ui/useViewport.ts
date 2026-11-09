@@ -13,7 +13,12 @@ export function useViewport(view: RefObject<HTMLElement | null>, content?: RefOb
         width: el.clientWidth, height: el.clientHeight };
       setRect(old => Object.keys(next).every(k => old[k as keyof typeof old] === next[k as keyof typeof next]) ? old : next);
     };
-    const observer = new ResizeObserver(update);
+    // React commits can resize another observed ancestor. Reconcile after the
+    // observer delivery, so WebKit never starts another layout inside it.
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; update(); });
+    });
     observer.observe(el);
     if (inner) observer.observe(inner);
     el.addEventListener('scroll', update, { passive: true });
@@ -21,7 +26,7 @@ export function useViewport(view: RefObject<HTMLElement | null>, content?: RefOb
     // Content can move when siblings load (snapshots, translated text, responsive layout).
     if (inner?.parentElement) observer.observe(inner.parentElement);
     update();
-    return () => { observer.disconnect(); el.removeEventListener('scroll', update); window.removeEventListener('resize', update); };
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); el.removeEventListener('scroll', update); window.removeEventListener('resize', update); };
   });
   return rect;
 }

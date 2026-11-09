@@ -27,10 +27,13 @@ export const Toolbar: FC = () => {
       const available = bar.current!.clientHeight - 8 - extra.current!.offsetHeight;
       setCapacity(Math.max(1, Math.floor(available / (state.ui.tool * 11 + 12))));
     };
-    const observer = new ResizeObserver(measure);
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; measure(); });
+    });
     observer.observe(bar.current!); observer.observe(extra.current!);
     measure();
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [state.ui.tool]);
   useEffect(() => () => clearTimeout(hold.current), []);
   const visible = GROUPS.slice(0, capacity < GROUPS.length ? Math.max(0, capacity - 1) : GROUPS.length);
