@@ -40,6 +40,8 @@
     "desktop:pack": "bun run build && bun scripts/build-desktop.ts --no-bundle",
     "desktop:build": "bun run build && bun scripts/build-desktop.ts",
     "mcp": "bun scripts/run-desktop.ts --mcp",
+    "mcp:proxy": "bun scripts/mcp-stdio-proxy.ts",
+    "mcp:proxy:build": "bun build scripts/mcp-stdio-proxy.ts --outdir dist/desktop --target node",
     "docs:screenshot": "bun scripts/docs-screenshot.ts",
     "desktop:prepare": "bun scripts/build-desktop.ts --prepare",
     "desktop:check": "bun scripts/check-tauri-versions.ts",
