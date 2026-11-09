@@ -42,19 +42,8 @@ function maskFromRows(rows: string[]): StampPreset {
   return { id: '', nameKey: '', mask, w, h, builtin: true };
 }
 
-/** Creates a clean 5-pointed star stamp (15x15) */
+/** Creates a clean 5-pointed star stamp (13x11) */
 function createStarStamp(): StampPreset {
-  const p = maskFromRows([
-    "....#....",
-    "....#....",
-    "...###...",
-    "..#####..",
-    "#########",
-    ".##.###.#",
-    ".#..#..#.",
-    "#...#...#",
-  ]);
-  // Let's make it symmetric and well-proportioned (13x13)
   const rows = [
     "......#......",
     "......#......",
@@ -62,10 +51,10 @@ function createStarStamp(): StampPreset {
     "....#####....",
     "#############",
     ".###########.",
-    "..###.#.###..",
-    ".###..#..###.",
-    "##...###...##",
-    "#....#.#....#",
+    "..#########..",
+    ".###.###.###.",
+    "###..###..###",
+    "##....#....##",
   ];
   const s = maskFromRows(rows);
   s.id = 'stamp.star';
