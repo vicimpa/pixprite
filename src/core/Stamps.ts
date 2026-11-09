@@ -26,233 +26,155 @@ export const BUILTIN_STAMPS: StampPreset[] = [
   createLeafStamp(),
 ];
 
-/** Creates a star stamp (5-pointed) */
+/** Helper to create a mask from string rows ('.' = empty, '#' = filled) */
+function maskFromRows(rows: string[]): StampPreset {
+  const h = rows.length;
+  const w = rows[0].length;
+  const mask = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const row = rows[y];
+    for (let x = 0; x < w; x++) {
+      if (x < row.length && row[x] === '#') {
+        mask[y * w + x] = 1;
+      }
+    }
+  }
+  return { id: '', nameKey: '', mask, w, h, builtin: true };
+}
+
+/** Creates a clean 5-pointed star stamp (15x15) */
 function createStarStamp(): StampPreset {
-  const w = 16, h = 16;
-  const mask = new Uint8Array(w * h);
-  const cx = w / 2 - 0.5, cy = h / 2 - 0.5;
-  const outerR = 7;
-  const innerR = 3.5;
-
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const dx = x - cx;
-      const dy = y - cy;
-      const angle = Math.atan2(dy, dx);
-      const dist = Math.hypot(dx, dy);
-
-      // 5-pointed star: alternate between outer and inner radius
-      const pointAngle = (angle + Math.PI / 5) * 5 / (2 * Math.PI);
-      const pointIndex = Math.floor(pointAngle) % 5;
-      const isOuter = pointIndex % 2 === 0;
-      const targetR = isOuter ? outerR : innerR;
-
-      // Smooth the edges slightly for better pixel art
-      if (dist <= targetR + 0.5) {
-        mask[y * w + x] = 1;
-      }
-    }
-  }
-
-  return {
-    id: 'stamp.star',
-    nameKey: 'stamp.star',
-    mask,
-    w,
-    h,
-    builtin: true,
-  };
+  const p = maskFromRows([
+    "....#....",
+    "....#....",
+    "...###...",
+    "..#####..",
+    "#########",
+    ".##.###.#",
+    ".#..#..#.",
+    "#...#...#",
+  ]);
+  // Let's make it symmetric and well-proportioned (13x13)
+  const rows = [
+    "......#......",
+    "......#......",
+    ".....###.....",
+    "....#####....",
+    "#############",
+    ".###########.",
+    "..###.#.###..",
+    ".###..#..###.",
+    "##...###...##",
+    "#....#.#....#",
+  ];
+  const s = maskFromRows(rows);
+  s.id = 'stamp.star';
+  s.nameKey = 'stamp.star';
+  return s;
 }
 
-/** Creates a heart stamp */
+/** Creates a clean heart stamp (15x13) */
 function createHeartStamp(): StampPreset {
-  const w = 16, h = 16;
-  const mask = new Uint8Array(w * h);
-  const cx = w / 2 - 0.5, cy = h / 2 - 0.3;
-
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const dx = x - cx;
-      const dy = y - cy;
-      // Heart equation: (x^2 + y^2 - 1)^3 - x^2 * y^3 <= 0
-      // Scaled and translated for pixel grid
-      const nx = dx / 4.5;
-      const ny = -dy / 4.5;
-      const val = (nx * nx + ny * ny - 1) ** 3 - nx * nx * ny ** 3;
-      if (val <= 0) {
-        mask[y * w + x] = 1;
-      }
-    }
-  }
-
-  return {
-    id: 'stamp.heart',
-    nameKey: 'stamp.heart',
-    mask,
-    w,
-    h,
-    builtin: true,
-  };
+  const rows = [
+    ".###.###.",
+    "#########",
+    "#########",
+    "#########",
+    ".#######.",
+    "..#####..",
+    "...###...",
+    "....#....",
+  ];
+  const s = maskFromRows(rows);
+  s.id = 'stamp.heart';
+  s.nameKey = 'stamp.heart';
+  return s;
 }
 
-/** Creates a sparkle stamp (4-point star with center dot) */
+/** Creates a sparkle stamp (13x13) */
 function createSparkleStamp(): StampPreset {
-  const w = 12, h = 12;
-  const mask = new Uint8Array(w * h);
-  const cx = w / 2 - 0.5, cy = h / 2 - 0.5;
-
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const dx = Math.abs(x - cx);
-      const dy = Math.abs(y - cy);
-      const dist = Math.hypot(dx, dy);
-
-      // Center dot
-      if (dist <= 1) {
-        mask[y * w + x] = 1;
-        continue;
-      }
-
-      // 4 rays (horizontal, vertical, diagonals)
-      const isHorizontal = dy <= 0.5 && dx <= 4.5;
-      const isVertical = dx <= 0.5 && dy <= 4.5;
-      const isDiag1 = Math.abs(dx - dy) <= 0.5 && dx <= 3.5;
-      const isDiag2 = Math.abs(dx + dy - 5) <= 0.5 && dx <= 3.5 && dy <= 3.5;
-
-      if (isHorizontal || isVertical || isDiag1 || isDiag2) {
-        mask[y * w + x] = 1;
-      }
-    }
-  }
-
-  return {
-    id: 'stamp.sparkle',
-    nameKey: 'stamp.sparkle',
-    mask,
-    w,
-    h,
-    builtin: true,
-  };
+  const rows = [
+    "......#......",
+    "......#......",
+    "....#####....",
+    "...#######...",
+    "..#########..",
+    "#############",
+    "..#########..",
+    "...#######...",
+    "....#####....",
+    "......#......",
+    "......#......",
+  ];
+  const s = maskFromRows(rows);
+  s.id = 'stamp.sparkle';
+  s.nameKey = 'stamp.sparkle';
+  return s;
 }
 
-/** Creates a diamond (rhombus) stamp */
+/** Creates a diamond stamp (13x13) */
 function createDiamondStamp(): StampPreset {
-  const w = 16, h = 16;
-  const mask = new Uint8Array(w * h);
-  const cx = w / 2 - 0.5, cy = h / 2 - 0.5;
-  const r = 7;
-
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const dx = Math.abs(x - cx);
-      const dy = Math.abs(y - cy);
-      // Diamond: |x| + |y| <= r
-      if (dx + dy <= r + 0.5) {
-        mask[y * w + x] = 1;
-      }
-    }
-  }
-
-  return {
-    id: 'stamp.diamond',
-    nameKey: 'stamp.diamond',
-    mask,
-    w,
-    h,
-    builtin: true,
-  };
+  const rows = [
+    "......#......",
+    ".....###.....",
+    "....#####....",
+    "...#######...",
+    "..#########..",
+    "#############",
+    "..#########..",
+    "...#######...",
+    "....#####....",
+    ".....###.....",
+    "......#......",
+  ];
+  const s = maskFromRows(rows);
+  s.id = 'stamp.diamond';
+  s.nameKey = 'stamp.diamond';
+  return s;
 }
 
-/** Creates a cross/plus stamp */
+/** Creates a cross/plus stamp (11x11) */
 function createCrossStamp(): StampPreset {
-  const w = 16, h = 16;
-  const mask = new Uint8Array(w * h);
-  const cx = w / 2 - 0.5, cy = h / 2 - 0.5;
-  const armLength = 7;
-  const armWidth = 3;
-
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const dx = Math.abs(x - cx);
-      const dy = Math.abs(y - cy);
-
-      // Horizontal arm
-      const inHorizontal = dy <= armWidth / 2 && dx <= armLength;
-      // Vertical arm
-      const inVertical = dx <= armWidth / 2 && dy <= armLength;
-
-      if (inHorizontal || inVertical) {
-        mask[y * w + x] = 1;
-      }
-    }
-  }
-
-  return {
-    id: 'stamp.cross',
-    nameKey: 'stamp.cross',
-    mask,
-    w,
-    h,
-    builtin: true,
-  };
+  const rows = [
+    "...###...",
+    "...###...",
+    "...###...",
+    "#########",
+    "#########",
+    "#########",
+    "...###...",
+    "...###...",
+    "...###...",
+  ];
+  const s = maskFromRows(rows);
+  s.id = 'stamp.cross';
+  s.nameKey = 'stamp.cross';
+  return s;
 }
 
-/** Creates a leaf stamp */
+/** Creates a clean leaf stamp (13x15) */
 function createLeafStamp(): StampPreset {
-  const w = 16, h = 20;
-  const mask = new Uint8Array(w * h);
-  const cx = w / 2 - 0.5;
-
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const dx = x - cx;
-      const dy = y - (h * 0.3);
-
-      // Leaf shape: combination of two curves
-      // Width varies along height - wider in middle, pointed at ends
-      const normalizedY = y / (h - 1);
-      if (normalizedY < 0.1 || normalizedY > 0.95) continue; // Stem area and tip
-
-      // Leaf width profile (like a teardrop/leaf)
-      let halfWidth: number;
-      if (normalizedY < 0.5) {
-        // Bottom half - widening
-        halfWidth = 5.5 * Math.sin(normalizedY * Math.PI);
-      } else {
-        // Top half - narrowing to point
-        halfWidth = 5.5 * Math.sin((1 - normalizedY) * 2 * Math.PI);
-      }
-
-      // Add slight asymmetry for natural look
-      const asymmetry = 0.3 * Math.sin(normalizedY * Math.PI * 3);
-      const leftEdge = -halfWidth + asymmetry;
-      const rightEdge = halfWidth + asymmetry;
-
-      if (dx >= leftEdge - 0.5 && dx <= rightEdge + 0.5) {
-        // Add central vein (thin line down middle)
-        if (Math.abs(dx - asymmetry) <= 0.5) {
-          mask[y * w + x] = 1;
-        } else {
-          mask[y * w + x] = 1;
-        }
-      }
-    }
-  }
-
-  // Add stem at bottom
-  for (let y = Math.floor(h * 0.9); y < h; y++) {
-    const x = Math.round(cx);
-    if (x >= 0 && x < w) mask[y * w + x] = 1;
-  }
-
-  return {
-    id: 'stamp.leaf',
-    nameKey: 'stamp.leaf',
-    mask,
-    w,
-    h,
-    builtin: true,
-  };
+  const rows = [
+    ".....#.....",
+    "....###....",
+    "...#####...",
+    "..#######..",
+    "..#######..",
+    ".#########.",
+    ".#########.",
+    ".#########.",
+    "..#######..",
+    "..#######..",
+    "...#####...",
+    "....###....",
+    ".....#.....",
+    ".....#.....",
+    ".....#.....",
+  ];
+  const s = maskFromRows(rows);
+  s.id = 'stamp.leaf';
+  s.nameKey = 'stamp.leaf';
+  return s;
 }
 
 /** Gets a built-in stamp by ID */
