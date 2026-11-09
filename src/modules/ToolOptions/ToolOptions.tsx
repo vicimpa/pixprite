@@ -45,12 +45,12 @@ const PopupRow = styled.div`
 `;
 
 /** Advanced brush settings have their own anchored palette. */
-const More: FC<{ children: ReactNode; }> = ({ children }) => {
+const More: FC<{ children: ReactNode; pen?: boolean; }> = ({ children, pen }) => {
   const [open, setOpen] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
   return <>
-    <Button ref={btn} $active={open} title={t('options.moreBrushSettings')} aria-expanded={open}
-      onClick={() => setOpen(!open)}><Icon name="gear" scale="glyph" /></Button>
+    <Button ref={btn} $active={open} title={t('options.moreBrushSettings')} aria-label={t('options.moreBrushSettings')} aria-haspopup="dialog" aria-expanded={open}
+      onClick={() => setOpen(!open)}><Icon name="gear" scale="glyph" />{pen && t('options.penSettings')}</Button>
     <FloatingPanel anchor={btn.current} open={open} label={t('options.moreBrushSettings')} onClose={() => setOpen(false)}>{children}</FloatingPanel>
   </>;
 };
@@ -216,9 +216,9 @@ const Pressure: FC<{ spray: boolean; }> = ({ spray }) => {
   const set = (patch: Partial<typeof m>) => { state.pressure = { ...m, ...patch }; };
   return <>
     <Muted title={t('options.penPressureAMouse')}>{t('options.pen')}</Muted>
-    <Label><Check checked={m.size} onChange={e => set({ size: e.target.checked })} /> {t('common.size')}</Label>
-    <Label><Check checked={m.opacity} onChange={e => set({ opacity: e.target.checked })} /> {t('options.alpha')}</Label>
-    {spray && <Label><Check checked={m.density} onChange={e => set({ density: e.target.checked })} /> {t('options.density')}</Label>}
+    <Label><Check checked={m.size} onChange={e => set({ size: e.target.checked })} /> {t('options.pressureSize')}</Label>
+    <Label><Check checked={m.opacity} onChange={e => set({ opacity: e.target.checked })} /> {t('options.pressureAlpha')}</Label>
+    {spray && <Label><Check checked={m.density} onChange={e => set({ density: e.target.checked })} /> {t('options.pressureDensity')}</Label>}
     {(m.size || m.opacity || m.density) && (
       <Num label={t('options.min')} value={m.min} min={0} max={100} set={v => set({ min: v })} title={t('options.lowestShareAtThe')} />
     )}
@@ -431,10 +431,10 @@ export const ToolOptions: FC = () => {
 
         {(has(INK) || tool === 'eraser') && <>
           <Separator />
-          <More>
+          <More pen={tool === 'pencil' || tool === 'eraser' || tool === 'spray'}>
             {(tool === 'pencil' || tool === 'eraser' || tool === 'spray') && <PopupRow><Pressure spray={tool === 'spray'} /></PopupRow>}
             {(tool === 'pencil' || tool === 'eraser') && (
-              <Num label={t('options.smooth')} value={state.stabilizer} min={0} max={64} set={v => { state.stabilizer = v; }}
+              <Num label={t('options.stabilizer')} value={state.stabilizer} min={0} max={64} set={v => { state.stabilizer = v; }}
                 title={t('options.stabilizerTheBrushTrails')} />
             )}
             {has(INK) && !state.customBrush && state.ink !== 'shade' && <PopupRow>

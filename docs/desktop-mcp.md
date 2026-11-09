@@ -2,6 +2,22 @@
 
 Pixprite использует **Tauri 2**, Rust и системный WebView: WKWebView на macOS, WebView2 на Windows и WebKitGTK на Linux. Chromium и Node.js в приложение не включаются. React-редактор сохраняется: один JS-бандл, отдельный вычислительный Worker и анимация запуска. Встроенные ресурсы открываются без локального веб-сервера через протокол Tauri; HTTP на loopback служит только MCP.
 
+<a id="screen-color"></a>
+
+## Выбор цвета с экрана
+
+В popup основного или фонового цвета действие «Выбрать цвет с экрана…» использует desktop API, независимо от наличия браузерного EyeDropper в системном WebView. Выберите пиксель на экране; Escape отменяет выбор. RGB обновляется с сохранением текущей альфы.
+
+| ОС | Реализация |
+| --- | --- |
+| macOS | Системный [NSColorSampler](https://developer.apple.com/documentation/appkit/nscolorsampler); выбранный цвет преобразуется в sRGB |
+| Windows | Нативный Win32 overlay показывает захваченный рабочий стол на время выбора; пиксель читается из GDI bitmap, с учётом нескольких мониторов и DPI. Escape, правая кнопка или потеря фокуса отменяют выбор |
+| Linux | [XDG Desktop Portal PickColor](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Screenshot.html#org-freedesktop-portal-screenshot-pickcolor); нужен доступный portal/backend, реализующий этот метод, в том числе в Wayland-сессии |
+
+JS-мост предоставляет `pickScreenColor({ signal })`: результат — `#RRGGBB` либо `null` при отмене. Закрытие popup отменяет запрос; поздний ответ не применяется. Rust допускает одну активную сессию выбора и связывает отмену с ID запроса. Команды доступны через существующую проверку доверенного главного окна; новый MCP-инструмент для снимков экрана не добавляется.
+
+Для этой возможности нужны обновлённые JS-мост и Rust executable: после обновления исходников пересоберите и перезапустите desktop-приложение. В браузерной версии продолжает использоваться EyeDropper при наличии поддержки. Реальные системные UI и доступ к экрану проверяются отдельно от автоматических проверок адаптера.
+
 ## Запуск и сборка
 
 Нужны Bun 1.4.2 и Rust из `rust-toolchain.toml`. Для работы установленного редактора и MCP не нужны Node.js или Bun. Для macOS установите Xcode Command Line Tools; для Windows — Visual Studio C++ Build Tools и WebView2. Linux требует зависимости WebKitGTK 4.1; точный список приведён в [workflow](../.github/workflows/desktop.yml). См. также [требования Tauri](https://v2.tauri.app/start/prerequisites/).

@@ -1,4 +1,5 @@
 import { installTextShortcuts } from './text-shortcuts';
+import { pickScreenColor } from './screen-color';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -26,6 +27,7 @@ if (window.top === window.self) {
     copyImage(bitmap) { return invoke('desktop_copy_image', { bitmap: { ...bitmap, data: encode(new Uint8Array(bitmap.data.buffer, bitmap.data.byteOffset, bitmap.data.byteLength)) } }); },
     copyText(text) { return invoke('desktop_copy_text', { text }); },
     async pasteImage() { const image = await invoke<{ w: number; h: number; data: string } | null>('desktop_paste_image'); return image && { ...image, data: new Uint32Array(Uint8Array.from(atob(image.data), c => c.charCodeAt(0)).buffer) }; },
+    pickScreenColor({ signal } = {}) { return pickScreenColor(invoke, signal); },
     runtime: 'tauri', windowId: target.label, platform: '', recoveryWindows: [],
     recoveredWindows(ids) { void invoke('desktop_recovered', { ids }); },
     reportSession(session) { return invoke('desktop_session', { session }); },

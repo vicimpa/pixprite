@@ -356,14 +356,15 @@ export const spriteHandlers: Handlers = {
     await loadFile(new File([file.data as ArrayBuffer], file.name as string), () => c.host.assertActive());
     return docId(state.sprite);
   },
-  'documents.create': (_c, opts) => {
+  'documents.create': async (c, opts) => {
     const o = isObject(opts) ? opts : {};
     const w = int(o.width, 'width'), h = int(o.height, 'height');
     if (w < 1 || h < 1 || w > 4096 || h > 4096) fail('invalid', 'Size must be 1..4096');
-    const doc = state.newDocument();
+    if (state.textAt) { await state.finishText(true); c.host.assertActive(); }
+    const doc = await state.newDocument();
     doc.reset(w, h, typeof o.name === 'string' ? o.name : 'untitled');
     if (o.colorMode === 'indexed' || o.colorMode === 'gray') doc.convertColorMode(o.colorMode);
-    state.fit();
+    if (state.sprite === doc) state.fit();
     return docId(doc);
   },
 

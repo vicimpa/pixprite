@@ -131,7 +131,7 @@ export const DocTabs: FC = () => {
         </Tab>;
       })}
       {viewerTabs.value.map(tab => <Tab key={tab.id} data-viewer={tab.id} data-active={activeViewer.value === tab.id}
-        title={tab.name} onPointerDown={e => { if (e.button === 0) activeViewer.value = tab.id; else if (e.button === 1) closeViewer(tab.id); }}>
+        title={tab.name} onPointerDown={e => { if (e.button === 0) void state.showViewer(tab.id); else if (e.button === 1) closeViewer(tab.id); }}>
         <span>◈ {tab.name}</span><Close title={t('common.close')} onPointerDown={e => e.stopPropagation()} onClick={() => closeViewer(tab.id)}>×</Close>
       </Tab>)}
       {agentActivity.value && <span data-testid="agent-activity" data-following={agentActivity.value.following} style={{ alignSelf: 'center', padding: '0 8px', color: 'var(--accent)' }}

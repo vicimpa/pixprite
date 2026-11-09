@@ -21,17 +21,18 @@ const NewSprite: FC<{ close: () => void; }> = ({ close }) => {
     <Dialog title={t('common.newSprite')} onClose={close} submitLabel={t('common.create')} onSubmit={() => {
       const W = Math.max(1, Math.min(4096, num(w, 32) | 0)), H = Math.max(1, Math.min(4096, num(h, 32) | 0));
       saveDialogPrefs('new', { w: W, h: H, bg });
-      const sprite = state.newDocument();
-      sprite.reset(W, H, name || 'untitled');
-      [sprite.pixelRatioX, sprite.pixelRatioY] = ratioValue(ratio);
-      if (bg !== 'transparent') {
-        // A solid background becomes a real background layer
-        const fill = bg === 'white' ? 0xffffffff : bg === 'black' ? 0xff000000 : sprite.backgroundFill;
-        sprite.layers = sprite.layers.map(l => ({ ...l, background: true, name: 'Background' }));
-        sprite.setCel({ x: 0, y: 0, w: W, h: H, data: new Uint32Array(sprite.size).fill(fill) });
-      }
-      state.fit();
-      state.save();
+      void state.newDocument().then(sprite => {
+        sprite.reset(W, H, name || 'untitled');
+        [sprite.pixelRatioX, sprite.pixelRatioY] = ratioValue(ratio);
+        if (bg !== 'transparent') {
+          // A solid background becomes a real background layer
+          const fill = bg === 'white' ? 0xffffffff : bg === 'black' ? 0xff000000 : sprite.backgroundFill;
+          sprite.layers = sprite.layers.map(l => ({ ...l, background: true, name: 'Background' }));
+          sprite.setCel({ x: 0, y: 0, w: W, h: H, data: new Uint32Array(sprite.size).fill(fill) });
+        }
+        if (state.sprite === sprite) state.fit();
+        state.save();
+      });
     }}>
       <Field label={t('common.name')}><Input value={name} style={{ width: 160 }} onChange={e => setName(e.target.value)} /></Field>
       <NumberField label={t('common.width')} value={w} onChange={setW} min={1} max={4096} suffix="px" />

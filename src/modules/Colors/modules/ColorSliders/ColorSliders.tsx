@@ -5,9 +5,9 @@ import { useSignals } from "@preact/signals-react/runtime";
 import { useEffect, useState, type FC } from "react";
 import styled from "styled-components";
 
-const Root = styled.div`
-  position: absolute;
-  inset: 0;
+const Root = styled.div<{ $compact: boolean }>`
+  position: ${({ $compact }) => $compact ? 'relative' : 'absolute'};
+  inset: ${({ $compact }) => $compact ? 'auto' : '0'};
   overflow-y: auto;
   padding: 6px;
   display: flex;
@@ -54,16 +54,17 @@ const Num = styled(Input)`
 const checker = 'repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 8px 8px';
 
 /** RGB / HSV / alpha sliders and a hex field; tracks show the gradient for the current color */
-export const ColorSliders: FC<{ alt: boolean; }> = ({ alt }) => {
+export const ColorSliders: FC<{ alt: boolean; compact?: boolean; }> = ({ alt, compact = false }) => {
   useSignals();
   const color = alt ? state.colorB : state.colorA;
   const set = (c: Color) => { if (alt) state.colorB = c; else state.colorA = c; };
   const [r, g, b, a] = color.rgba;
   const [h, s, v] = color.hsv;
-  const [hex, setHex] = useState(color.toHexString(false));
+  const [hex, setHex] = useState(color.toHexString());
   const [typing, setTyping] = useState(false);
   // The hex field follows the color unless it is being typed into
-  useEffect(() => { if (!typing) setHex(color.toHexString(false)); }, [color, typing]);
+  useEffect(() => { if (!typing) setHex(color.toHexString()); }, [color, typing]);
+  const validHex = /^#?(?:[\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.test(hex.trim());
 
   const rgbTrack = (k: 0 | 1 | 2) => {
     const lo = [r, g, b], hi = [r, g, b];
@@ -82,28 +83,35 @@ export const ColorSliders: FC<{ alt: boolean; }> = ({ alt }) => {
   ];
 
   return (
-    <Root>
-      {rows.map(([name, value, max, track, onChange]) => (
+    <Root $compact={compact}>
+      {rows.filter(([name]) => !compact || ['R', 'G', 'B', 'A'].includes(name)).map(([name, value, max, track, onChange]) => (
         <Row key={name}>
           <Name>{name}</Name>
-          <Track min={0} max={max} value={value} style={{ background: track }} onChange={e => onChange(+e.target.value)} />
-          <Num type="number" min={0} max={max} value={value} onChange={e => onChange(Math.max(0, Math.min(max, +e.target.value || 0)))} />
+          <Track aria-label={name} min={0} max={max} value={value} style={{ background: track }} onChange={e => onChange(+e.target.value)} />
+          <Num aria-label={name} type="number" min={0} max={max} value={value} onChange={e => onChange(Math.max(0, Math.min(max, +e.target.value || 0)))} />
         </Row>
       ))}
       <Row>
         <Name>#</Name>
         <Input
-          value={hex.replace('#', '')}
-          style={{ flexGrow: 1 }}
+          aria-label="HEX"
+          aria-invalid={!validHex}
+          title="HEX: #RGB, #RGBA, #RRGGBB, #RRGGBBAA"
+          spellCheck={false}
+          value={hex}
+          style={{ flexGrow: 1, minWidth: 0 }}
           onFocus={() => setTyping(true)}
           onBlur={() => setTyping(false)}
           onKeyDown={e => e.stopPropagation()}
           onChange={e => {
-            const raw = e.target.value.replace(/[^0-9a-f]/gi, '').slice(0, 8);
-            setHex('#' + raw);
-            // Short input is padded so the color updates while typing
-            if (raw.length >= 3) {
-              try { set(Color.fromHex(raw.length === 3 || raw.length === 6 || raw.length === 8 ? raw : raw.padEnd(6, '0'))); } catch { }
+            const value = e.target.value;
+            setHex(value);
+            const match = /^#?([\da-f]{3}|[\da-f]{4}|[\da-f]{6}|[\da-f]{8})$/i.exec(value.trim());
+            if (match) {
+              const next = Color.fromHex(match[1]);
+              // RGB input preserves alpha; RGBA input explicitly changes it.
+              if (match[1].length === 3 || match[1].length === 6) next.rgba = [...next.rgb, a];
+              set(next);
             }
           }} />
       </Row>

@@ -5,6 +5,8 @@ mod library;
 mod mcp;
 mod storage;
 mod system;
+mod screen_color;
+use screen_color::{desktop_pick_screen_color, desktop_cancel_screen_color, ScreenColorState};
 use system::{
     desktop_copy_image, desktop_copy_text, desktop_paste_image, desktop_save_download,
     desktop_text_action,
@@ -835,11 +837,14 @@ fn main() {
             }
         }))
         .manage(state.clone())
+        .manage(ScreenColorState::default())
         .invoke_handler(tauri::generate_handler![
             desktop_save_download,
             desktop_copy_image,
             desktop_copy_text,
             desktop_paste_image,
+            desktop_pick_screen_color,
+            desktop_cancel_screen_color,
             desktop_text_action,
             desktop_frontend_error,
             desktop_library,

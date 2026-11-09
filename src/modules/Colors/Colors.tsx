@@ -140,7 +140,7 @@ export class Colors extends Component {
         <styled.FlexWrap data-color-samples>
           <rsp.$ $target={ColorView} color={real(state, 'colorA')}
             onClick={() => { this.pickerAlt = false; }} />
-          <rsp.$ $target={ColorView} color={real(state, 'colorB')}
+          <rsp.$ $target={ColorView} alt color={real(state, 'colorB')}
             onClick={() => { this.pickerAlt = true; }} />
         </styled.FlexWrap>
       </Flex>

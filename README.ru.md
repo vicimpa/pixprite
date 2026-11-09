@@ -22,9 +22,9 @@
 
 [Скачать пример проекта](docs/assets/beacon.pixprite) · [Обновить скриншот](docs/development.md#documentation-images)
 
-> **Ранняя разработка.** Последний выпуск — [0.0.6](https://github.com/vicimpa/pixprite/releases/tag/v0.0.6). Изменения описаны в [заметках к выпуску](docs/releases/v0.0.6.md), предыдущие версии — в [истории выпусков](docs/releases/README.md).
+> **Ранняя разработка.** Последний выпуск — [0.0.7](https://github.com/vicimpa/pixprite/releases/tag/v0.0.7). Изменения описаны в [заметках к выпуску](docs/releases/v0.0.7.md), предыдущие версии — в [истории выпусков](docs/releases/README.md).
 
-В [0.0.6](docs/releases/v0.0.6.md): неквадратные пиксели, общие инструменты MCP и AI Assistant, надёжный повтор экспорта и защита исходных файлов `.aseprite`.
+В [0.0.7](docs/releases/v0.0.7.md): локальная прозрачность от нажима, popup COLOR с HEX/RGB, системная экранная пипетка, понятные настройки пера и исправления текста.
 
 ## Возможности
 

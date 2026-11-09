@@ -6,6 +6,7 @@ import { state, type ToolName } from "~/core/State";
 import { referenceImage } from "~/core/Reference";
 import { sliceKey, type Guide, type RefImage, type SliceKey } from "~/core/Sprite";
 import { placementCorners, type Placement } from "~/core/Transform";
+import { t } from "~/core/i18n";
 
 export type Point = [x: number, y: number];
 
@@ -494,9 +495,8 @@ class Painter {
     return this.mode === 'overlap' ? this.cel[i] : this.origin[i];
   }
 
-  ink(i: number, x: number, y: number) {
+  ink(i: number, x: number, y: number, pf = this.pressured ? pressureFactor('opacity') : 1) {
     const src = this.src(i);
-    const pf = this.pressured ? pressureFactor('opacity') : 1;
     const op = state.opacity / 255 * pf;
 
     if (this.kind === 'erase') {
@@ -547,17 +547,17 @@ class Painter {
     }
   }
 
-  pixel(x: number, y: number) {
+  pixel(x: number, y: number, pressure?: number) {
     for (const [i, tx, ty] of this.targets(x, y)) {
       if (this.mode === 'stroke') {
         if (this.painted[i]) continue;
         this.painted[i] = 1;
       }
-      this.cel[i] = this.ink(i, tx, ty);
+      this.cel[i] = this.ink(i, tx, ty, pressure);
     }
   }
 
-  stamp(points: Point[], offsets: Point[] = brushOffsets()) {
+  stamp(points: Point[], offsets: Point[] = brushOffsets(), pressures?: readonly number[]) {
     const b = state.customBrush;
     if (b && this.kind === 'paint') {
       const shape: Point[] = [];
@@ -565,16 +565,19 @@ class Painter {
       for (let y = 0; y < b.bmp.h; y++)
         for (let x = 0; x < b.bmp.w; x++)
           if (b.bmp.data[y * b.bmp.w + x] >>> 24) shape.push([x - hx, y - hy]);
-      for (const [px, py] of points) {
+      for (let n = 0; n < points.length; n++) {
+        const [px, py] = points[n];
         // The pattern follows each dab, starts at the stroke start, or stays where it was captured
         if (b.align === 'dab' || !this.anchor)
           this.anchor = b.align === 'source' ? [b.ox, b.oy] : [px - hx, py - hy];
-        for (const [ox, oy] of shape) this.pixel(px + ox, py + oy);
+        for (const [ox, oy] of shape) this.pixel(px + ox, py + oy, pressures?.[n]);
       }
     } else {
-      for (const [px, py] of points)
+      for (let n = 0; n < points.length; n++) {
+        const [px, py] = points[n];
         for (const [ox, oy] of offsets)
-          this.pixel(px + ox, py + oy);
+          this.pixel(px + ox, py + oy, pressures?.[n]);
+      }
     }
     // A dry run (brush preview) works on a copy and must not mark the sprite as changed
     if (!this.dry) this.commit();
@@ -597,36 +600,54 @@ function freehand(p: ToolPointer, kind: 'paint' | 'erase', label: string): Sessi
   painter.pressured = true;
   const perfect = state.pixelPerfect && state.brushSize === 1 && !state.customBrush;
   const path: Point[] = [];
+  // Each new pixel uses the pressure of the pointer sample that adds it. Replays
+  // retain these factors rather than applying the newest pressure to the path.
+  const pressures: number[] = [];
+  let lastPressure = pressureFactor('opacity'), lastSize = pressureSize();
 
   const render = () => {
     painter.reset();
     // Skip "L" corners: a pixel touching both neighbours orthogonally while they touch diagonally
     const keep: Point[] = [];
+    const factors: number[] = [];
     for (let i = 0; i < path.length; i++) {
       const a = keep[keep.length - 1], c = path[i], b = path[i + 1];
       if (a && b && (a[0] === c[0] || a[1] === c[1]) && (b[0] === c[0] || b[1] === c[1]) && a[0] !== b[0] && a[1] !== b[1]) {
         // Drop the corner and keep the next pixel unconditionally
         keep.push(b);
+        factors.push(pressures[i + 1]);
         i++;
         continue;
       }
       keep.push(c);
+      factors.push(pressures[i]);
     }
-    painter.stamp(keep, [[0, 0]]);
+    painter.stamp(keep, [[0, 0]], factors);
   };
 
-  const add = (to: Point) => {
+  const add = (to: Point, pressure: number) => {
     const from = path[path.length - 1];
     for (const pt of from ? linePoints(from, to).slice(1) : [to]) {
       const last = path[path.length - 1];
-      if (!last || last[0] !== pt[0] || last[1] !== pt[1]) path.push(pt);
+      if (!last || last[0] !== pt[0] || last[1] !== pt[1]) { path.push(pt); pressures.push(pressure); }
     }
   };
 
-  if (p.shift && lastPoint) path.push(lastPoint);
-  add([p.x, p.y]);
+  if (p.shift && lastPoint) { path.push(lastPoint); pressures.push(lastPressure); }
+  add([p.x, p.y], lastPressure);
   if (perfect) render();
-  else painter.stamp(path, brushOffsets(pressureSize()));
+  else painter.stamp(path, brushOffsets(lastSize), pressures);
+
+  const draw = (to: Point) => {
+    const before = path.length;
+    add(to, lastPressure);
+    if (path.length === before) return;
+    if (perfect) render();
+    else {
+      const start = Math.max(0, before - 1);
+      painter.stamp(path.slice(start), brushOffsets(lastSize), pressures.slice(start));
+    }
+  };
 
   // Stabilizer: the brush point follows the pointer on a string, covering 1/strength of the gap per move
   let sx = p.x, sy = p.y;
@@ -639,13 +660,14 @@ function freehand(p: ToolPointer, kind: 'paint' | 'erase', label: string): Sessi
 
   return {
     move(q) {
-      const before = path.length;
-      add(follow(q));
-      if (path.length === before) return;
-      if (perfect) render();
-      else painter.stamp(path.slice(Math.max(0, before - 1)), brushOffsets(pressureSize()));
+      lastPressure = pressureFactor('opacity');
+      lastSize = pressureSize();
+      draw(follow(q));
     },
-    up() {
+    up(q) {
+      // Finish the stabilizer's tail at release. Pointer-up has no contact
+      // pressure, so keep the last in-contact opacity and brush size.
+      draw([q.x, q.y]);
       lastPoint = path[path.length - 1] ?? null;
       return true;
     },
@@ -1296,6 +1318,12 @@ export function outlinePreview(tool: ToolName) {
 /** Starts a tool interaction at sprite pixel position p. Returns null for instant actions. */
 export function beginSession(tool: ToolName, p: ToolPointer): Session | null {
   const { sprite } = state;
+  if (state.textAt && tool !== 'text') {
+    void state.finishText(true);
+    // A delayed font must finish its text transaction before another tool
+    // starts changing the same cel or floating pixels.
+    if (state.textAt) { state.showTip(t('text.loading')); return null; }
+  }
   state.hint = '';
   const guard = sprite.protectHistory();
   const custom = TOOLS.find(t => t.name === tool)?.session;
@@ -1453,7 +1481,7 @@ function start(tool: ToolName, p: ToolPointer): Session | null {
     state.showTip(!l ? 'No layer' : l.group ? 'Groups have no pixels of their own: pick a layer inside' : sprite.lockedDeep(sprite.layer) ? 'Layer is locked' : 'Layer is hidden');
     return null;
   }
-  sprite.dropFloating();
+  if (tool !== 'text') sprite.dropFloating();
 
   // The right button can be set to pick or erase instead of painting with the secondary color
   const right = p.secondary && state.ink !== 'shade' && tool !== 'eraser' ? state.prefs.rightClick : 'secondary';
@@ -1489,12 +1517,22 @@ function start(tool: ToolName, p: ToolPointer): Session | null {
       // Dragging the text being typed moves it; a press elsewhere applies it and starts a new box
       const f = sprite.floating, r = f?.result;
       if (state.textAt && f && r && p.x >= r.x && p.y >= r.y && p.x < r.x + r.bmp.w && p.y < r.y + r.bmp.h) {
-        const sx = p.x, sy = p.y, x0 = f.place.x, y0 = f.place.y;
-        return { move(q) { sprite.moveFloating(x0 + q.x - sx, y0 + q.y - sy); }, up: () => true };
+        const sx = p.x, sy = p.y, x0 = f.place.x, y0 = f.place.y, at = state.textAt;
+        return { move(q) {
+          sprite.moveFloating(x0 + q.x - sx, y0 + q.y - sy);
+          at.x = sprite.floating!.place.x; at.y = sprite.floating!.place.y;
+        }, up: () => true };
       }
-      state.finishText(true);
-      sprite.dropFloating();
-      return { move() { }, up(q) { state.textAt = { x: q.x, y: q.y }; return true; } };
+      const pending = state.finishText(true);
+      const start = (q: ToolPointer) => {
+        if (state.sprite !== sprite || state.tool !== 'text' || state.textAt) return;
+        sprite.dropFloating();
+        state.textAt = { x: q.x, y: q.y };
+      };
+      return { move() { }, up(q) {
+        void pending.then(applied => { if (applied) start(q); });
+        return true;
+      } };
     }
 
     case 'line': {

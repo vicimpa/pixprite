@@ -394,10 +394,10 @@ export const Home: FC = () => {
 
   useEffect(() => () => clearTimeout(clickTimer.current), []);
 
-  const create = (w: number, h: number) => {
-    const doc = state.newDocument();
+  const create = async (w: number, h: number) => {
+    const doc = await state.newDocument();
     doc.reset(w, h, 'untitled');
-    state.fit();
+    if (state.sprite === doc) state.fit();
     state.save();
   };
 

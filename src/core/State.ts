@@ -374,6 +374,8 @@ export class State {
   @prop stabilizer = 0;
   /** Text tool: where the text box sits (sprite pixels) while typing */
   @prop textAt: { x: number; y: number; } | null = null;
+  /** Flushes the current text draft, including a font that is still loading. */
+  prepareText: (() => void | Promise<void>) | null = null;
   @prop textFont = 'Pixelify Sans';
   @prop textSize = 16;
   @prop textBold = false;
@@ -873,9 +875,9 @@ export class State {
   }
 
   /** A loaded document in its own tab (shown right away) */
-  openDocument(doc: Sprite) {
+  async openDocument(doc: Sprite) {
     this.docs = [...this.docs, doc];
-    this.switchTo(doc);
+    await this.switchTo(doc);
   }
 
   /** Saves a loaded document as a project without opening it (files dropped on the home page) */
@@ -886,6 +888,8 @@ export class State {
   /** Ctrl+S */
   async saveNow() {
     const doc = this.sprite;
+    if (this.textAt) await this.finishText(true);
+    if (this.sprite !== doc) return;
     if (!this.docs.includes(doc)) return;
     clearTimeout(this.saveTimer);
     try {
@@ -919,7 +923,7 @@ export class State {
       doc.editor = await loadProjectState(id) ?? null;
       doc.markSaved();
       this.docs = [...this.docs, doc];
-      this.switchTo(doc);
+      await this.switchTo(doc);
       this.save();
     } catch (e) {
       this.showTip(`${t('recovery.openFailed')}: ${(e as Error).message}`, 6000);
@@ -934,7 +938,7 @@ export class State {
       const doc = new Sprite(1, 1);
       await doc.loadAsync(saved.data);
       doc.name = `${doc.name} (${t('recovery.copy')})`;
-      this.openDocument(doc);
+      await this.openDocument(doc);
       this.save();
       this.showNotice(t('recovery.openedCopy'));
     } catch (e) { this.showTip(`${t('recovery.failed')}: ${(e as Error).message}`, 5000); }
@@ -950,14 +954,19 @@ export class State {
     doc.name = `${doc.name} (${new Date(time).toLocaleString()})`;
     doc.projectId = null;
     doc.storedVersion = -1;
-    this.openDocument(doc);
+    await this.openDocument(doc);
     this.save();
   }
 
   /** Asks what to do with unsaved changes when a tab closes (set by the interface) */
   confirmClose: (doc: Sprite) => Promise<'save' | 'discard' | 'cancel'> = async () => 'discard';
 
-  showHome() {
+  private textNavigation = 0;
+
+  async showHome() {
+    const navigation = ++this.textNavigation;
+    if (this.textAt) await this.finishText(true);
+    if (navigation !== this.textNavigation) return;
     activeViewer.value = null;
     this.playing = false;
     this.sprite.dropFloating();
@@ -965,9 +974,16 @@ export class State {
     void this.persist();
   }
 
+  async showViewer(id: string) {
+    const navigation = ++this.textNavigation;
+    if (this.textAt) await this.finishText(true);
+    if (navigation === this.textNavigation && viewerTabs.peek().some(tab => tab.id === id)) activeViewer.value = id;
+  }
+
   // Documents
 
-  stepTab(direction: 1 | -1, wrap = true) {
+  async stepTab(direction: 1 | -1, wrap = true) {
+    if (this.textAt) await this.finishText(true);
     const tabs: (Sprite | string)[] = [...this.docs, ...viewerTabs.peek().map(tab => tab.id)];
     if (!tabs.length) return this.showHome();
     const current = activeViewer.peek() ?? (this.home ? null : this.sprite);
@@ -976,12 +992,15 @@ export class State {
     if (!wrap && index >= tabs.length) return;
     index = (index + tabs.length) % tabs.length;
     const tab = tabs[index];
-    if (typeof tab === 'string') activeViewer.value = tab;
-    else this.switchTo(tab);
+    if (typeof tab === 'string') await this.showViewer(tab);
+    else await this.switchTo(tab);
   }
 
   /** Shows another open document, keeping each one's camera */
-  switchTo(doc: Sprite) {
+  async switchTo(doc: Sprite) {
+    const navigation = ++this.textNavigation;
+    if (this.textAt && doc !== this.sprite) await this.finishText(true);
+    if (navigation !== this.textNavigation) return;
     activeViewer.value = null;
     if (!this.docs.includes(doc)) return;
     const wasHome = this.home;
@@ -1073,15 +1092,16 @@ export class State {
   }
 
   /** A fresh document in a new tab (open tabs are never replaced) */
-  newDocument() {
+  async newDocument() {
     const doc = new Sprite(32, 32);
     this.docs = [...this.docs, doc];
-    this.switchTo(doc);
+    await this.switchTo(doc);
     return doc;
   }
 
   /** Closes a tab; unsaved changes are saved or dropped as the user chooses */
   async closeDocument(doc = this.sprite) {
+    if (doc === this.sprite && this.textAt) await this.finishText(true);
     if (!this.docs.includes(doc)) return false;
     if (doc.modified) {
       const choice = await this.confirmClose(doc);
@@ -1106,7 +1126,7 @@ export class State {
     }
     if (doc === this.sprite) {
       // The tab to the right takes over, or the one to the left at the end
-      this.switchTo(rest[Math.min(i, rest.length - 1)]);
+      await this.switchTo(rest[Math.min(i, rest.length - 1)]);
     }
     this.docs = rest;
     doc.releaseEditorMemory();
@@ -1115,11 +1135,17 @@ export class State {
   }
 
   /** Ends typing with the text tool: applies the text (or throws it away) */
-  finishText(apply: boolean) {
+  async finishText(apply: boolean) {
     const sprite = this.sprite;
-    if (!this.textAt) return;
+    const at = this.textAt;
+    if (!at) return true;
+    if (apply) {
+      const pending = this.prepareText?.();
+      if (pending) await pending;
+      if (this.sprite !== sprite || this.textAt !== at) return false;
+    }
     if (sprite.floating) {
-      if (apply) {
+      if (apply && sprite.floating.src.data.some(pixel => pixel >>> 24)) {
         sprite.dropFloating();
         // The text is plain pixels now; no selection outline left behind
         sprite.mask = null;
@@ -1127,10 +1153,12 @@ export class State {
     }
     this.textAt = null;
     if (apply) this.save();
+    return true;
   }
 
   /** A copy of a document in a new tab */
   async duplicateDocument(doc = this.sprite) {
+    if (doc === this.sprite && this.textAt) await this.finishText(true);
     const raw = doc.captureDocument();
     raw.name = `${doc.name} copy`;
     const { data } = await runTask('prepareDocument', { raw });
@@ -1138,7 +1166,7 @@ export class State {
     await copy.loadAsync(data);
     copy.storedVersion = -1;
     this.docs = [...this.docs, copy];
-    this.switchTo(copy);
+    await this.switchTo(copy);
     this.save();
   }
 
@@ -1234,7 +1262,7 @@ export class State {
       }
       if (damaged) this.showTip(t('recovery.someFailed'), 6000);
       const active = this.docs.find(d => d.sessionId === session.active || d.projectId === session.active);
-      if (active) this.switchTo(active);
+      if (active) await this.switchTo(active);
       else this.home = true;
       this.restoring = false;
       await this.persist();
