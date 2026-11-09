@@ -22,9 +22,9 @@
 
 [Open the example project](docs/assets/beacon.pixprite) · [Recreate this screenshot](docs/development.md#documentation-images)
 
-> **Early development.** The latest release is [0.0.7](https://github.com/vicimpa/pixprite/releases/tag/v0.0.7). See the [release notes](docs/releases/v0.0.7.md) and [version history](docs/releases/README.md).
+> **Early development.** The latest release is [0.0.8](https://github.com/vicimpa/pixprite/releases/tag/v0.0.8). See the [release notes](docs/releases/v0.0.8.md) and [version history](docs/releases/README.md).
 
-[0.0.7](docs/releases/v0.0.7.md) adds local pen-pressure opacity, a COLOR popup with HEX/RGB, native screen color sampling, clearer pen controls and fixes for text editing.
+[0.0.8](docs/releases/v0.0.8.md) adds brush spacing and single stamps, bitmap brush scale/flips, full presets, brush import/export and filled shape previews.
 
 ## Make something pixel by pixel
 

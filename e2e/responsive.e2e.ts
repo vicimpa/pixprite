@@ -25,6 +25,8 @@ async function openEditor(page: Page, strings = en, large = false) {
 
 /** Detect clipping as well as scrollbars: overflow:hidden alone must not pass this check. */
 async function expectBarsFit(page: Page) {
+  // Let ResizeObserver move controls after a viewport change before inspecting/clicking More.
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   await expect.poll(() => page.locator('[data-adaptive-bar], [data-tool-palette]').evaluateAll(bars => bars.flatMap(bar => {
     const r = bar.getBoundingClientRect();
     const lane = bar.hasAttribute('data-adaptive-bar') ? bar.querySelector(':scope > div')! : bar;

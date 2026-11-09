@@ -229,6 +229,7 @@ export function pickFiles(accept: string, multiple = false) {
     input.accept = accept;
     input.multiple = multiple;
     input.onchange = () => resolve([...input.files ?? []]);
+    input.addEventListener('cancel', () => resolve([]), { once: true });
     input.click();
   });
 }

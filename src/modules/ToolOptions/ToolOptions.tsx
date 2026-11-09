@@ -15,6 +15,8 @@ import { useEffect, useRef, useState, type FC, type ReactNode } from "react";
 import styled from "styled-components";
 import * as styled2 from "./styled";
 
+import BrushSettings from './BrushSettings';
+
 const Bar = styled.div`
   position: absolute;
   inset: 0;
@@ -45,13 +47,13 @@ const PopupRow = styled.div`
 `;
 
 /** Advanced brush settings have their own anchored palette. */
-const More: FC<{ children: ReactNode; pen?: boolean; }> = ({ children, pen }) => {
+const More: FC<{ children: ReactNode; pen?: boolean; extra?: ReactNode; }> = ({ children, pen, extra }) => {
   const [open, setOpen] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
   return <>
     <Button ref={btn} $active={open} title={t('options.moreBrushSettings')} aria-label={t('options.moreBrushSettings')} aria-haspopup="dialog" aria-expanded={open}
       onClick={() => setOpen(!open)}><Icon name="gear" scale="glyph" />{pen && t('options.penSettings')}</Button>
-    <FloatingPanel anchor={btn.current} open={open} label={t('options.moreBrushSettings')} onClose={() => setOpen(false)}>{children}</FloatingPanel>
+    <FloatingPanel anchor={btn.current} open={open} label={t('options.moreBrushSettings')} onClose={() => setOpen(false)}>{children}{extra}</FloatingPanel>
   </>;
 };
 
@@ -168,7 +170,7 @@ const Presets: FC = () => {
     </Label>
     <Button $square title={t('options.saveTheCurrentTool')} onClick={async () => {
       const name = (await askText(t('options.presetName'), picked || `${t(toolDef(state.tool).title)} ${list.length + 1}`))?.trim();
-      if (name) { savePreset(name); setPicked(name); }
+      if (name && savePreset(name)) setPicked(name);
     }}>+</Button>
     {list.some(p => p.name === picked) && (
       <Button $square title={t('options.deleteThisPreset')} onClick={() => { deletePreset(picked); setPicked(''); }}><Icon name="trash" scale="glyph" /></Button>
@@ -231,6 +233,7 @@ export const ToolOptions: FC = () => {
   const def = toolDef(tool);
   const has = (list: string[]) => list.includes(tool);
   const floating = !!state.sprite.floating;
+  const shape = tool === 'rect' || tool === 'ellipse' || tool === 'polygon';
   // Opacity only matters for blending inks, custom brushes and effect tools
   const showOpacity = has(EFFECTS) || tool === 'gradient' || has(INK) && (state.ink === 'alpha' || state.ink === 'lockAlpha' || !!state.customBrush);
 
@@ -238,6 +241,13 @@ export const ToolOptions: FC = () => {
     <Bar>
       <AdaptiveBar label={t('options.moreControls')} leading={<ToolName title={t(def.title)}>{t(def.title)}</ToolName>}>
         <AdaptiveItem priority={-10}><Presets /></AdaptiveItem>
+
+        {shape && <AdaptiveItem priority={100}>
+          <div role="group" aria-label={t('options.shapeDrawing')} style={{ display: 'flex', gap: 4 }}>
+            <Button $active={!state.filled} aria-pressed={!state.filled} onClick={() => { state.filled = false; }}>{t('options.shapeOutline')}</Button>
+            <Button $active={state.filled} aria-pressed={state.filled} onClick={() => { state.filled = true; }}>{t('options.filled')}</Button>
+          </div>
+        </AdaptiveItem>}
 
         {has(BRUSH) && !state.customBrush && <>
           <AdaptiveItem priority={10}><Button $square $active={state.brushShape === 'square'} title={t('options.squareBrush')} onClick={() => { state.brushShape = 'square'; }}><Icon name="square" scale="glyph" /></Button>
@@ -251,7 +261,9 @@ export const ToolOptions: FC = () => {
         </>}
 
         {has(INK) && state.customBrush && <>
-          <Muted>Custom brush {state.customBrush.bmp.w}×{state.customBrush.bmp.h}</Muted>
+          <Muted>{t('options.customBrush')} {state.customBrush.bmp.w}×{state.customBrush.bmp.h}</Muted>
+          <Num label={t('options.angle')} value={state.brushAngle} min={-180} max={180} set={v => { state.brushAngle = v; }} />
+          <Label><Check checked={!!state.customBrush.tint} onChange={e => { state.customBrush = { ...state.customBrush!, tint: e.target.checked }; }} />{t('options.brushTint')}</Label>
           <Label title={t('options.howTheBrushPattern')}>
             {t('common.pattern')}
             <Select value={state.customBrush.align} onChange={e => { state.customBrush = { ...state.customBrush!, align: e.target.value as 'source' | 'stroke' | 'dab' }; }}>
@@ -268,10 +280,6 @@ export const ToolOptions: FC = () => {
             onClick={() => { state.pixelPerfect = !state.pixelPerfect; }}>
             <Icon name="pixelPerfect" scale="glyph" /> {t('options.cleanLines')}
           </Button>
-        )}
-
-        {(tool === 'rect' || tool === 'ellipse') && (
-          <Label><Check checked={state.filled} onChange={e => { state.filled = e.target.checked; }} /> {t('options.filled')}</Label>
         )}
 
         {(tool === 'rect' || tool === 'marquee') && (
@@ -431,7 +439,8 @@ export const ToolOptions: FC = () => {
 
         {(has(INK) || tool === 'eraser') && <>
           <Separator />
-          <More pen={tool === 'pencil' || tool === 'eraser' || tool === 'spray'}>
+          <AdaptiveItem priority={40}><More pen={tool === 'pencil' || tool === 'eraser' || tool === 'spray'}
+            extra={(tool === 'pencil' || tool === 'eraser' || tool === 'spray') && <PopupRow><BrushSettings stamps={tool !== 'eraser'} stroke={tool !== 'spray'} /></PopupRow>}>
             {(tool === 'pencil' || tool === 'eraser' || tool === 'spray') && <PopupRow><Pressure spray={tool === 'spray'} /></PopupRow>}
             {(tool === 'pencil' || tool === 'eraser') && (
               <Num label={t('options.stabilizer')} value={state.stabilizer} min={0} max={64} set={v => { state.stabilizer = v; }}
@@ -454,7 +463,7 @@ export const ToolOptions: FC = () => {
           <Button title={t('options.opaquePixelsOfThe')} onClick={() => runCommand('edit.patternFromSelection')}>{t('options.patternFromSelection')}</Button>
             </PopupRow>}
             {has(INK) && <PopupRow><BrushLibrary /></PopupRow>}
-          </More>
+          </More></AdaptiveItem>
         </>}
 
         {has(SYMMETRY) && <AdaptiveItem priority={-5}>

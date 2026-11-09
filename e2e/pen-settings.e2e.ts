@@ -51,6 +51,9 @@ for (const language of ['en', 'ru']) for (const width of [1280, 800]) test(`pen 
   await panel.getByRole('checkbox', { name: language === 'ru' ? 'Нажим → прозрачность' : 'Pressure → opacity', exact: true }).check();
   await panel.getByRole('checkbox', { name: language === 'ru' ? 'Нажим → размер' : 'Pressure → size', exact: true }).check();
   await expect(panel.getByRole('spinbutton', { name: language === 'ru' ? 'Минимум, %' : 'Minimum, %', exact: true })).toBeVisible();
+  await panel.getByRole('button', { name: language === 'ru' ? 'Штамп' : 'Stamp', exact: true }).click();
+  await page.getByRole('option', { name: language === 'ru' ? 'Сердце' : 'Heart', exact: true }).click();
+  await expect(panel.getByRole('spinbutton', { name: language === 'ru' ? 'Масштаб кисти, %' : 'Brush scale, %', exact: true })).toBeVisible();
   const bounds = await panel.evaluate(el => {
     const r = el.getBoundingClientRect();
     const controls = [...el.querySelectorAll('input,button')].map(control => control.getBoundingClientRect());

@@ -27,6 +27,16 @@ Browser regressions задерживают/обрывают основной с�
 
 ## PWA и offline
 
+Для рабочего состава 0.0.8 лимиты увеличены на 4 KiB каждый относительно 0.0.7:
+initial 532 KiB (544768 байт), total 564 KiB (577536 байт), gzip level 9.
+Добавлены штампы, динамика угла и управление заливкой фигур; один встроенный
+UI-бандл и самостоятельный Worker сохраняются. Исторические размеры выше
+описывают переход на общий UI kit, текущие пределы задаёт `scripts/bundle-budgets.json`.
+
+Полные пресеты кистей, шаг/масштаб/отражения и импорт/экспорт добавили около 2.8 KiB
+gzip к первому варианту 0.0.8. Initial budget дополнительно увеличен на 1 KiB
+до 533 KiB (545792 байт); общий предел 564 KiB сохранён.
+
 Production SW precache-ит полный build: HTML, browser bundle, Worker, CSS, словари, шрифты и public-файлы. После установки и первого controlled открытия встроенные функции доступны offline. Версионирование release snapshots, integrity, отложенная активация и сохранность документов описаны в [service-worker.md](service-worker.md).
 
 `public/manifest.webmanifest` уже объявляет `file_handlers` для `.pixprite`, `.aseprite`/`.ase`, PNG/GIF/WebP/JPEG и палитр GPL/PAL/HEX/ACT. В установленной настольной PWA Chromium эти ассоциации могут появляться в системном «Открыть с помощью»; выбор обработчика и разрешение контролируются браузером/ОС. Это требует установки с HTTPS или localhost и не является универсальной возможностью всех браузеров. См. [File Handling API Chrome](https://developer.chrome.com/docs/capabilities/web-apis/file-handling).

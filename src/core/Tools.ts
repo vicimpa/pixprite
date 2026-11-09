@@ -7,6 +7,9 @@ import { referenceImage } from "~/core/Reference";
 import { sliceKey, type Guide, type RefImage, type SliceKey } from "~/core/Sprite";
 import { placementCorners, type Placement } from "~/core/Transform";
 import { t } from "~/core/i18n";
+import { computeBrushAngle } from '~/core/BrushDynamics';
+import { transformBrush } from '~/core/BrushStamp';
+import { BrushSpacing } from './BrushSpacing';
 
 export type Point = [x: number, y: number];
 
@@ -28,12 +31,16 @@ export type ToolPointer = {
 };
 
 /** Live pen input: pressure 0..1 while a pen touches the canvas; `active` is false for mouse and touch */
-export const pen = { active: false, pressure: 1 };
+export const pen = { active: false, pressure: 1, tiltX: undefined as number | undefined,
+  tiltY: undefined as number | undefined, twist: undefined as number | undefined };
 
 /** Updates the pen state from a pointer event (call on every pointer event of the canvas) */
-export function trackPen(e: { pointerType?: string; pressure?: number; buttons?: number; }) {
+export function trackPen(e: { pointerType?: string; pressure?: number; buttons?: number; tiltX?: number; tiltY?: number; twist?: number; }) {
   pen.active = e.pointerType === 'pen' && (e.buttons ?? 1) !== 0;
   if (pen.active) pen.pressure = Math.max(0, Math.min(1, e.pressure ?? 1));
+  pen.tiltX = pen.active ? e.tiltX : undefined;
+  pen.tiltY = pen.active ? e.tiltY : undefined;
+  pen.twist = pen.active ? e.twist : undefined;
 }
 
 /** Share 0..1 a pressure-mapped parameter gets now: 1 unless a pen is used and the parameter is mapped */
@@ -459,6 +466,19 @@ class Painter {
   anchor: Point | null = null;
   /** Opacity follows pen pressure (freehand tools) */
   pressured = false;
+  angle = state.brushAngle;
+  scale = state.brushScale / 100;
+  private brushCache?: { source: Bitmap; angle: number; scale: number; flipX: boolean; flipY: boolean; dab: ReturnType<typeof transformBrush> };
+
+  brushDab() {
+    const source = state.customBrush!.bmp;
+    const flipX = state.brushFlipX, flipY = state.brushFlipY;
+    const cached = this.brushCache;
+    if (cached && cached.source === source && cached.angle === this.angle && cached.scale === this.scale && cached.flipX === flipX && cached.flipY === flipY) return cached.dab;
+    const dab = transformBrush(source, this.angle, this.scale, flipX, flipY);
+    this.brushCache = { source, angle: this.angle, scale: this.scale, flipX, flipY, dab };
+    return dab;
+  }
 
   constructor(public kind: 'paint' | 'erase', public alt: boolean, label: string, public mode: PaintMode = 'stroke', public dry = false) {
     if (!dry) this.sprite.checkpoint(label);
@@ -495,7 +515,7 @@ class Painter {
     return this.mode === 'overlap' ? this.cel[i] : this.origin[i];
   }
 
-  ink(i: number, x: number, y: number, pf = this.pressured ? pressureFactor('opacity') : 1) {
+  ink(i: number, x: number, y: number, pf = this.pressured ? pressureFactor('opacity') : 1, brushPixel?: number) {
     const src = this.src(i);
     const op = state.opacity / 255 * pf;
 
@@ -511,10 +531,12 @@ class Painter {
 
     const brush = state.customBrush;
     if (brush) {
+      const { bmp } = this.brushDab();
       const a = this.anchor ?? [x, y];
-      const bx = ((x - a[0]) % brush.bmp.w + brush.bmp.w) % brush.bmp.w;
-      const by = ((y - a[1]) % brush.bmp.h + brush.bmp.h) % brush.bmp.h;
-      const v = brush.bmp.data[by * brush.bmp.w + bx];
+      const bx = ((x - a[0]) % bmp.w + bmp.w) % bmp.w;
+      const by = ((y - a[1]) % bmp.h + bmp.h) % bmp.h;
+      const raw = brushPixel ?? bmp.data[by * bmp.w + bx];
+      const v = brush.tint ? withAlpha(this.primary, (this.primary >>> 24) * (raw >>> 24) / 255) : raw;
       return blendOver(src, withAlpha(v, (v >>> 24) * op));
     }
 
@@ -547,30 +569,32 @@ class Painter {
     }
   }
 
-  pixel(x: number, y: number, pressure?: number) {
+  pixel(x: number, y: number, pressure?: number, brushPixel?: number) {
     for (const [i, tx, ty] of this.targets(x, y)) {
       if (this.mode === 'stroke') {
         if (this.painted[i]) continue;
         this.painted[i] = 1;
       }
-      this.cel[i] = this.ink(i, tx, ty, pressure);
+      this.cel[i] = this.ink(i, tx, ty, pressure, brushPixel);
     }
   }
 
   stamp(points: Point[], offsets: Point[] = brushOffsets(), pressures?: readonly number[]) {
     const b = state.customBrush;
     if (b && this.kind === 'paint') {
-      const shape: Point[] = [];
-      const hx = Math.floor(b.bmp.w / 2), hy = Math.floor(b.bmp.h / 2);
-      for (let y = 0; y < b.bmp.h; y++)
-        for (let x = 0; x < b.bmp.w; x++)
-          if (b.bmp.data[y * b.bmp.w + x] >>> 24) shape.push([x - hx, y - hy]);
+      const dab = this.brushDab(), { bmp } = dab;
+      const shape: [number, number, number][] = [];
+      for (let y = 0; y < bmp.h; y++)
+        for (let x = 0; x < bmp.w; x++) {
+          const v = bmp.data[y * bmp.w + x];
+          if (v >>> 24) shape.push([x + dab.x, y + dab.y, v]);
+        }
       for (let n = 0; n < points.length; n++) {
         const [px, py] = points[n];
         // The pattern follows each dab, starts at the stroke start, or stays where it was captured
         if (b.align === 'dab' || !this.anchor)
-          this.anchor = b.align === 'source' ? [b.ox, b.oy] : [px - hx, py - hy];
-        for (const [ox, oy] of shape) this.pixel(px + ox, py + oy, pressures?.[n]);
+          this.anchor = b.align === 'source' ? [b.ox, b.oy] : [px + dab.x, py + dab.y];
+        for (const [ox, oy, v] of shape) this.pixel(px + ox, py + oy, pressures?.[n], b.align === 'dab' ? v : undefined);
       }
     } else {
       for (let n = 0; n < points.length; n++) {
@@ -587,6 +611,14 @@ class Painter {
     this.sprite.putCanvas(this.cel);
   }
 
+  /** Fill a geometric region without expanding it by the brush footprint. */
+  fill(points: Point[]) {
+    const b = state.customBrush;
+    this.anchor ??= b?.align === 'source' ? [b.ox, b.oy] : [0, 0];
+    for (const [x, y] of points) this.pixel(x, y);
+    if (!this.dry) this.commit();
+  }
+
   reset() {
     this.cel.set(this.origin);
     this.painted.fill(0);
@@ -598,12 +630,33 @@ class Painter {
 function freehand(p: ToolPointer, kind: 'paint' | 'erase', label: string): Session {
   const painter = new Painter(kind, p.secondary, label);
   painter.pressured = true;
-  const perfect = state.pixelPerfect && state.brushSize === 1 && !state.customBrush;
+  const spacing = state.brushSpacing;
+  const perfect = state.pixelPerfect && state.brushSize === 1 && !state.customBrush && !spacing;
   const path: Point[] = [];
   // Each new pixel uses the pressure of the pointer sample that adds it. Replays
   // retain these factors rather than applying the newest pressure to the path.
   const pressures: number[] = [];
   let lastPressure = pressureFactor('opacity'), lastSize = pressureSize();
+  let previous = { x: p.x, y: p.y };
+  const updateDab = (q: ToolPointer) => {
+    painter.angle = computeBrushAngle(pen, state.brushAngleDynamics, state.brushAngle, q, previous, painter.angle);
+    painter.scale = state.brushScale / 100 * pressureFactor('size');
+    previous = { x: q.x, y: q.y };
+  };
+  updateDab(p);
+
+  if (state.brushMode === 'stamp') {
+    painter.stamp([[p.x, p.y]], brushOffsets(lastSize, state.brushShape, painter.angle), [lastPressure]);
+    return { move() {}, up() { lastPoint = [p.x, p.y]; return true; } };
+  }
+  const spacedStart: Point = p.shift && lastPoint ? lastPoint : [p.x, p.y];
+  const sampler = spacing ? new BrushSpacing(spacedStart) : null;
+  const spaced = (to: Point) => {
+    const b = kind === 'paint' ? state.customBrush : null;
+    const size = b ? Math.max(1, Math.min(4096, Math.round(Math.max(b.bmp.w, b.bmp.h) * painter.scale))) : lastSize;
+    const points = sampler!.advance(to, size * spacing / 100);
+    if (points.length) painter.stamp(points, brushOffsets(lastSize, state.brushShape, painter.angle), points.map(() => lastPressure));
+  };
 
   const render = () => {
     painter.reset();
@@ -635,17 +688,21 @@ function freehand(p: ToolPointer, kind: 'paint' | 'erase', label: string): Sessi
 
   if (p.shift && lastPoint) { path.push(lastPoint); pressures.push(lastPressure); }
   add([p.x, p.y], lastPressure);
-  if (perfect) render();
-  else painter.stamp(path, brushOffsets(lastSize), pressures);
+  if (sampler) {
+    painter.stamp([spacedStart], brushOffsets(lastSize, state.brushShape, painter.angle), [lastPressure]);
+    spaced([p.x, p.y]);
+  } else if (perfect) render();
+  else painter.stamp(path, brushOffsets(lastSize, state.brushShape, painter.angle), pressures);
 
   const draw = (to: Point) => {
+    if (sampler) { spaced(to); return; }
     const before = path.length;
     add(to, lastPressure);
     if (path.length === before) return;
     if (perfect) render();
     else {
       const start = Math.max(0, before - 1);
-      painter.stamp(path.slice(start), brushOffsets(lastSize), pressures.slice(start));
+      painter.stamp(path.slice(start), brushOffsets(lastSize, state.brushShape, painter.angle), pressures.slice(start));
     }
   };
 
@@ -662,13 +719,14 @@ function freehand(p: ToolPointer, kind: 'paint' | 'erase', label: string): Sessi
     move(q) {
       lastPressure = pressureFactor('opacity');
       lastSize = pressureSize();
+      updateDab(q);
       draw(follow(q));
     },
     up(q) {
       // Finish the stabilizer's tail at release. Pointer-up has no contact
       // pressure, so keep the last in-contact opacity and brush size.
       draw([q.x, q.y]);
-      lastPoint = path[path.length - 1] ?? null;
+      lastPoint = sampler ? [q.x, q.y] : path[path.length - 1] ?? null;
       return true;
     },
   };
@@ -681,7 +739,7 @@ let lastPoint: Point | null = null;
  * Two-point shapes: re-rendered from the original on every move so modifiers can change live.
  * Space held while dragging moves the whole shape instead of resizing it.
  */
-function twoPoint(p: ToolPointer, painter: Painter, draw: (a: Point, b: Point, p: ToolPointer) => { points: Point[]; offsets?: Point[]; }, info: (a: Point, b: Point) => string): Session {
+function twoPoint(p: ToolPointer, painter: Painter, draw: (a: Point, b: Point, p: ToolPointer) => { points: Point[]; offsets?: Point[]; fill?: boolean; }, info: (a: Point, b: Point) => string): Session {
   let start: Point = [p.x, p.y];
   let end: Point = [p.x, p.y];
   let moving: Point | null = null;
@@ -704,8 +762,8 @@ function twoPoint(p: ToolPointer, painter: Painter, draw: (a: Point, b: Point, p
       }
       markSnap(lines);
       painter.reset();
-      const { points, offsets } = draw(start, end, q);
-      painter.stamp(points, offsets);
+      const { points, offsets, fill } = draw(start, end, q);
+      if (fill) painter.fill(points); else painter.stamp(points, offsets);
       session.info = info(start, end);
     },
     up: () => true,
@@ -802,7 +860,8 @@ function fillPolygon(painter: Painter, points: Point[]) {
   const m = Mask.polygon(sprite.width, sprite.height, points);
   const pts: Point[] = [];
   for (let i = 0; i < m.data.length; i++) if (m.data[i]) pts.push([i % sprite.width, (i / sprite.width) | 0]);
-  painter.stamp(pts, [[0, 0]]);
+  for (let i = 0; i < points.length; i++) pts.push(...linePoints(points[i], points[(i + 1) % points.length]));
+  painter.fill(pts);
 }
 
 /** Every channel within ±tolerance; two fully transparent pixels always match */
@@ -1255,6 +1314,7 @@ function spraySession(p: ToolPointer): Session {
   const painter = new Painter('paint', p.secondary, 'Spray', 'overlap');
   painter.pressured = true;
   let at: Point = [p.x, p.y];
+  let previous = { x: p.x, y: p.y };
   let carry = 0;
   const spray = () => {
     const r = state.sprayWidth / 2;
@@ -1266,7 +1326,11 @@ function spraySession(p: ToolPointer): Session {
       const angle = Math.random() * Math.PI * 2, dist = Math.sqrt(Math.random()) * r;
       points.push([Math.round(at[0] + Math.cos(angle) * dist), Math.round(at[1] + Math.sin(angle) * dist)]);
     }
-    painter.stamp(points, brushOffsets(pressureSize()));
+    const current = { x: at[0], y: at[1] };
+    painter.angle = computeBrushAngle(pen, state.brushAngleDynamics, state.brushAngle, current, previous, painter.angle);
+    painter.scale = state.brushScale / 100 * pressureFactor('size');
+    previous = current;
+    painter.stamp(points, brushOffsets(pressureSize(), state.brushShape, painter.angle));
   };
   spray();
   return {
@@ -1303,7 +1367,10 @@ export function previewDab(tool: ToolName, x: number, y: number): Uint32Array | 
   const { sprite } = state;
   if (!sprite.editable || sprite.floating || !PAINT_TOOLS.includes(tool)) return null;
   const painter = new Painter('paint', false, '', 'stroke', true);
-  painter.stamp([[x, y]], tool === 'fill' || tool === 'contour' || tool === 'polygon' ? [[0, 0]] : brushOffsets());
+  painter.angle = computeBrushAngle(pen, state.brushAngleDynamics, state.brushAngle);
+  painter.scale = state.brushScale / 100 * pressureFactor('size');
+  if (tool === 'fill' || tool === 'contour' || tool === 'polygon' && state.filled || (tool === 'rect' || tool === 'ellipse') && state.filled) painter.fill([[x, y]]);
+  else painter.stamp([[x, y]], brushOffsets(pressureSize(), state.brushShape, painter.angle));
   return painter.cel;
 }
 
@@ -1574,7 +1641,7 @@ function start(tool: ToolName, p: ToolPointer): Session | null {
         const [a, b] = box;
         const fn = tool === 'rect' ? (s: Point, e: Point, f: boolean) => rectPoints(s, e, f, state.cornerRadius) : ellipsePoints;
         const points = angle % 360 ? rotatedShape(fn(a, b, true), a, b, angle, state.filled) : fn(a, b, state.filled);
-        return state.filled ? { points, offsets: [[0, 0]] } : { points };
+        return { points, fill: state.filled };
       }, () => `${Math.abs(box[1][0] - box[0][0]) + 1}×${Math.abs(box[1][1] - box[0][1]) + 1}${tool === 'rect' && state.cornerRadius ? ` · r${state.cornerRadius}` : ''}${angle % 360 ? ` · ${(((angle % 360) + 360) % 360).toFixed(1)}°` : ''}`);
     }
 
@@ -1587,13 +1654,11 @@ function start(tool: ToolName, p: ToolPointer): Session | null {
         move(q) {
           const last = points[points.length - 1];
           if (last[0] !== q.x || last[1] !== q.y) points.push([q.x, q.y]);
-          painter.reset();
-          painter.stamp(points);
+          fillPolygon(painter, points);
         },
         up() {
           session.preview = null;
           fillPolygon(painter, points);
-          painter.stamp(points);
           return true;
         },
       };
@@ -1605,8 +1670,11 @@ function start(tool: ToolName, p: ToolPointer): Session | null {
       const painter = new Painter('paint', p.secondary, 'Polygon');
       return multiClick(p, (points, done) => {
         painter.reset();
-        if (done) fillPolygon(painter, points);
-        else for (let i = 1; i < points.length; i++) painter.stamp(linePoints(points[i - 1], points[i]));
+        if (state.filled) fillPolygon(painter, points);
+        else {
+          for (let i = 1; i < points.length; i++) painter.stamp(linePoints(points[i - 1], points[i]));
+          if (done && points.length > 1) painter.stamp(linePoints(points[points.length - 1], points[0]));
+        }
       });
     }
 

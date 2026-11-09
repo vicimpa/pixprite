@@ -94,7 +94,7 @@ function checkCore() {
 
   for (const file of files(SRC)) {
     const text = readFileSync(file, 'utf8');
-    const rel = file.slice(ROOT.length + 1);
+    const rel = file.slice(ROOT.length + 1).replace(/\\/g, '/');
     // RPC method names of the extension protocol (`extensions.get`, `locks.set`) look like keys but aren't
     const rpc = rel === 'src/core/extensions/protocol.ts' || rel.startsWith('src/core/extensions/api/');
     // String literals found by the TypeScript parser (quotes inside JSX text don't confuse it)

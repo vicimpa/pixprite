@@ -28,3 +28,6 @@ Thumbs.db
 # Tauri generated schemas and Rust fallback output
 /src-tauri/gen/
 /src-tauri/target/
+
+# Read-only clones and other temporary research files
+/.tmp/

@@ -3,7 +3,7 @@ import { t } from "~/core/i18n";
 import { Color } from "~/core/Color";
 import { held, onModifiers } from "~/core/Hotkeys";
 import type { Mask } from "~/core/Mask";
-import { state } from "~/core/State";
+import { state, type CustomBrush } from "~/core/State";
 import {
   active, beginSession, beginTransform, brushOffsets, currentPlacement, EFFECT_TOOLS, handlePoints, hitHandle, hitSlice, PAINT_TOOLS, sliceCursor,
   outlinePreview, previewDab, referenceCorners, trackPen, SELECT_TOOLS, selectGridCell, type Handle, type ToolPointer,
@@ -207,7 +207,7 @@ export const View: FC = () => {
   /** Last mouse position in viewport pixels, to recompute the hovered sprite pixel when the camera moves */
   const lastPointer = useRef<{ sx: number; sy: number; mods: Mods; } | null>(null);
   const hover = useRef<Handle | 'symX' | 'symY' | null>(null);
-  const preview = useRef<{ key: string; data: Uint32Array | null; }>({ key: '', data: null });
+  const preview = useRef<{ key: string; data: Uint32Array | null; brush?: CustomBrush | null }>({ key: '', data: null });
   /** Touch points in view pixels; two of them pan and pinch-zoom */
   const touches = useRef(new Map<number, { x: number; y: number; }>());
   const gesture = useRef<{ d0: number; z0: number; px: number; py: number; } | null>(null);
@@ -663,8 +663,8 @@ export const View: FC = () => {
     const { cursorX: cx, cursorY: cy } = state;
     let override: { layer: number; data: Uint32Array; } | undefined;
     if (prefs.brushPreview === 'full' && !s && lp && !pan.current && !state.playing && sprite.inBounds(cx, cy) && !outlinePreview(tool)) {
-      const key = `${sprite.version}:${tool}:${cx}:${cy}:${state.colorA.toHexString(true)}:${state.brushSize}:${state.brushShape}:${state.brushAngle}:${state.ink}:${state.opacity}:${state.symmetryX}:${state.symmetryY}:${state.symmetryD1}:${state.symmetryD2}`;
-      if (preview.current.key !== key) preview.current = { key, data: previewDab(tool, cx, cy) };
+      const key = `${sprite.version}:${tool}:${cx}:${cy}:${state.colorA.toHexString(true)}:${state.brushSize}:${state.brushShape}:${state.brushAngle}:${state.brushAngleDynamics}:${state.brushScale}:${state.brushFlipX}:${state.brushFlipY}:${state.filled}:${state.ink}:${state.opacity}:${state.symmetryX}:${state.symmetryY}:${state.symmetryD1}:${state.symmetryD2}`;
+      if (preview.current.key !== key || preview.current.brush !== state.customBrush) preview.current = { key, data: previewDab(tool, cx, cy), brush: state.customBrush };
       if (preview.current.data) override = { layer: sprite.layer, data: preview.current.data };
     }
 

@@ -21,6 +21,8 @@ import type { TilesetMode } from "~/core/Tilemap";
 import { historyLimits, Sprite, type Guide, type Range, type RangeClip } from "~/core/Sprite";
 import { prop, reactive } from "@vicimpa/decorators";
 import { batch, effect, untracked } from "@preact/signals-react";
+import type { BrushAngleDynamics } from './BrushDynamics';
+import type { BrushParameters } from './BrushParameters';
 
 /** Default palette: 32 hand-picked colors, dark to light per hue ramp */
 export const DEFAULT_PALETTE = [
@@ -53,11 +55,11 @@ export type PivotAnchor = 'nw' | 'n' | 'ne' | 'w' | 'center' | 'e' | 'sw' | 's' 
 export type OnionMode = 'merge' | 'tint';
 
 /** A brush captured from pixels; `align` decides how its pattern lines up while painting */
-export type CustomBrush = { bmp: Bitmap; ox: number; oy: number; align: 'source' | 'stroke' | 'dab'; };
+export type CustomBrush = { bmp: Bitmap; ox: number; oy: number; align: 'source' | 'stroke' | 'dab'; tint?: boolean; stampId?: string; };
 /** A saved brush or two-color pattern in JSON-friendly form (pixels as base64 RGBA or bits) */
-export type LibraryItem = { id: string; name: string; kind: 'brush' | 'pattern'; w: number; h: number; data: string; ox?: number; oy?: number; align?: CustomBrush['align']; };
+export type LibraryItem = { id: string; name: string; kind: 'brush' | 'pattern'; w: number; h: number; data: string; ox?: number; oy?: number; align?: CustomBrush['align']; tint?: boolean; stampId?: string; settings?: BrushParameters; };
 /** Named tool settings switched in one click */
-export type ToolPreset = { name: string; tool: ToolName; values: Record<string, unknown>; };
+export type ToolPreset = { name: string; tool: ToolName; values: Record<string, unknown>; brush?: LibraryItem | null; pattern?: LibraryItem | null; };
 /** Pen pressure mapping: which parameters follow the pressure, and the lowest share it scales down to (%) */
 export type PressureMap = { size: boolean; opacity: boolean; density: boolean; min: number; };
 export type Theme = string;
@@ -273,7 +275,7 @@ function decodeMask(e: EncodedMask) {
 
 /** State fields remembered per project (besides colors, palette and camera) */
 const EDITOR_KEYS = [
-  'tool', 'brushSize', 'brushShape', 'brushAngle', 'ink', 'opacity', 'pixelPerfect', 'filled', 'cornerRadius',
+  'tool', 'brushSize', 'brushShape', 'brushAngle', 'brushAngleDynamics', 'brushScale', 'brushFlipX', 'brushFlipY', 'brushMode', 'brushSpacing', 'ink', 'opacity', 'pixelPerfect', 'filled', 'cornerRadius',
   'contiguous', 'tolerance', 'sampleAll', 'fillDiagonal', 'paintPattern', 'patternDensity', 'pickMerged', 'pickChannel', 'stopAtGrid', 'sprayWidth', 'spraySpeed',
   'gradientType', 'gradientDither', 'stabilizer', 'selectMode', 'autoSelectLayer', 'pivotAnchor',
   'textFont', 'textSize', 'textBold', 'textItalic', 'textAntialias',
@@ -337,6 +339,12 @@ export class State {
   @prop brushSize = 1;
   @prop brushShape: BrushShape = 'square';
   @prop brushAngle = 0;
+  @prop brushAngleDynamics: BrushAngleDynamics = 'fixed';
+  @prop brushScale = 100;
+  @prop brushFlipX = false;
+  @prop brushFlipY = false;
+  @prop brushMode: 'continuous' | 'stamp' = 'continuous';
+  @prop brushSpacing = 0;
   @prop customBrush: CustomBrush | null = null;
   @prop ink: Ink = 'simple';
   @prop stopAtGrid = true;
@@ -1054,6 +1062,12 @@ export class State {
     this.sprite.lastExport = readLastExport(e.lastExport);
     const self = this as unknown as Record<string, unknown>;
     for (const k of EDITOR_KEYS) if (k in e && e[k] !== undefined) self[k] = e[k];
+    this.brushAngleDynamics = ['fixed', 'stroke', 'tilt', 'twist'].includes(e.brushAngleDynamics as string)
+      ? e.brushAngleDynamics as BrushAngleDynamics : 'fixed';
+    this.brushScale = typeof e.brushScale === 'number' && Number.isFinite(e.brushScale) ? Math.max(1, Math.min(400, e.brushScale)) : 100;
+    this.brushFlipX = e.brushFlipX === true; this.brushFlipY = e.brushFlipY === true;
+    this.brushMode = e.brushMode === 'stamp' ? 'stamp' : 'continuous';
+    this.brushSpacing = typeof e.brushSpacing === 'number' && Number.isFinite(e.brushSpacing) ? Math.max(0, Math.min(1000, e.brushSpacing)) : 0;
     if (!Array.isArray(e.docBrushes)) this.docBrushes = [];
     if (typeof e.colorA === 'string') this.colorA = Color.fromHex(e.colorA);
     if (typeof e.colorB === 'string') this.colorB = Color.fromHex(e.colorB);
