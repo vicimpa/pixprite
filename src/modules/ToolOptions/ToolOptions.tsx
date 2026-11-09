@@ -294,7 +294,7 @@ export const ToolOptions: FC = () => {
           )}
         </>}
 
-        {/* has(BRUSH) && <AdaptiveItem priority={30}><AngleDynamics /></AdaptiveItem> */}
+        {has(BRUSH) && <AdaptiveItem priority={30}><AngleDynamics /></AdaptiveItem>}
 
         {has(INK) && state.customBrush && <>
           <Muted>{state.activeStamp ? t(BUILTIN_STAMPS.find(s => s.id === state.activeStamp)?.nameKey ?? 'stamp.custom') : t('options.customBrush')} {state.customBrush.bmp.w}×{state.customBrush.bmp.h}</Muted>
@@ -479,14 +479,14 @@ export const ToolOptions: FC = () => {
           <Separator />
           <More>
             {(tool === 'pencil' || tool === 'eraser' || tool === 'spray') && <PopupRow><Pressure spray={tool === 'spray'} /></PopupRow>}
-            {/* (tool === 'pencil' || tool === 'eraser') && (
+            {(tool === 'pencil' || tool === 'eraser') && (
               <PopupRow><AngleDynamics /></PopupRow>
-            ) */}
+            )}
             {(tool === 'pencil' || tool === 'eraser') && (
               <Num label={t('options.smooth')} value={state.stabilizer} min={0} max={64} set={v => { state.stabilizer = v; }}
                 title={t('options.stabilizerTheBrushTrails')} />
             )}
-            {/* has(INK) && <PopupRow><StampPresets /></PopupRow> */}
+            {has(INK) && <PopupRow><StampPresets /></PopupRow>}
             {has(INK) && !state.customBrush && state.ink !== 'shade' && <PopupRow>
           <Label title={t('options.mixThePrimaryAnd')}>
             {t('common.pattern')}
