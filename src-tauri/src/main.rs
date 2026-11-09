@@ -3,10 +3,10 @@ mod frame_pacing;
 mod launch;
 mod library;
 mod mcp;
+mod screen_color;
 mod storage;
 mod system;
-mod screen_color;
-use screen_color::{desktop_pick_screen_color, desktop_cancel_screen_color, ScreenColorState};
+use screen_color::{desktop_cancel_screen_color, desktop_pick_screen_color, ScreenColorState};
 use system::{
     desktop_copy_image, desktop_copy_text, desktop_paste_image, desktop_save_download,
     desktop_text_action,
@@ -315,10 +315,19 @@ fn window_action(window: &WebviewWindow, action: &str) -> Result<(), String> {
     result.map_err(|e| e.to_string())
 }
 #[tauri::command]
-fn desktop_frontend_error(window: WebviewWindow, message: String) -> Result<(), String> {
+fn desktop_frontend_error(
+    window: WebviewWindow,
+    message: String,
+    resize_notification: Option<bool>,
+) -> Result<(), String> {
     trusted(&window)?;
     eprintln!(
-        "WebView error: {}",
+        "WebView {}: {}",
+        if resize_notification == Some(true) {
+            "resize notification"
+        } else {
+            "error"
+        },
         message.chars().take(4096).collect::<String>()
     );
     Ok(())

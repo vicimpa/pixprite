@@ -71,6 +71,10 @@ export async function nativeFixture(env: Record<string, string> = {}) {
     await rm(directory, { recursive: true, force: true, maxRetries: 15, retryDelay: 100 });
     if (process.env.PIXPRITE_E2E_TIMINGS === '1') console.log('Native timings: ' + timings.map(({ phase, ms }) => `${phase} ${ms} ms`).join(', '));
     expect(logs.join(''), 'The native renderer must not report uncaught JavaScript errors').not.toContain('WebView error:');
+    // One delivery can be deferred during startup/import. Repeated notifications
+    // indicate a layout cycle and must still fail the native acceptance suite.
+    expect(logs.join('').match(/WebView resize notification:/g)?.length ?? 0,
+      'Resize delivery notifications must settle instead of repeating').toBeLessThanOrEqual(1);
   }
   return { directory, profile, connection, call, launch, ready, stop, dispose, logs, timings };
 }

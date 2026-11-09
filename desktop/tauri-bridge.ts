@@ -1,5 +1,6 @@
 import { installTextShortcuts } from './text-shortcuts';
 import { pickScreenColor } from './screen-color';
+import { isResizeDeliveryNotification } from './renderer-errors';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -16,7 +17,11 @@ if (window.top === window.self) {
     const message = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack ?? ''}` : String(error);
     void invoke('desktop_frontend_error', { message: message.slice(0, 4096) }).catch(() => {});
   };
-  window.addEventListener('error', event => reportError(event.error ?? event.message));
+  window.addEventListener('error', event => {
+    if (isResizeDeliveryNotification(event)) {
+      void invoke('desktop_frontend_error', { message: event.message, resizeNotification: true }).catch(() => {});
+    } else reportError(event.error ?? event.message);
+  });
   window.addEventListener('unhandledrejection', event => reportError(event.reason));
   let onRequest: ((request: AutomationRequest) => Promise<unknown>) | undefined;
   let onFiles: ((files: DesktopFile[]) => Promise<void>) | undefined;
