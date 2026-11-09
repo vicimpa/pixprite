@@ -36,6 +36,49 @@ The storage controls scenario checks persistence status/request, the quota warni
 
 `e2e/home-icons.e2e.ts` checks Home text wrapping at 360–1024 px in Russian and English with large fonts. It checks the default Outline set, switches between both built-in sets offline, verifies constant icon dimensions and reload persistence, and preserves former pixel/outline preferences. It also installs the actual Duotone extension from an isolated catalog and checks live switching, disable/re-enable and removal fallback to Outline. Icon pack unit tests validate bounded inert artwork and coverage of the shipped sets.
 
+`e2e/color-popup.e2e.ts` checks editing primary and secondary colors directly from
+their samples, HEX/RGB/alpha synchronization, invalid drafts, preserved alpha, tab
+selection, keyboard dismissal/focus and English/Russian layouts with large text.
+System color and screen selection adapters are simulated for successful, cancelled,
+failed and aborted picks; an unsupported runtime keeps the system color action and
+explains the unavailable screen picker. These adapter tests do not interact with real
+OS dialogs. They also check wrapped availability messages in English/Russian and use
+the desktop adapter when EyeDropper is absent. `e2e/panel-layout.e2e.ts` checks sample
+wrapping at narrow panel widths. `desktop/screen-color.test.ts` verifies request IDs,
+abort handling and listener cleanup; Rust `screen_color::tests` covers session ownership,
+cancel-before-start ordering and invalid color results. Real OS sampling remains a manual
+check, separate from hidden native startup tests.
+
+`e2e/pen-pressure.e2e.ts` sends pen PointerEvents with controlled pressure and checks
+actual exported PNG alpha and live canvas samples. It covers clean lines on/off, brush
+sizes 1/6, eraser, a custom brush, corner cleanup, revisited pixels, mouse/disabled
+mapping, stabilizer release and a single undo/redo. Interpolated path pixels use the
+pressure of the event that adds them; earlier pixels keep their recorded value.
+This exercises the browser input path, not a tablet driver. Manual acceptance must
+record OS, tablet model and pressure/stabilizer settings.
+
+`e2e/pen-settings.e2e.ts` checks mapping persistence, editor stabilizer restoration,
+legacy presets and English/Russian large text at 800/1280 px. Open pencil, eraser or
+spray → **Pen** (in **More tool options** if the toolbar is narrow). Pressure mapping is
+global; stabilizer strength belongs to editor settings and tool presets, with 0 off.
+
+`e2e/text-tool.e2e.ts` verifies leading/trailing spaces, clearing, multiline input,
+live options/color updates, drag-and-continue typing, applying another box/tool,
+whitespace without a paint history step, and undo/redo via exported PNG. A delayed
+bundled font tests apply/cancel/tool changes, Home/new-document/save transitions,
+tab switching and cancellation during a new-box request. Clearing moved text keeps
+its latest position. `e2e/mcp-automation.e2e.ts` also checks that opening a comparison
+waits for live text and preserves its source pixels.
+Text starts at the clicked top-left point; Shift+Enter inserts a line, Enter applies,
+Escape cancels. Applied text is raster pixels, not an editable text layer.
+
+`e2e/release-workflow.e2e.ts` imports the existing v5 `docs/assets/beacon.pixprite`
+project through Home, opens its library card, edits a pixel and layer opacity, explicitly saves and reloads.
+It downloads and reopens both `.pixprite` and `.aseprite` copies, checking the exported
+PNG and the five-layer/eight-frame structure throughout the browser workflow. The
+fixture's fractional layer opacity is set to 115/255 through the UI before taking
+exact PNG references, matching Aseprite's 8-bit opacity precision.
+
 `e2e/desktop-windows.e2e.ts` checks the compact app header, button placement, local tab ordering, removal of detached windows, window controls, close/reopen persistence and migration of old multi-window sessions into one window. Linux CI uses Xvfb with a private D-Bus session; actual minimize/maximize window-manager transitions are checked on macOS/Windows. The three-launch persistence test has a 180-second total budget for cold WebKitGTK starts, while each launch retains its 45-second readiness deadline.
 
 ## CI and bundle budgets

@@ -94,10 +94,11 @@ export class AgentSession {
   }
   observe(doc: Sprite, revision = doc.version) { this.revisions.set(docId(doc), revision); this.historyPositions.set(docId(doc), doc.historyPosition); }
   report(doc: Sprite, label: string, params: Record<string, unknown>, rect?: { x: number; y: number; w: number; h: number }) {
-    reportActivity(this.source, docId(doc), label, params.follow === false ? undefined : () => {
-      if (!state.docs.includes(doc) || doc.floating || doc.focusLayer !== null || doc.historyGuardCount || hasDialogs() || state.commandPalette) return;
+    reportActivity(this.source, docId(doc), label, params.follow === false ? undefined : async () => {
+      if (!state.docs.includes(doc) || state.textAt || doc.floating || doc.focusLayer !== null || doc.historyGuardCount || hasDialogs() || state.commandPalette) return;
       const cursor = this.cursor(doc);
-      state.switchTo(doc);
+      await state.switchTo(doc);
+      if (state.sprite !== doc) return;
       positionEditor(doc, { ...cursor.view, frame: cursor.frame, layer: cursor.layer });
       state.playing = !!cursor.playing;
       if (rect) {

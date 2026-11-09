@@ -12,7 +12,7 @@ lifecycle.validate = validateExtension;
 lifecycle.start = startExtension;
 lifecycle.stop = stopExtension;
 state.setPrefs({ autosave: false, historyMB: 0, historyOperationMB: 0 });
-state.newDocument().reset(2, 2, 'Security');
+(await state.newDocument()).reset(2, 2, 'Security');
 
 let current: ExtensionHost | undefined;
 let installation: Promise<unknown> | undefined;

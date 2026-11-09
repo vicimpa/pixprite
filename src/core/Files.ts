@@ -291,7 +291,7 @@ export async function addDocuments(docs: Sprite[], failed: string[] = [], destin
     for (const doc of docs) await state.importProject(doc).then(() => added++, () => failed.push(doc.name));
     if (added) state.showNotice(t('msg.nProjectsAdded', { n: added }));
   } else {
-    for (const doc of docs) state.openDocument(doc);
+    for (const doc of docs) await state.openDocument(doc);
     if (docs.length) finish();
   }
   if (failed.length) state.showTip(`${t('msg.couldNotOpen')}: ${failed.join(', ')}`, 4000);

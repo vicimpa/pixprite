@@ -17,6 +17,27 @@ The editor and extension panels use the same implementations of reusable control
 - Canvas, icon, gradient, panel/layout and adaptive/virtualized widgets use shared implementations where they expose reusable UI behavior. Editor-specific data selection and signal subscriptions remain in adapters.
 - Existing browser functionality and format/data tests continue to pass. Any bundle-budget change requires a measured explanation; budgets must not be silently increased.
 
+## Editor color popup
+
+Click either current color sample in the Colors panel to edit that primary or secondary
+color in an anchored popup. It uses the shared floating panel and the existing color
+sliders, keeps the selected HSL/HSV/RGB tab, and exposes HEX plus R/G/B/A values
+(0–255). Updates are live; Close, Escape and clicking outside dismiss the popup.
+
+HEX accepts `#RGB`, `#RGBA`, `#RRGGBB` and `#RRGGBBAA`, with an optional `#` and
+surrounding whitespace. Invalid or incomplete input keeps the last valid color.
+RGB-only HEX input, RGB fields and system picking preserve alpha; RGBA HEX and A
+explicitly change it. The same HEX rules apply to the main RGB tab.
+
+System color selection uses the native color input of the browser/WebView. The separate
+screen picker prefers the desktop bridge: AppKit NSColorSampler on macOS, a Win32
+desktop capture/selection overlay on Windows, and the XDG PickColor portal on Linux.
+Browser builds use EyeDropper in a secure context. When neither adapter is available,
+the popup explains its availability; status messages wrap inside the popup even with
+large fonts. Cancelled screen picking leaves the color unchanged, and closing the popup
+aborts a pending screen pick. Actual OS integration still needs a manual check on each
+supported platform. See [desktop screen sampling](desktop-mcp.md#screen-color).
+
 ## Work plan and ownership
 
 1. Foundation agent: package primitives, styles, registration helpers, number input behavior and Select.

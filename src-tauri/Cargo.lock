@@ -2942,10 +2942,11 @@ dependencies = [
 
 [[package]]
 name = "pixprite"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "axum",
  "base64 0.22.1",
+ "block2",
  "dirs 6.0.0",
  "futures-util",
  "hex",
@@ -2971,6 +2972,8 @@ dependencies = [
  "tokio-util",
  "url",
  "uuid",
+ "windows-sys 0.61.2",
+ "zbus",
 ]
 
 [[package]]
@@ -4645,8 +4648,10 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 
@@ -5950,6 +5955,7 @@ dependencies = [
  "rustix",
  "serde",
  "serde_repr",
+ "tokio",
  "tracing",
  "uds_windows",
  "uuid",

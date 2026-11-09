@@ -27,6 +27,8 @@ export type DesktopBridge = {
   copyImage?(bitmap: { w: number; h: number; data: Uint32Array }): Promise<void>;
   copyText?(text: string): Promise<void>;
   pasteImage?(): Promise<{ w: number; h: number; data: Uint32Array } | null>;
+  /** Native screen sampler; null means user cancellation. RGB is returned as #RRGGBB. */
+  pickScreenColor?(options?: { signal?: AbortSignal }): Promise<string | null>;
   windowId: string;
   platform: string;
   /** Read-only migration of working copies from older multi-window profiles. */

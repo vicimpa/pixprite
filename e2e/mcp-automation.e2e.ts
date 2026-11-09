@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { pixelPosition, exportPixels } from './drawing-helper';
 
 async function request(page: Page, method: string, params: Record<string, unknown> = {}): Promise<any> {
   return page.evaluate(({ method, params }) => (window as any).__mcpRequest({ method, params }), { method, params });
@@ -48,6 +49,26 @@ test.beforeEach(async ({ page }) => {
   });
   await page.goto('/');
   await expect(page.getByTestId('home-page')).toBeVisible();
+});
+
+test('opening a comparison waits for live text and preserves the source pixels', async ({ page }) => {
+  const doc = await request(page, 'create', { width: 128, height: 64, name: 'Live text' });
+  await page.getByTestId('document-tabs').getByText('Live text', { exact: true }).click();
+  const sheet = await request(page, 'compare', { items: [{ documentId: doc.id, frame: 0 }], follow: false });
+  await page.getByRole('button', { name: 'Text', exact: true }).click();
+  let release!: () => void, requested!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const requestFont = new Promise<void>(resolve => { requested = resolve; });
+  await page.route('**/*tiny5*woff2', async route => { requested(); await gate; await route.continue(); });
+  await page.getByRole('button', { name: 'Font', exact: true }).click();
+  await page.getByRole('option', { name: 'Tiny5', exact: true }).click();
+  const at = await pixelPosition(page, 8, 16, 128, 64); await page.mouse.click(at.x, at.y);
+  const field = page.getByTestId('text-entry'); await expect(field).toBeFocused(); await field.fill('ABC'); await requestFont;
+  await page.locator(`[data-viewer="${sheet.viewerId}"]`).click();
+  release(); await expect(page.getByTestId('comparison-viewer')).toBeVisible();
+  await page.getByTestId('document-tabs').getByText('Live text', { exact: true }).click();
+  await expect(field).toBeHidden();
+  expect((await exportPixels(page)).pixels.some(v => v > 0)).toBe(true);
 });
 
 test('MCP atomically edits 6 layers / 60 frames, rejects tab and revision changes, and coalesces undo', async ({ page }) => {

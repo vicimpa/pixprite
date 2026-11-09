@@ -147,7 +147,7 @@ async function proxyStdioToHttp(mcpUrl: string, token: string) {
       stdout.write(JSON.stringify({
         jsonrpc: "2.0",
         id: req.id,
-        error: { code: -32000, message: `Fetch error: ${e.message}` }
+        error: { code: -32000, message: `Fetch error: ${(e as any).message}` }
       }) + '\n');
     }
   }

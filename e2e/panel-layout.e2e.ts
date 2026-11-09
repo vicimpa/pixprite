@@ -113,7 +113,7 @@ test('collapsed panels survive reload and the focus toggle restores usable sizes
 
 for (const width of [220, 360]) test(`color samples wrap according to panel width (${width}px)`, async ({ page }) => {
   await create(page, { colorsSize: width });
-  const samples = page.locator('[data-color-samples] > px-flex');
+  const samples = page.locator('[data-color-samples] > button');
   await expect(samples).toHaveCount(2);
   const [a, b] = await samples.evaluateAll(elements => elements.map(el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; }));
   expect(Math.round(a.height)).toBe(32); expect(Math.round(b.height)).toBe(32);

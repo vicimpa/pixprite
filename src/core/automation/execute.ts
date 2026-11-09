@@ -51,7 +51,7 @@ export function createAutomation(call: Call) {
     }
     if (method === 'compare') {
       const result = await compare(p);
-      reportActivity(session.source, undefined, 'compare', result.viewerId && p.follow !== false ? () => { if (!hasDialogs() && !state.commandPalette && viewerTabs.peek().some(tab => tab.id === result.viewerId)) activeViewer.value = result.viewerId; } : undefined);
+      reportActivity(session.source, undefined, 'compare', result.viewerId && p.follow !== false ? () => { if (!state.textAt && !hasDialogs() && !state.commandPalette) void state.showViewer(result.viewerId!); } : undefined);
       return result;
     }
     const finishOpen = (doc: Sprite) => {
