@@ -1,0 +1,8 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "../../node_modules/.tmp/ext-discord-presence.tsbuildinfo",
+    "types": ["bun"]
+  },
+  "include": ["src", "bridge"]
+}

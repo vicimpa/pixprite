@@ -13,6 +13,7 @@
     { "path": "./benchmarks" },
     { "path": "./benchmarks/tsconfig.runner.json" },
     { "path": "./extensions/ai-assistant" },
+    { "path": "./extensions/discord-presence" },
     { "path": "./extensions/game-rig" },
     { "path": "./extensions/template" }
   ]
