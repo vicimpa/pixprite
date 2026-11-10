@@ -3,7 +3,7 @@
  * Maps the UI's view (manifest-centric, per-extension status) onto the registry, runtime and contributions.
  */
 import { computed } from "@preact/signals-react";
-import { t } from "~/core/i18n";
+import { lookup, t } from "~/core/i18n";
 import { lockedNotice as spriteLockedNotice } from "~/core/Sprite";
 import { state } from "~/core/State";
 import { setExtensionsHost, type ExtensionsHost, type ExtensionStatus, type InstalledExtension as UiInstalled } from "~/modules/Extensions/bridge";
@@ -99,7 +99,10 @@ const host: ExtensionsHost = {
   },
   label(id, text) {
     if (!text) return '';
-    return hosts.get(id)?.label(text) ?? text.replace(/%([\w.-]+)%/g, (_, k: string) => t(`ext.${id}.${k}`));
+    // The host may not exist yet: fall back to the same dictionaries, without the core `t`
+    // machinery (its missing-key warnings and plural chain only cover core texts)
+    return hosts.get(id)?.label(text) ?? text.replace(/%([\w.-]+)%/g, (_, k: string) =>
+      lookup(`ext.${id}.${k}`) ?? `%${k}%`);
   },
   instance(id) {
     void hostsVersion.value;

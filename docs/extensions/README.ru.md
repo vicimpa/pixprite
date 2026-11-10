@@ -345,6 +345,7 @@ jsDelivr (`https://cdn.jsdelivr.net/gh/vicimpa/pixprite@extensions/registry.json
 | `extensions/lang-uk` | языковой пакет без кода (частичный украинский) |
 | `extensions/game-rig` | наборы тегов в meta, блокировки, валидатор, экспорт (zip с sheet.png + rig.json), живой игровой предпросмотр |
 | `extensions/ai-assistant` | чат с OpenAI-совместимым API (по умолчанию DeepSeek), вызовы функций через ctx, каждая правка ИИ — один шаг отмены |
+| `extensions/discord-presence` | Discord Rich Presence через локальный мост: настройка Application ID, панель с предпросмотром, состояние редактора как активность |
 
 
 ### Навыки AI assistant

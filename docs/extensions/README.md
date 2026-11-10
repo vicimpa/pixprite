@@ -399,6 +399,7 @@ restores editor and extension defaults without overwriting a named workspace.
 | `extensions/lang-uk` | data-only language pack (partial Ukrainian) |
 | `extensions/game-rig` | tag presets in meta, locks, validator, exporter (zip with sheet.png + rig.json), live game preview panel |
 | `extensions/ai-assistant` | chat panel with an OpenAI-compatible API (DeepSeek by default), function calls mapped to ctx, each AI edit one undo step |
+| `extensions/discord-presence` | Discord Rich Presence through a local bridge: app id setup, live preview panel, every editor state as an activity |
 
 
 ### AI assistant task skills

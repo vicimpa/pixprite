@@ -1,0 +1,51 @@
+{
+  "id": "discord-presence",
+  "name": "%name%",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "minEditorVersion": "0.0.8",
+  "public": false,
+  "author": "Pixprite contributors",
+  "description": "%description%",
+  "icon": "assets/icon.svg",
+  "entry": "main.js",
+  "permissions": [
+    "sprite:read",
+    "ui:panel",
+    "storage",
+    "network:127.0.0.1:52700"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "id": "settings",
+        "label": "%cmd.settings%",
+        "menu": "extensions"
+      },
+      {
+        "id": "toggle",
+        "label": "%cmd.toggle%",
+        "menu": "extensions"
+      }
+    ],
+    "panels": [
+      {
+        "id": "settings",
+        "label": "%panel.settings%",
+        "dock": "right",
+        "page": "panel.tsx",
+        "hidden": true,
+        "minWidth": 300,
+        "minHeight": 360,
+        "detachable": true
+      }
+    ],
+    "locales": "locales/"
+  },
+  "category": "automation",
+  "tags": [
+    "discord",
+    "rich-presence",
+    "integration"
+  ]
+}
